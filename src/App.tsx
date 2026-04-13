@@ -1070,114 +1070,133 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12 overflow-x-hidden">
       {/* Header */}
-      <header className="bg-[#1e3a8a] border-b border-blue-900 sticky top-0 z-20 shadow-md">
-        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:h-16 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center shrink-0">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white truncate uppercase">
-              Dashboard de Absenteísmo <span className="text-blue-200 font-normal hidden sm:inline">— {MONTH_NAMES[currentMonth]} {currentYear} ({isSupervision ? 'Supervisão' : `Turno ${currentShift}`})</span>
-              {!isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Turno {currentShift} — {MONTH_NAMES[currentMonth]} {currentYear}</span>}
-              {isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Supervisão — {MONTH_NAMES[currentMonth]} {currentYear}</span>}
-            </h1>
-          </div>
-          
-          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto">
-            {/* Seletor de Mês/Ano */}
-            <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1 border border-white/20">
-              <select 
-                value={currentMonth} 
-                onChange={(e) => {
-                  setCurrentMonth(Number(e.target.value));
-                  setSelectedDay('all');
-                }}
-                className="bg-transparent border-none text-xs font-bold text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
-              >
-                {MONTH_NAMES.map((name, i) => {
-                  // Apenas mostrar meses a partir de Abril 2026
-                  if (currentYear === 2026 && i < 3) return null;
-                  if (currentYear > now.getFullYear() || (currentYear === now.getFullYear() && i > now.getMonth())) return null;
-                  return <option key={i} value={i}>{name}</option>;
-                })}
-              </select>
-              <select 
-                value={currentYear} 
-                onChange={(e) => {
-                  setCurrentYear(Number(e.target.value));
-                  setSelectedDay('all');
-                  // Se mudar o ano para um onde o mês atual é inválido, ajusta
-                  if (Number(e.target.value) === 2026 && currentMonth < 3) setCurrentMonth(3);
-                }}
-                className="bg-transparent border-none text-xs font-bold text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
-              >
-                {[2026, 2027].filter(y => y <= now.getFullYear()).map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-
-            {isSupervision && (
-              <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1 border border-white/20">
-                {['A', 'B', 'C', 'D'].map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setSupervisionShiftFilter(s as any)}
-                    className={`px-3 py-1 text-xs font-bold rounded transition-colors ${
-                      supervisionShiftFilter === s 
-                        ? 'bg-white text-blue-900' 
-                        : 'text-white hover:bg-white/10'
-                    }`}
-                  >
-                    {s}
-                  </button>
-                ))}
+      <header className="bg-[#1e3a8a] border-b border-blue-900 sticky top-0 z-20 shadow-lg">
+        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="py-3 sm:h-16 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Logo & Title */}
+            <div className="flex items-center justify-between sm:justify-start gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white/10 rounded-xl flex items-center justify-center shrink-0 border border-white/10 shadow-inner">
+                  <Activity className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                </div>
+                <div className="flex flex-col">
+                  <h1 className="text-base sm:text-lg font-black tracking-tight text-white uppercase leading-none">
+                    Absenteísmo
+                  </h1>
+                  <span className="text-[10px] sm:text-xs text-blue-200 font-bold uppercase tracking-widest mt-0.5">
+                    {isSupervision ? 'Supervisão' : `Turno ${currentShift}`} • {MONTH_NAMES[currentMonth]}
+                  </span>
+                </div>
               </div>
-            )}
-            {/* Seletor Global de Dia */}
-            <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1 border border-white/20 flex-1 sm:flex-none justify-center">
-              {activeTab === 'registro' && (
-                <button 
-                  onClick={handlePrevDay}
-                  disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) <= 0}
-                  className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-              
-              <div className="flex items-center">
-                <CalendarDays className="w-4 h-4 text-blue-200 ml-2 hidden sm:block" />
+
+              {/* Mobile Logout (only visible on small screens to save space in the bottom row) */}
+              <button 
+                onClick={logout}
+                className="sm:hidden p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                title="Sair"
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Controls Section */}
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+              {/* Seletor de Mês/Ano */}
+              <div className="flex items-center gap-1 bg-white/10 rounded-xl p-1 border border-white/10 shadow-inner shrink-0">
                 <select 
-                  value={selectedDay} 
-                  onChange={(e) => setSelectedDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                  className="bg-transparent border-none text-sm font-medium text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
+                  value={currentMonth} 
+                  onChange={(e) => {
+                    setCurrentMonth(Number(e.target.value));
+                    setSelectedDay('all');
+                  }}
+                  className="bg-transparent border-none text-[10px] sm:text-xs font-black text-white focus:ring-0 cursor-pointer py-1 pr-7 pl-2 [&>option]:text-gray-900 uppercase tracking-wider"
                 >
-                  {activeTab !== 'registro' && <option value="all">Todos os dias</option>}
-                  {VALID_WORK_DAYS.map(d => (
-                    <option key={d} value={d}>Dia {d}</option>
+                  {MONTH_NAMES.map((name, i) => {
+                    if (currentYear === 2026 && i < 3) return null;
+                    if (currentYear > now.getFullYear() || (currentYear === now.getFullYear() && i > now.getMonth())) return null;
+                    return <option key={i} value={i}>{name}</option>;
+                  })}
+                </select>
+                <div className="w-px h-3 bg-white/20"></div>
+                <select 
+                  value={currentYear} 
+                  onChange={(e) => {
+                    setCurrentYear(Number(e.target.value));
+                    setSelectedDay('all');
+                    if (Number(e.target.value) === 2026 && currentMonth < 3) setCurrentMonth(3);
+                  }}
+                  className="bg-transparent border-none text-[10px] sm:text-xs font-black text-white focus:ring-0 cursor-pointer py-1 pr-7 pl-2 [&>option]:text-gray-900 uppercase tracking-wider"
+                >
+                  {[2026, 2027].filter(y => y <= now.getFullYear()).map(y => (
+                    <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
               </div>
 
-              {activeTab === 'registro' && (
-                <button 
-                  onClick={handleNextDay}
-                  disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) >= VALID_WORK_DAYS.length - 1}
-                  className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+              {isSupervision && (
+                <div className="flex items-center gap-1 bg-white/10 rounded-xl p-1 border border-white/10 shadow-inner shrink-0">
+                  {['A', 'B', 'C', 'D'].map(s => (
+                    <button
+                      key={s}
+                      onClick={() => setSupervisionShiftFilter(s as any)}
+                      className={`px-2.5 py-1 text-[10px] sm:text-xs font-black rounded-lg transition-all ${
+                        supervisionShiftFilter === s 
+                          ? 'bg-white text-blue-900 shadow-sm' 
+                          : 'text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               )}
+
+              {/* Seletor Global de Dia */}
+              <div className="flex items-center gap-1 bg-white/10 rounded-xl p-1 border border-white/10 shadow-inner shrink-0">
+                {activeTab === 'registro' && (
+                  <button 
+                    onClick={handlePrevDay}
+                    disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) <= 0}
+                    className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                )}
+                
+                <div className="flex items-center px-1">
+                  <select 
+                    value={selectedDay} 
+                    onChange={(e) => setSelectedDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+                    className="bg-transparent border-none text-[10px] sm:text-xs font-black text-white focus:ring-0 cursor-pointer py-1 pr-7 pl-1 [&>option]:text-gray-900 uppercase tracking-wider"
+                  >
+                    {activeTab !== 'registro' && <option value="all">Todos os dias</option>}
+                    {VALID_WORK_DAYS.map(d => (
+                      <option key={d} value={d}>Dia {d}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {activeTab === 'registro' && (
+                  <button 
+                    onClick={handleNextDay}
+                    disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) >= VALID_WORK_DAYS.length - 1}
+                    className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Desktop Logout */}
+              <button 
+                onClick={logout}
+                className="hidden sm:flex items-center gap-2 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all font-bold text-xs uppercase tracking-widest"
+                title="Sair"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sair</span>
+              </button>
             </div>
-            <button 
-              onClick={logout}
-              className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors flex items-center gap-2 shrink-0"
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline text-sm font-medium">Sair</span>
-            </button>
           </div>
         </div>
 
@@ -1194,28 +1213,30 @@ export default function App() {
         )}
         
         {/* Tabs */}
-        <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex gap-6 bg-white">
-          <button 
-            className={`py-3 text-sm 2xl:text-base font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            <LayoutDashboard className="w-4 h-4 2xl:w-5 2xl:h-5" />
-            Dashboard
-          </button>
-          {!isSupervision && (
+        <div className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex gap-4 sm:gap-8">
             <button 
-              className={`py-3 text-sm 2xl:text-base font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'registro' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-              onClick={() => {
-                setActiveTab('registro');
-                if (selectedDay === 'all') {
-                  setSelectedDay(VALID_WORK_DAYS[0]);
-                }
-              }}
+              className={`py-4 text-xs sm:text-sm 2xl:text-base font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 ${activeTab === 'dashboard' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'}`}
+              onClick={() => setActiveTab('dashboard')}
             >
-              <ClipboardList className="w-4 h-4 2xl:w-5 2xl:h-5" />
-              Lançamento de Frequência
+              <LayoutDashboard className="w-4 h-4 2xl:w-5 2xl:h-5" />
+              Dashboard
             </button>
-          )}
+            {!isSupervision && (
+              <button 
+                className={`py-4 text-xs sm:text-sm 2xl:text-base font-black uppercase tracking-widest border-b-2 transition-all flex items-center gap-2 ${activeTab === 'registro' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'}`}
+                onClick={() => {
+                  setActiveTab('registro');
+                  if (selectedDay === 'all') {
+                    setSelectedDay(VALID_WORK_DAYS[0]);
+                  }
+                }}
+              >
+                <ClipboardList className="w-4 h-4 2xl:w-5 2xl:h-5" />
+                Registro
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
