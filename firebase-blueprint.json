@@ -69,6 +69,14 @@
           "type": "number",
           "description": "Day of the month"
         },
+        "month": {
+          "type": "number",
+          "description": "Month (0-11)"
+        },
+        "year": {
+          "type": "number",
+          "description": "Year"
+        },
         "completedAt": {
           "type": "timestamp",
           "description": "When the list was completed"
@@ -78,7 +86,7 @@
           "description": "Email of the user who completed the list"
         }
       },
-      "required": ["shift", "day", "completedAt", "completedBy"]
+      "required": ["shift", "day", "month", "year", "completedAt", "completedBy"]
     }
   },
   "firestore": {

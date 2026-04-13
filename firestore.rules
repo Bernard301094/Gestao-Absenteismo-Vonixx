@@ -23,12 +23,15 @@ service cloud.firestore {
     //   - shift: string (required, 'A', 'B', 'C', 'D')
     //
     // Collection: completions
-    // Document ID: {shift}_{day}
+    // Document ID: {shift}_{year}_{month}_{day}
     // Fields:
     //   - shift: string (required)
     //   - day: number (required)
+    //   - month: number (required)
+    //   - year: number (required)
     //   - completedAt: timestamp (required)
     //   - completedBy: string (required)
+    //   - isLocked: boolean (optional)
     //
     // ===============================================================
 
@@ -139,10 +142,12 @@ service cloud.firestore {
 
     match /completions/{completionId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-                    hasRequiredFields(['shift', 'day', 'completedAt', 'completedBy']) &&
+      allow create, update: if isAuthenticated() && 
+                    hasRequiredFields(['shift', 'day', 'month', 'year', 'completedAt', 'completedBy']) &&
                     request.resource.data.shift in ['A', 'B', 'C', 'D'] &&
                     request.resource.data.day is number &&
+                    request.resource.data.month is number &&
+                    request.resource.data.year is number &&
                     request.resource.data.completedAt is timestamp &&
                     request.resource.data.completedBy == request.auth.token.email;
     }

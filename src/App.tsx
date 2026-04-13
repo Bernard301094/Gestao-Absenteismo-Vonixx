@@ -5,6 +5,8 @@ import {
   CalendarX, 
   Activity,
   TrendingUp,
+  TrendingDown,
+  Minus,
   AlertCircle,
   CalendarDays,
   ClipboardList,
@@ -45,7 +47,7 @@ import {
 } from 'recharts';
 import { auth, db, loginWithEmail, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch, query, where, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch, query, where, serverTimestamp, updateDoc, deleteDoc, limit } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
 // --- DADOS INICIAIS ---
@@ -295,6 +297,10 @@ export default function App() {
 
   // Estado global de funcionários
   const [employees, setEmployees] = useState<{id: string, name: string}[]>([]);
+  const [globalEmployees, setGlobalEmployees] = useState<{id: string, name: string, shift: string}[]>([]);
+  const [globalAttendance, setGlobalAttendance] = useState<Record<string, Record<number, Status>>>({});
+  const [globalCompletions, setGlobalCompletions] = useState<any[]>([]);
+  const [selectedEmployeeDetail, setSelectedEmployeeDetail] = useState<{id: string, name: string} | null>(null);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<{id: string, name: string} | null>(null);
@@ -370,6 +376,110 @@ export default function App() {
     return () => unsub();
   }, [user, currentShift]);
 
+  // Global data for supervisor dashboard
+  useEffect(() => {
+    if (!isSupervision) return;
+
+    const unsubEmployees = onSnapshot(collection(db, 'employees'), (snapshot) => {
+      const emps: any[] = [];
+      snapshot.forEach(doc => emps.push({ id: doc.id, ...doc.data() }));
+      setGlobalEmployees(emps);
+    });
+
+    const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+      const att: any = {};
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.month === currentMonth && data.year === currentYear) {
+          if (!att[data.empId]) att[data.empId] = {};
+          att[data.empId][data.day] = data.status;
+        }
+      });
+      setGlobalAttendance(att);
+    });
+
+    const unsubCompletions = onSnapshot(collection(db, 'completions'), (snapshot) => {
+      const comps: any[] = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.month === currentMonth && data.year === currentYear) {
+          comps.push(data);
+        }
+      });
+      setGlobalCompletions(comps);
+    });
+
+    return () => {
+      unsubEmployees();
+      unsubAttendance();
+      unsubCompletions();
+    };
+  }, [isSupervision, currentMonth, currentYear]);
+
+  const alerts = useMemo(() => {
+    if (!isSupervision) return [];
+    const newAlerts: { type: 'critical' | 'warning', message: string, icon: any }[] = [];
+
+    // Alert 1: Shifts not completed today
+    const shifts: ('A'|'B'|'C'|'D')[] = ['A', 'B', 'C', 'D'];
+    const today = new Date().getDate();
+    
+    if (isWorkDay(today, currentMonth, currentYear)) {
+      shifts.forEach(s => {
+        const isCompleted = globalCompletions.some(c => c.shift === s && c.day === today);
+        if (!isCompleted) {
+           newAlerts.push({ 
+             type: 'warning', 
+             message: `Turno ${s} ainda não realizou o fechamento de hoje.`,
+             icon: AlertCircle
+           });
+        }
+      });
+    }
+
+    // Alert 2: Employees with 5+ absences
+    const criticalEmployees = globalEmployees.filter(emp => {
+      const empAtt = globalAttendance[emp.id] || {};
+      const faltas = Object.values(empAtt).filter(s => s === 'F').length;
+      return faltas >= 5;
+    });
+
+    if (criticalEmployees.length > 0) {
+      newAlerts.push({ 
+        type: 'critical', 
+        message: `${criticalEmployees.length} funcionários atingiram o limite de 5 faltas no mês.`,
+        icon: XCircle
+      });
+    }
+
+    return newAlerts;
+  }, [isSupervision, globalCompletions, globalEmployees, globalAttendance, currentMonth, currentYear]);
+
+  const leaderboardData = useMemo(() => {
+    if (!isSupervision) return [];
+    const shifts: ('A'|'B'|'C'|'D')[] = ['A', 'B', 'C', 'D'];
+    
+    return shifts.map(s => {
+      const shiftEmps = globalEmployees.filter(e => e.shift === s);
+      if (shiftEmps.length === 0) return { shift: `Turno ${s}`, rate: 0 };
+      
+      let totalPossible = 0;
+      let totalPresent = 0;
+      
+      shiftEmps.forEach(emp => {
+        const empAtt = globalAttendance[emp.id] || {};
+        VALID_WORK_DAYS.forEach(day => {
+          totalPossible++;
+          const status = empAtt[day] || 'P';
+          if (status === 'P') totalPresent++;
+        });
+      });
+      
+      const rate = totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 0;
+      return { shift: `Turno ${s}`, rate };
+    });
+  }, [isSupervision, globalEmployees, globalAttendance, VALID_WORK_DAYS]);
+
   // Bootstrap data and listen to Firestore
   useEffect(() => {
     let active = true;
@@ -391,26 +501,19 @@ export default function App() {
     const bootstrapData = async () => {
       // ONLY Admin or Turno A can perform bootstrap/migration
       if (currentShift !== 'A' && !isAdminUser) return;
+      
+      // Use a simple check to avoid running this heavy function repeatedly
+      if (window.sessionStorage.getItem('bootstrapped')) return;
 
       try {
-        const empSnapshot = await getDocs(collection(db, 'employees'));
+        const empSnapshot = await getDocs(query(collection(db, 'employees'), limit(1)));
         if (!active) return;
         
         const batch = writeBatch(db);
         let needsMigration = false;
 
-        // Migration: Add month and year to existing records if missing
-        const attSnapshot = await getDocs(collection(db, 'attendance'));
-        attSnapshot.forEach(doc => {
-          const data = doc.data();
-          if (data.month === undefined || data.year === undefined) {
-            batch.update(doc.ref, { month: 3, year: 2026 });
-            needsMigration = true;
-          }
-        });
-
         if (empSnapshot.empty) {
-          console.log("Bootstrapping initial data for Turno A...");
+          console.log("Bootstrapping initial data...");
           
           // Add employees
           EMPLOYEES.forEach(emp => {
@@ -422,7 +525,7 @@ export default function App() {
           Object.entries(INITIAL_ATTENDANCE).forEach(([empId, days]) => {
             Object.entries(days).forEach(([dayStr, status]) => {
               const day = parseInt(dayStr);
-              const recordId = `${empId}_2026_3_${day}`; // Mantendo Abril 2026 para os dados iniciais do PDF
+              const recordId = `${empId}_2026_3_${day}`;
               const attRef = doc(db, 'attendance', recordId);
               batch.set(attRef, {
                 empId,
@@ -437,32 +540,15 @@ export default function App() {
             });
           });
           needsMigration = true;
-        } else {
-          // Migration for existing documents without shift
-          empSnapshot.forEach(docSnap => {
-            if (!docSnap.data().shift) {
-              batch.update(docSnap.ref, { shift: 'A' });
-              needsMigration = true;
-            }
-          });
-
-          const attSnapshot = await getDocs(collection(db, 'attendance'));
-          if (!active) return;
-          
-          attSnapshot.forEach(docSnap => {
-            if (!docSnap.data().shift) {
-              batch.update(docSnap.ref, { shift: 'A' });
-              needsMigration = true;
-            }
-          });
         }
 
         if (needsMigration && active) {
           await batch.commit();
-          console.log("Bootstrap/Migration complete.");
+          console.log("Bootstrap complete.");
         }
-      } catch (error) {
-        console.error("Bootstrap/Migration error:", error);
+        window.sessionStorage.setItem('bootstrapped', 'true');
+      } catch (e) {
+        console.error("Bootstrap error:", e);
       }
     };
 
@@ -495,9 +581,7 @@ export default function App() {
       // Listen to attendance
       const qAttendance = query(
         collection(db, 'attendance'), 
-        where('shift', '==', shiftToQuery),
-        where('month', '==', currentMonth),
-        where('year', '==', currentYear)
+        where('shift', '==', shiftToQuery)
       );
 
       unsubAttendance = onSnapshot(qAttendance, (snapshot) => {
@@ -507,14 +591,17 @@ export default function App() {
         
         snapshot.forEach(doc => {
           const data = doc.data();
-          const { empId, day, status, note } = data;
+          const { empId, day, status, note, month, year } = data;
           
-          if (!newAttendance[empId]) newAttendance[empId] = {};
-          newAttendance[empId][day] = status as Status;
-          
-          if (note) {
-            if (!newNotes[empId]) newNotes[empId] = {};
-            newNotes[empId][day] = note;
+          // Filter by month and year in memory to avoid needing a composite index
+          if (month === currentMonth && year === currentYear) {
+            if (!newAttendance[empId]) newAttendance[empId] = {};
+            newAttendance[empId][day] = status as Status;
+            
+            if (note) {
+              if (!newNotes[empId]) newNotes[empId] = {};
+              newNotes[empId][day] = note;
+            }
           }
         });
         
@@ -526,13 +613,19 @@ export default function App() {
       });
 
       // Listen to completions
-      const qCompletions = query(collection(db, 'completions'), where('shift', '==', shiftToQuery));
+      const qCompletions = query(
+        collection(db, 'completions'), 
+        where('shift', '==', shiftToQuery)
+      );
       unsubCompletions = onSnapshot(qCompletions, (snapshot) => {
         if (!active) return;
         const newLockedDays: Record<number, boolean> = {};
         snapshot.forEach(doc => {
           const data = doc.data();
-          newLockedDays[data.day] = true;
+          // Filter by month and year in memory to avoid needing a composite index
+          if (data.month === currentMonth && data.year === currentYear) {
+            newLockedDays[data.day] = true;
+          }
         });
         setLockedDays(newLockedDays);
       }, (error) => {
@@ -548,7 +641,7 @@ export default function App() {
       if (unsubAttendance) unsubAttendance();
       if (unsubCompletions) unsubCompletions();
     };
-  }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser]);
+  }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser, currentMonth, currentYear]);
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -676,6 +769,16 @@ export default function App() {
     return pendingAttendance[empId]?.[day] ?? attendance[empId]?.[day] ?? 'P';
   };
 
+  const getInitials = (name: string) => {
+    return name
+      .split(' ')
+      .filter(n => n.length > 0)
+      .map(n => n[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
+  };
+
   // --- CÁLCULOS DINÂMICOS ---
   
   const totalFaltasMes = useMemo(() => {
@@ -767,24 +870,32 @@ export default function App() {
   const employeeData = useMemo(() => {
     return employees.map(emp => {
       let faltas = 0;
+      let firstHalfFaltas = 0;
+      let secondHalfFaltas = 0;
+      
       if (attendance[emp.id]) {
-        // Se selectedDay for 'all' ou não definido, conta o mês todo, senão apenas o dia
-        if (selectedDay === 'all') {
-          Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
-            const day = Number(dayStr);
-            if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) faltas++;
-          });
-        } else {
-          const status = attendance[emp.id][selectedDay];
-          if (status === 'F') faltas = 1;
-        }
+        Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
+          const day = Number(dayStr);
+          if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
+            faltas++;
+            if (day <= 15) firstHalfFaltas++;
+            else secondHalfFaltas++;
+          }
+        });
       }
+
+      // Trend: comparing second half with first half
+      let trend: 'up' | 'down' | 'neutral' = 'neutral';
+      if (secondHalfFaltas > firstHalfFaltas) trend = 'up';
+      else if (secondHalfFaltas < firstHalfFaltas) trend = 'down';
+
       return {
         ...emp,
-        faltas
+        faltas: selectedDay === 'all' ? faltas : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
+        trend
       };
     }).sort((a, b) => b.faltas - a.faltas);
-  }, [attendance, employees, selectedDay]);
+  }, [attendance, employees, selectedDay, currentMonth, currentYear]);
 
   const filteredEmployees = useMemo(() => {
     let result = employeeData;
@@ -911,23 +1022,19 @@ export default function App() {
       if (hasChanges) {
         await batch.commit();
         
-        // Verificar se a lista está totalmente completa para enviar notificação
-        const shiftEmployees = employees;
-        const isFullyComplete = shiftEmployees.every(emp => {
-          const status = pendingAttendance[emp.id]?.[selectedDay] ?? attendance[emp.id]?.[selectedDay];
-          return !!status;
-        });
+        // Sempre salvar o estado de bloqueio no Firestore para persistência
+        const completionId = `${currentShift}_${currentYear}_${currentMonth}_${selectedDay}`;
+        await setDoc(doc(db, 'completions', completionId), {
+          shift: currentShift,
+          day: selectedDay,
+          month: currentMonth,
+          year: currentYear,
+          completedAt: serverTimestamp(),
+          completedBy: user.email,
+          isLocked: true
+        }, { merge: true });
 
-        if (isFullyComplete) {
-          const completionId = `${currentShift}_${selectedDay}`;
-          await setDoc(doc(db, 'completions', completionId), {
-            shift: currentShift,
-            day: selectedDay,
-            completedAt: serverTimestamp(),
-            completedBy: user.email
-          }, { merge: true });
-        }
-        setLockedDays(prev => ({ ...prev, [selectedDay]: true })); // Bloquear sempre após salvar
+        setLockedDays(prev => ({ ...prev, [selectedDay]: true }));
 
         // Limpar estados pendentes
         setPendingAttendance({});
@@ -1066,6 +1173,11 @@ export default function App() {
       </div>
     );
   }
+
+  const getWeekdayName = (day: number, month: number, year: number) => {
+    const date = new Date(year, month, day);
+    return date.toLocaleDateString('pt-BR', { weekday: 'long' });
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12 overflow-x-hidden">
@@ -1254,6 +1366,31 @@ export default function App() {
                 Exportar Excel
               </button>
             </div>
+
+            {/* Intelligent Alerts Center */}
+            {isSupervision && alerts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
+                {alerts.map((alert, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`flex items-center gap-4 p-4 rounded-2xl border ${
+                      alert.type === 'critical' 
+                        ? 'bg-red-50 border-red-100 text-red-800' 
+                        : 'bg-amber-50 border-amber-100 text-amber-800'
+                    } shadow-sm`}
+                  >
+                    <div className={`p-2 rounded-xl ${
+                      alert.type === 'critical' ? 'bg-red-100' : 'bg-amber-100'
+                    }`}>
+                      <alert.icon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold leading-tight">{alert.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {/* Total Faltas */}
               <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-start justify-between gap-2 hover:shadow-md transition-shadow">
@@ -1337,6 +1474,45 @@ export default function App() {
               <div className={`${selectedDay === 'all' ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-6`}>
                 {selectedDay === 'all' ? (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Leaderboard Chart (Supervision Only) */}
+                    {isSupervision && (
+                      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col lg:col-span-2">
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-sm 2xl:text-base font-bold text-gray-900 uppercase tracking-tight">Performance por Turno (% Assiduidade)</h3>
+                          <TrendingUp className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <div className="h-[200px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={leaderboardData} layout="vertical" margin={{ left: 40, right: 40 }}>
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                              <XAxis type="number" domain={[0, 100]} hide />
+                              <YAxis 
+                                dataKey="shift" 
+                                type="category" 
+                                axisLine={false} 
+                                tickLine={false}
+                                tick={{ fontSize: 12, fontWeight: 'bold', fill: '#1e3a8a' }}
+                              />
+                              <Tooltip 
+                                cursor={{ fill: '#f8fafc' }}
+                                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                formatter={(val) => [`${val}%`, 'Assiduidade']}
+                              />
+                              <Bar dataKey="rate" radius={[0, 10, 10, 0]} barSize={30}>
+                                {leaderboardData.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={entry.rate > 90 ? '#10b981' : entry.rate > 80 ? '#3b82f6' : '#f59e0b'} 
+                                  />
+                                ))}
+                                <LabelList dataKey="rate" position="right" formatter={(val: any) => `${val}%`} fill="#1e3a8a" fontSize={12} fontWeight="bold" />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Ranking Chart */}
                     <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
                       <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Faltas por Funcionário (Ranking)</h3>
@@ -1379,9 +1555,13 @@ export default function App() {
                   </div>
                 ) : (
                   /* Single Day View: Donut Chart */
-                  <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col items-center">
-                    <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Distribuição de Asistencia - Dia {selectedDay}</h3>
-                    <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full max-w-[500px]">
+                  <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex flex-col items-center relative group">
+                    <div className="w-full flex items-center justify-between mb-6">
+                      <h3 className="text-base font-bold text-gray-900">Distribuição de Asistencia</h3>
+                      <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-xs font-bold">Dia {selectedDay}</span>
+                    </div>
+                    
+                    <div className="h-[350px] w-full max-w-[500px] relative">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -1389,22 +1569,48 @@ export default function App() {
                               { name: 'Presentes', value: employees.length - employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length },
                               { name: 'Faltas', value: employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length },
                               { name: 'Outros', value: employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length }
-                            ]}
+                            ].filter(d => d.value > 0)}
                             cx="50%"
                             cy="50%"
-                            innerRadius={80}
-                            outerRadius={120}
-                            paddingAngle={5}
+                            innerRadius={85}
+                            outerRadius={115}
+                            paddingAngle={8}
+                            cornerRadius={10}
                             dataKey="value"
+                            stroke="none"
                           >
-                            <Cell fill="#16a34a" /> {/* Presentes */}
-                            <Cell fill="#dc2626" /> {/* Faltas */}
-                            <Cell fill="#3b82f6" /> {/* Outros */}
+                            <Cell fill="#10b981" /> {/* Emerald 500 */}
+                            <Cell fill="#f43f5e" /> {/* Rose 500 */}
+                            <Cell fill="#0ea5e9" /> {/* Sky 500 */}
                           </Pie>
-                          <Tooltip />
-                          <Legend />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                          />
                         </PieChart>
                       </ResponsiveContainer>
+                      
+                      {/* Central Label Overlay */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                        <span className="block text-3xl font-black text-gray-900">
+                          {Math.round(((employees.length - employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length) / employees.length) * 100)}%
+                        </span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Presença</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4 w-full mt-4">
+                      <div className="flex flex-col items-center p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+                        <span className="text-xs font-bold text-emerald-600 uppercase tracking-tighter">Presentes</span>
+                        <span className="text-lg font-black text-emerald-700">{employees.length - employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length}</span>
+                      </div>
+                      <div className="flex flex-col items-center p-3 rounded-2xl bg-rose-50 border border-rose-100">
+                        <span className="text-xs font-bold text-rose-600 uppercase tracking-tighter">Faltas</span>
+                        <span className="text-lg font-black text-rose-700">{employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length}</span>
+                      </div>
+                      <div className="flex flex-col items-center p-3 rounded-2xl bg-sky-50 border border-sky-100">
+                        <span className="text-xs font-bold text-sky-600 uppercase tracking-tighter">Outros</span>
+                        <span className="text-lg font-black text-sky-700">{employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length}</span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1446,32 +1652,35 @@ export default function App() {
             </div>
 
             {/* Bottom Section: Employee Details Table */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col max-h-[600px]">
-              <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Detalhamento por Funcionário</h2>
-                  <p className="text-sm text-gray-500">Acompanhamento individual de faltas no mês.</p>
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col max-h-[700px] transition-all duration-300 hover:shadow-2xl">
+              <div className="p-5 sm:p-8 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white flex flex-col lg:flex-row lg:items-center justify-between gap-6 shrink-0">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Detalhamento por Funcionário</h2>
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <Activity className="w-4 h-4 text-blue-500" />
+                    <p className="text-sm font-medium">Acompanhamento individual de faltas no mês.</p>
+                  </div>
                 </div>
                 
-                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                  <div className="relative w-full sm:w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <div className="flex flex-col md:flex-row items-center gap-4 w-full lg:w-auto">
+                  <div className="relative w-full md:w-80 group">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
                     <input 
                       type="text" 
-                      placeholder="Buscar funcionário..." 
+                      placeholder="Buscar por nome ou ID..." 
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="w-full pl-11 pr-4 py-2.5 rounded-2xl border border-gray-200 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all bg-white/50 backdrop-blur-sm"
                     />
                   </div>
                   
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <div className="relative flex-1 sm:flex-none">
-                      <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:flex-none">
+                      <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400" />
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as any)}
-                        className="w-full sm:w-auto pl-9 pr-8 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                        className="w-full md:w-auto pl-11 pr-10 py-2.5 rounded-2xl border border-gray-200 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 appearance-none bg-white cursor-pointer hover:bg-gray-50 transition-all"
                       >
                         <option value="all">Todos os Status</option>
                         <option value="regular">Regular (0)</option>
@@ -1483,41 +1692,43 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="overflow-x-auto overflow-y-auto flex-1">
-                <table className="w-full text-left border-collapse min-w-full sm:min-w-[600px]">
-                  <thead className="bg-white sticky top-0 z-10 shadow-sm">
-                    <tr className="bg-gray-50">
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">
+              <div className="overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
+                <table className="w-full text-left border-collapse min-w-[800px]">
+                  <thead className="bg-white/80 backdrop-blur-md sticky top-0 z-20">
+                    <tr>
+                      <th className="py-4 px-6 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">
                         <button 
                           onClick={() => setSortOrder(prev => prev === 'asc_name' ? 'desc_name' : 'asc_name')}
-                          className="flex items-center gap-1 hover:text-gray-700 transition-colors"
+                          className="flex items-center gap-2 hover:text-blue-600 transition-colors group"
                         >
                           Funcionário
-                          <ArrowUpDown className="w-3 h-3" />
+                          <ArrowUpDown className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>
                       </th>
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap hidden sm:table-cell">ID</th>
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap">
+                      <th className="py-4 px-6 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 text-center">ID</th>
+                      <th className="py-4 px-6 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 text-center">
                         {selectedDay === 'all' ? (
                           <button 
                             onClick={() => setSortOrder('desc_faltas')}
-                            className="flex items-center justify-center gap-1 hover:text-gray-700 transition-colors w-full"
+                            className="flex items-center justify-center gap-2 hover:text-blue-600 transition-colors w-full group"
                           >
-                            <span className="hidden sm:inline">Total de Faltas</span>
-                            <span className="sm:hidden">Faltas</span>
-                            {sortOrder === 'desc_faltas' && <ArrowDown className="w-3 h-3" />}
+                            Faltas no Mês
+                            <ArrowDown className={`w-3.5 h-3.5 transition-transform ${sortOrder === 'desc_faltas' ? 'scale-110 text-blue-500' : 'opacity-0 group-hover:opacity-100'}`} />
                           </button>
                         ) : (
-                          'Status'
+                          'Status do Dia'
                         )}
                       </th>
+                      {selectedDay === 'all' && (
+                        <th className="py-4 px-6 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 text-center">Tendência</th>
+                      )}
                       {selectedDay !== 'all' && (
-                        <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">Observações</th>
+                        <th className="py-4 px-6 text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100">Observações</th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {filteredEmployees.map(emp => {
+                  <tbody className="divide-y divide-gray-50">
+                    {filteredEmployees.map((emp, idx) => {
                       const status = selectedDay !== 'all' ? getStatusForDay(emp.id, selectedDay as number) : null;
                       const statusLabels: Record<string, string> = {
                         'P': 'Presente',
@@ -1526,54 +1737,125 @@ export default function App() {
                         'A': 'Afastamento'
                       };
 
+                      const trend = emp.trend;
+
                       return (
-                        <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-3 px-4 sm:px-6">
-                            <div className="flex flex-col">
-                              <span className="text-sm 2xl:text-base font-medium text-gray-900">{emp.name}</span>
-                              <div className="flex items-center gap-2 mt-0.5 sm:hidden">
-                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">ID: {emp.id.padStart(3, '0')}</span>
+                        <tr 
+                          key={emp.id} 
+                          className={`group hover:bg-blue-50/30 transition-all duration-200 ${isSupervision ? 'cursor-pointer' : ''}`}
+                          onClick={() => isSupervision && setSelectedEmployeeDetail(emp)}
+                        >
+                          <td className="py-4 px-6">
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 shadow-sm transition-transform group-hover:scale-110 ${
+                                idx % 4 === 0 ? 'bg-blue-100 text-blue-600' :
+                                idx % 4 === 1 ? 'bg-purple-100 text-purple-600' :
+                                idx % 4 === 2 ? 'bg-emerald-100 text-emerald-600' :
+                                'bg-orange-100 text-orange-600'
+                              }`}>
+                                {getInitials(emp.name)}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-semibold text-gray-900 truncate group-hover:text-blue-700 transition-colors">{emp.name}</span>
+                                <span className="text-[10px] font-medium text-gray-400 uppercase tracking-tight">Membro da Equipe</span>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4 sm:px-6 text-sm 2xl:text-base text-gray-500 text-center whitespace-nowrap hidden sm:table-cell">{emp.id.padStart(3, '0')}</td>
-                          <td className="py-3 px-4 sm:px-6 text-center whitespace-nowrap">
+                          <td className="py-4 px-6 text-center">
+                            <span className="inline-flex px-2 py-1 rounded-lg bg-gray-100 text-gray-500 text-[10px] font-mono font-bold">
+                              #{emp.id.padStart(3, '0')}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-center">
                             {selectedDay === 'all' ? (
-                              <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full text-xs font-bold ${
-                                emp.faltas > 3 ? 'bg-red-100 text-red-700' : 
-                                emp.faltas > 0 ? 'bg-orange-100 text-orange-700' : 
-                                'bg-green-100 text-green-700'
-                              }`}>
-                                {emp.faltas}
-                              </span>
+                              <div className="flex flex-col items-center gap-1">
+                                <span className={`text-lg font-black ${
+                                  emp.faltas > 3 ? 'text-red-600' : 
+                                  emp.faltas > 0 ? 'text-orange-500' : 
+                                  'text-emerald-500'
+                                }`}>
+                                  {emp.faltas}
+                                </span>
+                                <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full transition-all duration-500 ${
+                                      emp.faltas > 3 ? 'bg-red-500' : 
+                                      emp.faltas > 0 ? 'bg-orange-400' : 
+                                      'bg-emerald-400'
+                                    }`}
+                                    style={{ width: `${Math.min((emp.faltas / 5) * 100, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
                             ) : (
-                              <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold ${
-                                status === 'P' ? 'bg-green-100 text-green-700' :
-                                status === 'F' ? 'bg-red-100 text-red-700' :
-                                status === 'Fe' ? 'bg-blue-100 text-blue-700' :
-                                'bg-purple-100 text-purple-700'
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold shadow-sm ${
+                                status === 'P' ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' :
+                                status === 'F' ? 'bg-red-50 text-red-700 ring-1 ring-red-200' :
+                                status === 'Fe' ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' :
+                                'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
                               }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+                                  status === 'P' ? 'bg-emerald-500' :
+                                  status === 'F' ? 'bg-red-500' :
+                                  status === 'Fe' ? 'bg-blue-500' :
+                                  'bg-amber-500'
+                                }`} />
                                 {status ? statusLabels[status] || status : '-'}
                               </span>
                             )}
                           </td>
+                          {selectedDay === 'all' && (
+                            <td className="py-4 px-6 text-center">
+                              <div className="flex justify-center">
+                                {trend === 'up' ? (
+                                  <div className="flex items-center gap-1 text-red-500 bg-red-50 px-2 py-1 rounded-lg">
+                                    <TrendingUp className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold">Alta</span>
+                                  </div>
+                                ) : trend === 'down' ? (
+                                  <div className="flex items-center gap-1 text-emerald-500 bg-emerald-50 px-2 py-1 rounded-lg">
+                                    <TrendingDown className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold">Baixa</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1 text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">
+                                    <Minus className="w-3.5 h-3.5" />
+                                    <span className="text-[10px] font-bold">Estável</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          )}
                           {selectedDay !== 'all' && (
-                            <td className="py-3 px-4 sm:px-6 text-xs text-gray-500 max-w-[200px] truncate">
-                              {notes[emp.id]?.[selectedDay as number] || '-'}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-2 text-gray-500 italic text-xs">
+                                <MessageSquare className="w-3 h-3 shrink-0" />
+                                <span className="truncate max-w-[200px]">{notes[emp.id]?.[selectedDay as number] || 'Sem observações'}</span>
+                              </div>
                             </td>
                           )}
                         </tr>
                       );
                     })}
-                    {filteredEmployees.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
-                          Nenhum funcionário encontrado.
-                        </td>
-                      </tr>
-                    )}
                   </tbody>
                 </table>
+              </div>
+              
+              <div className="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-widest shrink-0">
+                <span>Total: {filteredEmployees.length} Funcionários</span>
+                {selectedDay === 'all' && (
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" /> Regular
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-orange-400" /> Atenção
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-red-500" /> Crítico
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1948,6 +2230,146 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Detail Modal (Deep-Dive) */}
+      {selectedEmployeeDetail && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-[32px] w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300">
+            {/* Modal Header */}
+            <div className="p-6 sm:p-8 border-b border-gray-100 bg-gradient-to-r from-blue-900 to-blue-800 text-white shrink-0">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-2xl font-black">
+                    {getInitials(selectedEmployeeDetail.name)}
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-black uppercase tracking-tight leading-tight">{selectedEmployeeDetail.name}</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="px-2 py-0.5 bg-white/20 rounded-lg text-[10px] font-bold uppercase tracking-widest">ID: #{selectedEmployeeDetail.id.padStart(3, '0')}</span>
+                      <span className="px-2 py-0.5 bg-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">Ativo</span>
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedEmployeeDetail(null)}
+                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Total de Faltas</span>
+                  <span className="text-3xl font-black text-red-600">
+                    {Object.values(globalAttendance[selectedEmployeeDetail.id] || {}).filter(s => s === 'F').length}
+                  </span>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Assiduidade</span>
+                  <span className="text-3xl font-black text-blue-600">
+                    {Math.round((1 - (Object.values(globalAttendance[selectedEmployeeDetail.id] || {}).filter(s => s === 'F').length / VALID_WORK_DAYS.length)) * 100)}%
+                  </span>
+                </div>
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1">Tendência</span>
+                  <div className="flex items-center gap-2">
+                    {employeeData.find(e => e.id === selectedEmployeeDetail.id)?.trend === 'up' ? (
+                      <TrendingUp className="w-6 h-6 text-red-500" />
+                    ) : (
+                      <TrendingDown className="w-6 h-6 text-emerald-500" />
+                    )}
+                    <span className="text-lg font-bold text-gray-700 capitalize">
+                      {employeeData.find(e => e.id === selectedEmployeeDetail.id)?.trend === 'up' ? 'Em Alta' : 'Em Baixa'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Calendar Heatmap / Pattern Analysis */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-blue-600" />
+                  Análise de Padrões (Dias de Trabalho)
+                </h3>
+                <div className="grid grid-cols-7 gap-2">
+                  {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                    const isWork = isWorkDay(day, currentMonth, currentYear);
+                    const status = globalAttendance[selectedEmployeeDetail.id]?.[day];
+                    const isToday = day === new Date().getDate() && currentMonth === new Date().getMonth();
+                    
+                    return (
+                      <div 
+                        key={day}
+                        className={`aspect-square rounded-xl flex flex-col items-center justify-center border transition-all ${
+                          !isWork ? 'bg-gray-50 border-gray-100 opacity-30' :
+                          status === 'F' ? 'bg-red-50 border-red-200 text-red-700 shadow-sm' :
+                          status === 'Fe' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                          status === 'A' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                          'bg-emerald-50 border-emerald-200 text-emerald-700'
+                        } ${isToday ? 'ring-2 ring-blue-500 ring-offset-2' : ''}`}
+                      >
+                        <span className="text-[10px] font-bold opacity-50">{day}</span>
+                        {isWork && (
+                          <span className="text-xs font-black">
+                            {status || 'P'}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Weekday Frequency */}
+              <div className="bg-gray-50 rounded-[24px] p-6 border border-gray-100">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest mb-4">Frequência por Dia da Semana</h3>
+                <div className="space-y-3">
+                  {['segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado', 'domingo'].map(wd => {
+                    const dayFaltas = Object.entries(globalAttendance[selectedEmployeeDetail.id] || {})
+                      .filter(([d, s]) => s === 'F' && getWeekdayName(Number(d), currentMonth, currentYear) === wd)
+                      .length;
+                    
+                    if (dayFaltas === 0) return null;
+
+                    return (
+                      <div key={wd} className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500 capitalize">{wd}</span>
+                        <div className="flex items-center gap-3 flex-1 mx-4">
+                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden flex-1">
+                            <div 
+                              className="h-full bg-red-500 rounded-full" 
+                              style={{ width: `${Math.min((dayFaltas / 4) * 100, 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-black text-red-600 w-16 text-right">{dayFaltas} Faltas</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {Object.values(globalAttendance[selectedEmployeeDetail.id] || {}).filter(s => s === 'F').length === 0 && (
+                    <p className="text-xs text-gray-400 italic text-center py-4">Nenhum padrão de falta detectado este mês.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end shrink-0">
+              <button 
+                onClick={() => setSelectedEmployeeDetail(null)}
+                className="px-8 py-3 bg-gray-900 text-white rounded-2xl font-bold text-sm hover:bg-gray-800 transition-all active:scale-95 shadow-lg shadow-gray-200"
+              >
+                Fechar Perfil
+              </button>
+            </div>
           </div>
         </div>
       )}
