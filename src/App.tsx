@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Search, 
   Users, 
@@ -19,7 +19,13 @@ import {
   Filter,
   UserPlus,
   X,
-  LogOut
+  LogOut,
+  Edit2,
+  Trash2,
+  Download,
+  XCircle,
+  Palmtree,
+  Stethoscope
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -39,7 +45,8 @@ import {
 } from 'recharts';
 import { auth, db, loginWithEmail, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, getDocs, writeBatch, query, where, serverTimestamp, updateDoc, deleteDoc } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 
 // --- DADOS INICIAIS ---
 const EMPLOYEES = [
@@ -195,17 +202,45 @@ const INITIAL_ATTENDANCE: Record<string, Record<number, Status>> = {
   '86': { 3: 'A', 5: 'A', 7: 'A', 9: 'A', 11: 'A', 13: 'A' },
 };
 
-const CURRENT_DAY = 13; // Dia atual baseado no contexto
+// Configurações de Data Dinâmicas
+const now = new Date();
+const INITIAL_MONTH = now.getMonth(); // 0-11
+const INITIAL_YEAR = now.getFullYear();
 
-// Lógica 12x36: 13/04/2026 é dia de trabalho (ímpar).
-// Portanto, todos os dias ímpares são dias de trabalho e pares são folga.
-const isWorkDay = (day: number) => day % 2 !== 0;
-const isValidDay = (day: number) => day <= CURRENT_DAY && day !== 1; // Nova regra: apenas dias até o dia atual e ignora dia 1
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
 
-const VALID_WORK_DAYS = Array.from({ length: CURRENT_DAY }, (_, i) => i + 1).filter(d => isWorkDay(d) && isValidDay(d));
+const getDaysInMonth = (month: number, year: number) => {
+  return new Date(year, month + 1, 0).getDate();
+};
+
+const isWorkDay = (day: number, month: number, year: number) => {
+  const date = new Date(year, month, day, 12, 0, 0);
+  // Lógica 12x36: Alternância de dias.
+  // Referência: 13/04/2026 foi um dia de trabalho (segunda-feira).
+  const refDate = new Date(2026, 3, 13, 12, 0, 0);
+  const diffTime = date.getTime() - refDate.getTime();
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  return diffDays % 2 === 0;
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'registro'>('dashboard');
+  const [currentMonth, setCurrentMonth] = useState(INITIAL_MONTH);
+  const [currentYear, setCurrentYear] = useState(INITIAL_YEAR);
+  
+  const daysInMonth = useMemo(() => getDaysInMonth(currentMonth, currentYear), [currentMonth, currentYear]);
+
+  const currentDayOfMonth = useMemo(() => {
+    const today = new Date();
+    if (today.getMonth() === currentMonth && today.getFullYear() === currentYear) {
+      return today.getDate();
+    }
+    return daysInMonth; // Se for mês passado, mostra todos os dias
+  }, [currentMonth, currentYear, daysInMonth]);
+
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all'); // Dia padrão com dados
   const [searchTerm, setSearchTerm] = useState('');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
@@ -235,6 +270,20 @@ export default function App() {
     return window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
   }, []);
 
+  const isValidDay = useCallback((day: number) => {
+    if (currentYear > now.getFullYear()) return false;
+    if (currentYear === now.getFullYear() && currentMonth > now.getMonth()) return false;
+    if (currentYear === now.getFullYear() && currentMonth === now.getMonth()) {
+      return day <= now.getDate() && day !== 1;
+    }
+    return day !== 1; // Para meses passados, todos os dias (exceto dia 1 conforme regra anterior) são válidos
+  }, [currentMonth, currentYear]);
+
+  const VALID_WORK_DAYS = useMemo(() => {
+    return Array.from({ length: daysInMonth }, (_, i) => i + 1)
+      .filter(d => isWorkDay(d, currentMonth, currentYear) && isValidDay(d));
+  }, [daysInMonth, currentMonth, currentYear, isValidDay]);
+
   const isAdminUser = useMemo(() => user?.email === 'bernard30101994@gmail.com' || user?.email === 'supervisao@vonixx.com', [user]);
 
   useEffect(() => {
@@ -247,6 +296,8 @@ export default function App() {
   // Estado global de funcionários
   const [employees, setEmployees] = useState<{id: string, name: string}[]>([]);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
+  const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<{id: string, name: string} | null>(null);
   const [newEmployeeName, setNewEmployeeName] = useState('');
 
   // Estado global de faltas: mapeia o ID do funcionário para um objeto com los dias e status
@@ -348,6 +399,16 @@ export default function App() {
         const batch = writeBatch(db);
         let needsMigration = false;
 
+        // Migration: Add month and year to existing records if missing
+        const attSnapshot = await getDocs(collection(db, 'attendance'));
+        attSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.month === undefined || data.year === undefined) {
+            batch.update(doc.ref, { month: 3, year: 2026 });
+            needsMigration = true;
+          }
+        });
+
         if (empSnapshot.empty) {
           console.log("Bootstrapping initial data for Turno A...");
           
@@ -361,11 +422,13 @@ export default function App() {
           Object.entries(INITIAL_ATTENDANCE).forEach(([empId, days]) => {
             Object.entries(days).forEach(([dayStr, status]) => {
               const day = parseInt(dayStr);
-              const recordId = `${empId}_${day}`;
+              const recordId = `${empId}_2026_3_${day}`; // Mantendo Abril 2026 para os dados iniciais do PDF
               const attRef = doc(db, 'attendance', recordId);
               batch.set(attRef, {
                 empId,
                 day,
+                month: 3,
+                year: 2026,
                 status,
                 note: '',
                 updatedAt: new Date(),
@@ -430,7 +493,12 @@ export default function App() {
       });
 
       // Listen to attendance
-      const qAttendance = query(collection(db, 'attendance'), where('shift', '==', shiftToQuery));
+      const qAttendance = query(
+        collection(db, 'attendance'), 
+        where('shift', '==', shiftToQuery),
+        where('month', '==', currentMonth),
+        where('year', '==', currentYear)
+      );
 
       unsubAttendance = onSnapshot(qAttendance, (snapshot) => {
         if (!active) return;
@@ -490,19 +558,91 @@ export default function App() {
     const maxId = Math.max(...employees.map(emp => parseInt(emp.id)), 0);
     const newId = (maxId + 1).toString();
     
-    if (!currentShift || currentShift === 'ALL') return;
+    const shiftToAssign = isSupervision ? supervisionShiftFilter : currentShift;
+    if (!shiftToAssign || shiftToAssign === 'ALL') return;
 
     try {
       await setDoc(doc(db, 'employees', newId), {
         name: newEmployeeName.toUpperCase(),
-        createdAt: new Date(),
-        shift: currentShift
+        createdAt: serverTimestamp(),
+        shift: shiftToAssign
       });
       setNewEmployeeName('');
       setShowAddEmployeeModal(false);
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'employees');
+      handleFirestoreError(error, OperationType.WRITE, 'employees');
     }
+  };
+
+  const handleUpdateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee || !editingEmployee.name.trim()) return;
+    try {
+      await updateDoc(doc(db, 'employees', editingEmployee.id), {
+        name: editingEmployee.name.trim().toUpperCase()
+      });
+      setShowEditEmployeeModal(false);
+      setEditingEmployee(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'employees');
+    }
+  };
+
+  const handleDeleteEmployee = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este funcionário?')) return;
+    try {
+      await deleteDoc(doc(db, 'employees', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'employees');
+    }
+  };
+
+  const handleMarkAllPresent = () => {
+    const day = selectedDay === 'all' ? currentDayOfMonth : (selectedDay as number);
+    if (lockedDays[day]) return;
+    
+    const batch: Record<string, Status> = {};
+    employees.forEach(emp => {
+      const currentStatus = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
+      if (currentStatus !== 'P') {
+        batch[emp.id] = 'P';
+      }
+    });
+    
+    if (Object.keys(batch).length === 0) return;
+    
+    setPendingAttendance(prev => {
+      const next = { ...prev };
+      Object.entries(batch).forEach(([empId, status]) => {
+        next[empId] = { ...(next[empId] || {}), [day]: status };
+      });
+      return next;
+    });
+  };
+
+  const handleExportExcel = () => {
+    const data = employees.map(emp => {
+      const row: any = {
+        'ID': emp.id,
+        'Nome': emp.name,
+        'Turno': isSupervision ? supervisionShiftFilter : currentShift
+      };
+      
+      VALID_WORK_DAYS.forEach(day => {
+        const status = attendance[emp.id]?.[day] || 'P';
+        row[`Dia ${day}`] = status;
+      });
+      
+      const totalFaltas = VALID_WORK_DAYS.filter(day => attendance[emp.id]?.[day] === 'F').length;
+      row['Total Faltas'] = totalFaltas;
+      
+      return row;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Frequência");
+    XLSX.writeFile(wb, `Frequencia_${MONTH_NAMES[currentMonth]}_${currentYear}_Turno_${isSupervision ? supervisionShiftFilter : currentShift}.xlsx`);
   };
 
   // Ensure selectedDay is valid initially
@@ -543,7 +683,7 @@ export default function App() {
     Object.values(attendance).forEach(empRecord => {
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
-        if (status === 'F' && isWorkDay(day)) count++;
+        if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) count++;
       });
     });
     return count;
@@ -553,13 +693,13 @@ export default function App() {
     return employees.filter(emp => {
       return Object.entries(attendance[emp.id] || {}).some(([dayStr, status]) => {
         const day = Number(dayStr);
-        return status === 'F' && isWorkDay(day) && isValidDay(day);
+        return status === 'F' && isWorkDay(day, currentMonth, currentYear) && isValidDay(day);
       });
     }).length;
   }, [attendance, employees]);
 
   const faltasDoDia = useMemo(() => {
-    if (!isWorkDay(selectedDay) || !isValidDay(selectedDay)) return 0;
+    if (selectedDay === 'all' || !isWorkDay(selectedDay, currentMonth, currentYear) || !isValidDay(selectedDay)) return 0;
     let count = 0;
     Object.values(attendance).forEach(empRecord => {
       if (empRecord[selectedDay] === 'F') count++;
@@ -572,7 +712,7 @@ export default function App() {
     Object.values(attendance).forEach(empRecord => {
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
-        if ((status === 'Fe' || status === 'A') && isWorkDay(day) && isValidDay(day)) {
+        if ((status === 'Fe' || status === 'A') && isWorkDay(day, currentMonth, currentYear) && isValidDay(day)) {
           totalFeriasEAfastamentos++;
         }
       });
@@ -611,9 +751,8 @@ export default function App() {
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = parseInt(dayStr);
         // Se selectedDay for 'all', considera o mês, senão apenas o dia selecionado
-        if (status === 'F' && isWorkDay(day) && (selectedDay === 'all' || day === selectedDay)) {
-          // Abril de 2026 começa numa Quarta-feira
-          const date = new Date(2026, 3, day); 
+        if (status === 'F' && isWorkDay(day, currentMonth, currentYear) && (selectedDay === 'all' || day === selectedDay)) {
+          const date = new Date(currentYear, currentMonth, day); 
           const weekday = weekdays[date.getDay()];
           counts[weekday]++;
         }
@@ -633,7 +772,7 @@ export default function App() {
         if (selectedDay === 'all') {
           Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
             const day = Number(dayStr);
-            if (status === 'F' && isWorkDay(day)) faltas++;
+            if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) faltas++;
           });
         } else {
           const status = attendance[emp.id][selectedDay];
@@ -729,12 +868,14 @@ export default function App() {
       Object.entries(pendingAttendance).forEach(([empId, days]) => {
         Object.entries(days).forEach(([dayStr, status]) => {
           const day = parseInt(dayStr);
-          const recordId = `${empId}_${day}`;
+          const recordId = `${empId}_${currentYear}_${currentMonth}_${day}`;
           const attRef = doc(db, 'attendance', recordId);
           
           batch.set(attRef, {
             empId,
             day,
+            month: currentMonth,
+            year: currentYear,
             status,
             note: pendingNotes[empId]?.[day] ?? notes[empId]?.[day] ?? '',
             updatedAt: serverTimestamp(),
@@ -750,12 +891,14 @@ export default function App() {
           const day = parseInt(dayStr);
           if (pendingAttendance[empId]?.[day]) return; // Já processado acima
 
-          const recordId = `${empId}_${day}`;
+          const recordId = `${empId}_${currentYear}_${currentMonth}_${day}`;
           const attRef = doc(db, 'attendance', recordId);
           
           batch.set(attRef, {
             empId,
             day,
+            month: currentMonth,
+            year: currentYear,
             status: attendance[empId]?.[day] ?? 'P',
             note,
             updatedAt: serverTimestamp(),
@@ -934,13 +1077,46 @@ export default function App() {
               <Activity className="w-5 h-5 text-white" />
             </div>
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white truncate uppercase">
-              Dashboard de Absenteísmo <span className="text-blue-200 font-normal hidden sm:inline">— Abril 2026 ({isSupervision ? 'Supervisão' : `Turno ${currentShift}`})</span>
-              {!isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Turno {currentShift} — Abril 2026</span>}
-              {isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Supervisão — Abril 2026</span>}
+              Dashboard de Absenteísmo <span className="text-blue-200 font-normal hidden sm:inline">— {MONTH_NAMES[currentMonth]} {currentYear} ({isSupervision ? 'Supervisão' : `Turno ${currentShift}`})</span>
+              {!isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Turno {currentShift} — {MONTH_NAMES[currentMonth]} {currentYear}</span>}
+              {isSupervision && <span className="text-blue-200 font-normal sm:hidden block text-xs mt-0.5">Supervisão — {MONTH_NAMES[currentMonth]} {currentYear}</span>}
             </h1>
           </div>
           
           <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4 w-full sm:w-auto">
+            {/* Seletor de Mês/Ano */}
+            <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1 border border-white/20">
+              <select 
+                value={currentMonth} 
+                onChange={(e) => {
+                  setCurrentMonth(Number(e.target.value));
+                  setSelectedDay('all');
+                }}
+                className="bg-transparent border-none text-xs font-bold text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
+              >
+                {MONTH_NAMES.map((name, i) => {
+                  // Apenas mostrar meses a partir de Abril 2026
+                  if (currentYear === 2026 && i < 3) return null;
+                  if (currentYear > now.getFullYear() || (currentYear === now.getFullYear() && i > now.getMonth())) return null;
+                  return <option key={i} value={i}>{name}</option>;
+                })}
+              </select>
+              <select 
+                value={currentYear} 
+                onChange={(e) => {
+                  setCurrentYear(Number(e.target.value));
+                  setSelectedDay('all');
+                  // Se mudar o ano para um onde o mês atual é inválido, ajusta
+                  if (Number(e.target.value) === 2026 && currentMonth < 3) setCurrentMonth(3);
+                }}
+                className="bg-transparent border-none text-xs font-bold text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
+              >
+                {[2026, 2027].filter(y => y <= now.getFullYear()).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
             {isSupervision && (
               <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1 border border-white/20">
                 {['A', 'B', 'C', 'D'].map(s => (
@@ -977,7 +1153,7 @@ export default function App() {
                   onChange={(e) => setSelectedDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                   className="bg-transparent border-none text-sm font-medium text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
                 >
-                  <option value="all">Todos os dias</option>
+                  {activeTab !== 'registro' && <option value="all">Todos os dias</option>}
                   {VALID_WORK_DAYS.map(d => (
                     <option key={d} value={d}>Dia {d}</option>
                   ))}
@@ -1029,7 +1205,12 @@ export default function App() {
           {!isSupervision && (
             <button 
               className={`py-3 text-sm 2xl:text-base font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'registro' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}
-              onClick={() => setActiveTab('registro')}
+              onClick={() => {
+                setActiveTab('registro');
+                if (selectedDay === 'all') {
+                  setSelectedDay(VALID_WORK_DAYS[0]);
+                }
+              }}
             >
               <ClipboardList className="w-4 h-4 2xl:w-5 2xl:h-5" />
               Lançamento de Frequência
@@ -1042,46 +1223,56 @@ export default function App() {
         
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <h2 className="text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
+              <button 
+                onClick={handleExportExcel}
+                className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
+              >
+                <Download className="w-4 h-4" />
+                Exportar Excel
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {/* Total Faltas */}
-              <div className="bg-red-50 rounded-xl p-4 sm:p-6 border border-red-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-start justify-between gap-2 hover:shadow-md transition-shadow">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
                   {selectedDay === 'all' ? 'Total de Faltas no Mês' : 'Faltas no Dia'}
                 </h3>
-                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-red-600">
-                  {selectedDay === 'all' ? totalFaltasMes : dailyData[0]?.faltas || 0}
+                <div className="text-4xl font-extrabold text-red-600">
+                  {selectedDay === 'all' ? totalFaltasMes : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'F').length}
                 </div>
               </div>
 
               {/* Taxa Absenteismo / Presentes */}
-              <div className="bg-orange-50 rounded-xl p-4 sm:p-6 border border-orange-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-start justify-between gap-2 hover:shadow-md transition-shadow">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
                   {selectedDay === 'all' ? 'Taxa de Absenteísmo' : 'Presentes'}
                 </h3>
-                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-orange-600">
-                  {selectedDay === 'all' ? `${taxaAbsenteismo}%` : (employees.length - (dailyData[0]?.faltas || 0))}
+                <div className="text-4xl font-extrabold text-orange-600">
+                  {selectedDay === 'all' ? `${taxaAbsenteismo}%` : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'P').length}
                 </div>
               </div>
 
               {/* Funcionarios */}
-              <div className="bg-blue-50 rounded-xl p-4 sm:p-6 border border-blue-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">Funcionários</h3>
-                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-blue-600">{employees.length}</div>
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-start justify-between gap-2 hover:shadow-md transition-shadow">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Funcionários</h3>
+                <div className="text-4xl font-extrabold text-blue-600">{employees.length}</div>
               </div>
 
               {/* Maior No Faltas / Afastamentos */}
-              <div className="bg-green-50 rounded-xl p-4 sm:p-6 border border-green-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-start justify-between gap-2 hover:shadow-md transition-shadow">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
                   {selectedDay === 'all' ? 'Maior Nº de Faltas' : 'Afastamentos/Férias'}
                 </h3>
-                <div className="text-sm sm:text-base 2xl:text-lg font-bold text-green-700 leading-tight uppercase">
+                <div className="text-lg font-bold text-green-700 leading-tight uppercase">
                   {selectedDay === 'all' 
                     ? (topEmployee ? topEmployee.name : '-')
                     : employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length
                   }
                 </div>
                 {selectedDay === 'all' && (
-                  <div className="mt-1 text-sm 2xl:text-base font-bold text-green-600">
+                  <div className="text-sm font-bold text-green-600">
                     {topEmployee ? `(${topEmployee.faltas}F)` : ''}
                   </div>
                 )}
@@ -1110,7 +1301,7 @@ export default function App() {
                         <tbody className="bg-white divide-y divide-gray-200">
                           {dailyData.map((d, idx) => (
                             <tr key={idx} className="hover:bg-gray-50">
-                              <td className="px-4 py-2 text-xs font-medium text-gray-900">{d.day.padStart(2, '0')}/abr</td>
+                              <td className="px-4 py-2 text-xs font-medium text-gray-900">{d.day.padStart(2, '0')}/{MONTH_NAMES[currentMonth].substring(0, 3).toLowerCase()}</td>
                               <td className="px-4 py-2 text-xs text-gray-500 text-center">{d.faltas}</td>
                             </tr>
                           ))}
@@ -1274,8 +1465,8 @@ export default function App() {
               <div className="overflow-x-auto overflow-y-auto flex-1">
                 <table className="w-full text-left border-collapse min-w-full sm:min-w-[600px]">
                   <thead className="bg-white sticky top-0 z-10 shadow-sm">
-                    <tr>
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 whitespace-nowrap">
+                    <tr className="bg-gray-50">
+                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">
                         <button 
                           onClick={() => setSortOrder(prev => prev === 'asc_name' ? 'desc_name' : 'asc_name')}
                           className="flex items-center gap-1 hover:text-gray-700 transition-colors"
@@ -1286,81 +1477,73 @@ export default function App() {
                       </th>
                       <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap hidden sm:table-cell">ID</th>
                       <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap">
-                        <button 
-                          onClick={() => setSortOrder('desc_faltas')}
-                          className="flex items-center justify-center gap-1 hover:text-gray-700 transition-colors w-full"
-                        >
-                          <span className="hidden sm:inline">Total de Faltas</span>
-                          <span className="sm:hidden">Faltas</span>
-                          {sortOrder === 'desc_faltas' && <ArrowDown className="w-3 h-3" />}
-                        </button>
+                        {selectedDay === 'all' ? (
+                          <button 
+                            onClick={() => setSortOrder('desc_faltas')}
+                            className="flex items-center justify-center gap-1 hover:text-gray-700 transition-colors w-full"
+                          >
+                            <span className="hidden sm:inline">Total de Faltas</span>
+                            <span className="sm:hidden">Faltas</span>
+                            {sortOrder === 'desc_faltas' && <ArrowDown className="w-3 h-3" />}
+                          </button>
+                        ) : (
+                          'Status'
+                        )}
                       </th>
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap hidden sm:table-cell">Status</th>
-                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">Observações</th>
+                      {selectedDay !== 'all' && (
+                        <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">Observações</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredEmployees.map(emp => (
-                      <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="py-3 px-4 sm:px-6">
-                          <div className="flex flex-col">
-                            <span className="text-sm 2xl:text-base font-medium text-gray-900">{emp.name}</span>
-                            <div className="flex items-center gap-2 mt-0.5 sm:hidden">
-                              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">ID: {emp.id.padStart(3, '0')}</span>
-                              <span className="text-[10px] text-gray-400">•</span>
-                              {emp.faltas === 0 ? (
-                                <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Regular</span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wider">Atenção</span>
-                              )}
+                    {filteredEmployees.map(emp => {
+                      const status = selectedDay !== 'all' ? getStatusForDay(emp.id, selectedDay as number) : null;
+                      const statusLabels: Record<string, string> = {
+                        'P': 'Presente',
+                        'F': 'Falta',
+                        'Fe': 'Férias',
+                        'A': 'Afastamento'
+                      };
+
+                      return (
+                        <tr key={emp.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-3 px-4 sm:px-6">
+                            <div className="flex flex-col">
+                              <span className="text-sm 2xl:text-base font-medium text-gray-900">{emp.name}</span>
+                              <div className="flex items-center gap-2 mt-0.5 sm:hidden">
+                                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">ID: {emp.id.padStart(3, '0')}</span>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 sm:px-6 text-sm 2xl:text-base text-gray-500 text-center whitespace-nowrap hidden sm:table-cell">{emp.id.padStart(3, '0')}</td>
-                        <td className="py-3 px-4 sm:px-6 text-center whitespace-nowrap">
-                          <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full text-xs font-bold ${
-                            emp.faltas > 3 ? 'bg-red-100 text-red-700' : 
-                            emp.faltas > 0 ? 'bg-orange-100 text-orange-700' : 
-                            'bg-green-100 text-green-700'
-                          }`}>
-                            {emp.faltas}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 sm:px-6 text-center hidden sm:table-cell">
-                          {selectedDay !== 'all' ? (
-                            attendance[emp.id]?.[selectedDay] === 'F' ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                                <AlertCircle className="w-3 h-3" /> Falta
+                          </td>
+                          <td className="py-3 px-4 sm:px-6 text-sm 2xl:text-base text-gray-500 text-center whitespace-nowrap hidden sm:table-cell">{emp.id.padStart(3, '0')}</td>
+                          <td className="py-3 px-4 sm:px-6 text-center whitespace-nowrap">
+                            {selectedDay === 'all' ? (
+                              <span className={`inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-full text-xs font-bold ${
+                                emp.faltas > 3 ? 'bg-red-100 text-red-700' : 
+                                emp.faltas > 0 ? 'bg-orange-100 text-orange-700' : 
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {emp.faltas}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                                <CheckCircle2 className="w-3 h-3" /> Presente
+                              <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold ${
+                                status === 'P' ? 'bg-green-100 text-green-700' :
+                                status === 'F' ? 'bg-red-100 text-red-700' :
+                                status === 'Fe' ? 'bg-blue-100 text-blue-700' :
+                                'bg-purple-100 text-purple-700'
+                              }`}>
+                                {status ? statusLabels[status] || status : '-'}
                               </span>
-                            )
-                          ) : (
-                            emp.faltas === 0 ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                                <CheckCircle2 className="w-3 h-3" /> Regular
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600">
-                                <AlertCircle className="w-3 h-3" /> Atenção
-                              </span>
-                            )
+                            )}
+                          </td>
+                          {selectedDay !== 'all' && (
+                            <td className="py-3 px-4 sm:px-6 text-xs text-gray-500 max-w-[200px] truncate">
+                              {notes[emp.id]?.[selectedDay as number] || '-'}
+                            </td>
                           )}
-                        </td>
-                        <td className="py-3 px-4 sm:px-6 text-xs text-gray-500 max-w-[200px] truncate">
-                          {selectedDay !== 'all' 
-                            ? (notes[emp.id]?.[selectedDay] || '')
-                            : Object.entries(attendance[emp.id] || {})
-                                .filter(([_, status]) => status === 'F')
-                                .map(([day, _]) => notes[emp.id]?.[Number(day)])
-                                .filter(Boolean)
-                                .join(', ')
-                          }
-                        </td>
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                     {filteredEmployees.length === 0 && (
                       <tr>
                         <td colSpan={4} className="py-8 text-center text-sm text-gray-500">
@@ -1376,176 +1559,226 @@ export default function App() {
         )}
 
         {activeTab === 'registro' && (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col max-h-[800px] animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Registro Header */}
-            <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50 flex flex-col gap-4 shrink-0">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {/* Registro Header & Stats */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="p-4 sm:p-6 border-b border-gray-200 bg-gray-50/50 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="space-y-1">
+                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2 uppercase tracking-tight">
                     Lançamento de Frequência
-                    {selectedDay !== 'all' && !isWorkDay(selectedDay as number) && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 border border-gray-300">
+                    {selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear) && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-800 border border-gray-300 uppercase">
                         Folga (12x36)
                       </span>
                     )}
                   </h2>
-                  <p className="text-sm text-gray-500">Registre as presenças e faltas para o dia selecionado.</p>
+                  <p className="text-sm text-gray-500">Gestão de presença individual para o dia selecionado.</p>
                 </div>
                 
-                {isWorkDay(selectedDay) && (
-                  <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-                    <div className="flex flex-col items-center px-2 sm:px-4 border-r border-gray-200">
-                      <span className="text-xl sm:text-2xl font-bold text-green-600">
+                {isWorkDay(selectedDay as number, currentMonth, currentYear) && (
+                  <div className="flex flex-wrap items-center gap-3 sm:gap-6 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                    <div className="flex flex-col items-center px-4 border-r border-gray-100">
+                      <span className="text-2xl font-black text-green-600">
                         {employees.length - employees.filter(emp => {
                           const status = getStatusForDay(emp.id, selectedDay);
                           return status !== 'P';
                         }).length}
                       </span>
-                      <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Presentes</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Presentes</span>
                     </div>
-                    <div className="flex flex-col items-center px-2 sm:px-4 sm:border-r border-gray-200">
-                      <span className="text-xl sm:text-2xl font-bold text-red-600">
+                    <div className="flex flex-col items-center px-4 border-r border-gray-100">
+                      <span className="text-2xl font-black text-red-600">
                         {employees.filter(emp => getStatusForDay(emp.id, selectedDay) === 'F').length}
                       </span>
-                      <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Faltas</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Faltas</span>
                     </div>
-                    <div className="flex flex-col items-center px-2 sm:px-4 border-r border-gray-200">
-                      <span className="text-xl sm:text-2xl font-bold text-blue-600">
+                    <div className="flex flex-col items-center px-4 border-r border-gray-100">
+                      <span className="text-2xl font-black text-blue-600">
                         {employees.filter(emp => getStatusForDay(emp.id, selectedDay) === 'Fe').length}
                       </span>
-                      <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Férias</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Férias</span>
                     </div>
-                    <div className="flex flex-col items-center px-2 sm:px-4">
-                      <span className="text-xl sm:text-2xl font-bold text-purple-600">
+                    <div className="flex flex-col items-center px-4">
+                      <span className="text-2xl font-black text-purple-600">
                         {employees.filter(emp => getStatusForDay(emp.id, selectedDay) === 'A').length}
                       </span>
-                      <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">Afastamentos</span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Afast.</span>
                     </div>
                   </div>
                 )}
               </div>
               
-              {isWorkDay(selectedDay) && (
-                <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                  <button
-                    onClick={() => setShowAddEmployeeModal(true)}
-                    className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    Novo Funcionário
-                  </button>
-                  <div className="relative w-full sm:w-64">
+              {isWorkDay(selectedDay as number, currentMonth, currentYear) && (
+                <div className="p-4 sm:p-6 flex flex-col md:flex-row items-center gap-4">
+                  <div className="flex items-center gap-2 w-full md:w-auto">
+                    <button
+                      onClick={() => setShowAddEmployeeModal(true)}
+                      className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-95"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span className="uppercase tracking-wide">Novo Funcionário</span>
+                    </button>
+                    <button
+                      onClick={handleMarkAllPresent}
+                      className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-green-50 text-green-700 hover:bg-green-100 px-5 py-2.5 rounded-xl text-sm font-bold transition-all border border-green-200 active:scale-95"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span className="uppercase tracking-wide">Todos Presentes</span>
+                    </button>
+                  </div>
+                  <div className="relative w-full md:max-w-xs ml-auto">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input 
                       type="text" 
-                      placeholder="Buscar funcionário..." 
+                      placeholder="Filtrar por nome ou ID..." 
                       value={registroSearchTerm}
                       onChange={(e) => setRegistroSearchTerm(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50/50"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Employee List for Attendance */}
-            {selectedDay !== 'all' && !isWorkDay(selectedDay as number) ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <CalendarX className="w-8 h-8 text-gray-400" />
+            {/* Employee Grid */}
+            {selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear) ? (
+              <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center shadow-sm">
+                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-gray-100">
+                  <CalendarX className="w-10 h-10 text-gray-300" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Dia de Folga</h3>
-                <p className="text-gray-500 max-w-md">
-                  De acordo com a escala 12x36, este dia é considerado folga para todos os funcionários. Não é necessário registrar frequência.
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Dia de Folga Geral</h3>
+                <p className="text-gray-500 max-w-md mx-auto">
+                  Escala 12x36: Este dia não possui expediente para este turno.
                 </p>
               </div>
             ) : (
-              <div className="overflow-y-auto flex-1 divide-y divide-gray-100 p-2 sm:p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {filteredRegistroEmployees.map(emp => {
-                  const day = selectedDay === 'all' ? CURRENT_DAY : (selectedDay as number);
+                  const day = selectedDay === 'all' ? currentDayOfMonth : (selectedDay as number);
                   const currentStatus = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
                   const currentNote = pendingNotes[emp.id]?.[day] ?? notes[emp.id]?.[day] ?? '';
                   const isModified = pendingAttendance[emp.id]?.[day] !== undefined || pendingNotes[emp.id]?.[day] !== undefined;
                   
                   return (
-                    <div key={emp.id} className={`p-3 sm:p-4 flex flex-col gap-3 hover:bg-gray-50 rounded-xl transition-colors ${isModified ? 'bg-blue-50/30' : ''}`}>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-gray-900">{emp.name}</span>
-                            {isModified && <span className="w-2 h-2 bg-blue-500 rounded-full" title="Alteração não salva"></span>}
+                    <div 
+                      key={emp.id} 
+                      className={`bg-white rounded-2xl border transition-all duration-300 flex flex-col overflow-hidden group ${
+                        isModified 
+                          ? 'border-blue-300 ring-1 ring-blue-100 shadow-md' 
+                          : 'border-gray-200 hover:border-blue-200 hover:shadow-md'
+                      }`}
+                    >
+                      {/* Card Header */}
+                      <div className="p-4 border-b border-gray-50 flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <h4 className="text-sm font-bold text-gray-900 truncate uppercase tracking-tight">{emp.name}</h4>
+                            {isModified && (
+                              <span className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Alteração pendente"></span>
+                            )}
                           </div>
-                          <span className="text-xs text-gray-400">ID: {emp.id.padStart(3, '0')}</span>
-                          {currentNote && <span className="text-xs text-blue-600 mt-1 italic">Obs: {currentNote}</span>}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">ID: {emp.id.padStart(3, '0')}</span>
+                            <span className="text-gray-300">•</span>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                              currentStatus === 'P' ? 'text-green-600' :
+                              currentStatus === 'F' ? 'text-red-600' :
+                              currentStatus === 'Fe' ? 'text-blue-600' :
+                              'text-purple-600'
+                            }`}>
+                              {currentStatus === 'P' ? 'Presente' :
+                               currentStatus === 'F' ? 'Falta' :
+                               currentStatus === 'Fe' ? 'Férias' :
+                               'Afastamento'}
+                            </span>
+                          </div>
                         </div>
-                        
-                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 bg-gray-100 p-1 sm:p-1.5 rounded-lg shrink-0 self-start sm:self-auto max-w-full">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button 
-                            onClick={() => setStatus(emp.id, day, 'P')}
-                            disabled={lockedDays[day] && !isModified}
-                            className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                              currentStatus === 'P' 
-                                ? 'bg-white text-green-700 shadow-sm ring-1 ring-gray-200' 
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Presente"
+                            onClick={() => {
+                              setEditingEmployee(emp);
+                              setShowEditEmployeeModal(true);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                           >
-                            <span className="sm:hidden">P</span>
-                            <span className="hidden sm:inline">Presente</span>
+                            <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button 
-                            onClick={() => setStatus(emp.id, day, 'F')}
-                            disabled={lockedDays[day] && !isModified}
-                            className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                              currentStatus === 'F' 
-                                ? 'bg-red-500 text-white shadow-sm ring-1 ring-red-600' 
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Falta"
+                            onClick={() => handleDeleteEmployee(emp.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                           >
-                            <span className="sm:hidden">F</span>
-                            <span className="hidden sm:inline">Falta</span>
-                          </button>
-                          <button 
-                            onClick={() => setStatus(emp.id, day, 'Fe')}
-                            disabled={lockedDays[day] && !isModified}
-                            className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                              currentStatus === 'Fe' 
-                                ? 'bg-blue-500 text-white shadow-sm ring-1 ring-blue-600' 
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Férias/Feriado"
-                          >
-                            <span className="sm:hidden">Fe</span>
-                            <span className="hidden sm:inline">Férias</span>
-                          </button>
-                          <button 
-                            onClick={() => setStatus(emp.id, day, 'A')}
-                            disabled={lockedDays[day] && !isModified}
-                            className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-                              currentStatus === 'A' 
-                                ? 'bg-purple-500 text-white shadow-sm ring-1 ring-purple-600' 
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Afastamento"
-                          >
-                            <span className="sm:hidden">A</span>
-                            <span className="hidden sm:inline">Afastamento</span>
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
-                      
-                      {/* Notes Field */}
-                      <div className="flex items-center gap-2 mt-1">
-                        <MessageSquare className="w-4 h-4 text-gray-400 shrink-0" />
-                        <input 
-                          type="text" 
-                          placeholder="Adicionar observação..." 
-                          value={currentNote}
-                          readOnly={lockedDays[day] && !isModified}
-                          onChange={(e) => setNote(emp.id, day, e.target.value)}
-                          className={`flex-1 text-sm bg-transparent border-b border-gray-200 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors ${lockedDays[day] && !isModified ? 'cursor-not-allowed' : ''}`}
-                        />
+
+                      {/* Card Body - Status Selection */}
+                      <div className="p-4 grid grid-cols-4 gap-2 bg-gray-50/30">
+                        <button 
+                          onClick={() => setStatus(emp.id, day, 'P')}
+                          disabled={lockedDays[day] && !isModified}
+                          className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl transition-all border ${
+                            currentStatus === 'P' 
+                              ? 'bg-white border-green-200 text-green-700 shadow-sm ring-2 ring-green-500/10' 
+                              : 'bg-white/50 border-transparent text-gray-400 hover:bg-white hover:text-gray-600 hover:border-gray-200'
+                          } ${lockedDays[day] && !isModified ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          <CheckCircle2 className={`w-4 h-4 ${currentStatus === 'P' ? 'text-green-500' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Pres.</span>
+                        </button>
+                        <button 
+                          onClick={() => setStatus(emp.id, day, 'F')}
+                          disabled={lockedDays[day] && !isModified}
+                          className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl transition-all border ${
+                            currentStatus === 'F' 
+                              ? 'bg-red-50 border-red-200 text-red-700 shadow-sm ring-2 ring-red-500/10' 
+                              : 'bg-white/50 border-transparent text-gray-400 hover:bg-white hover:text-gray-600 hover:border-gray-200'
+                          } ${lockedDays[day] && !isModified ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          <XCircle className={`w-4 h-4 ${currentStatus === 'F' ? 'text-red-500' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Falta</span>
+                        </button>
+                        <button 
+                          onClick={() => setStatus(emp.id, day, 'Fe')}
+                          disabled={lockedDays[day] && !isModified}
+                          className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl transition-all border ${
+                            currentStatus === 'Fe' 
+                              ? 'bg-blue-50 border-blue-200 text-blue-700 shadow-sm ring-2 ring-blue-500/10' 
+                              : 'bg-white/50 border-transparent text-gray-400 hover:bg-white hover:text-gray-600 hover:border-gray-200'
+                          } ${lockedDays[day] && !isModified ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          <Palmtree className={`w-4 h-4 ${currentStatus === 'Fe' ? 'text-blue-500' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Férias</span>
+                        </button>
+                        <button 
+                          onClick={() => setStatus(emp.id, day, 'A')}
+                          disabled={lockedDays[day] && !isModified}
+                          className={`flex flex-col items-center justify-center gap-1.5 py-3 rounded-xl transition-all border ${
+                            currentStatus === 'A' 
+                              ? 'bg-purple-50 border-purple-200 text-purple-700 shadow-sm ring-2 ring-purple-500/10' 
+                              : 'bg-white/50 border-transparent text-gray-400 hover:bg-white hover:text-gray-600 hover:border-gray-200'
+                          } ${lockedDays[day] && !isModified ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        >
+                          <Stethoscope className={`w-4 h-4 ${currentStatus === 'A' ? 'text-purple-500' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-black uppercase tracking-tighter">Afast.</span>
+                        </button>
+                      </div>
+
+                      {/* Card Footer - Notes */}
+                      <div className="p-3 bg-white border-t border-gray-50 mt-auto">
+                        <div className="relative group/note">
+                          <MessageSquare className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300 group-focus-within/note:text-blue-400 transition-colors" />
+                          <input 
+                            type="text" 
+                            placeholder="Observação..." 
+                            value={currentNote}
+                            readOnly={lockedDays[day] && !isModified}
+                            onChange={(e) => setNote(emp.id, day, e.target.value)}
+                            className={`w-full pl-7 pr-2 py-1.5 text-xs bg-gray-50/50 border-transparent rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-100 focus:border-blue-200 focus:outline-none transition-all placeholder:text-gray-300 ${
+                              lockedDays[day] && !isModified ? 'cursor-not-allowed opacity-50' : ''
+                            }`}
+                          />
+                        </div>
                       </div>
                     </div>
                   );
@@ -1554,37 +1787,39 @@ export default function App() {
             )}
 
             {/* Save Button Area */}
-            {isWorkDay(selectedDay) && (
-              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-                {lockedDays[selectedDay] && (
-                  <button
-                    onClick={() => setLockedDays(prev => ({ ...prev, [selectedDay]: false }))}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                  >
-                    Editar registros
-                  </button>
-                )}
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)}
-                  className={`flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all shadow-lg ml-auto ${
-                    isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)
-                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
-                      : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'
-                  }`}
-                >
-                  {isSaving ? (
-                    <>
-                      <Activity className="w-4 h-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Salvar e Notificar
-                    </>
+            {isWorkDay(selectedDay as number, currentMonth, currentYear) && (
+              <div className="sticky bottom-4 z-10 flex justify-center pt-4">
+                <div className="bg-white/80 backdrop-blur-md p-2 rounded-2xl border border-gray-200 shadow-2xl flex items-center gap-4 animate-in slide-in-from-bottom-8 duration-500">
+                  {lockedDays[selectedDay] && (
+                    <button
+                      onClick={() => setLockedDays(prev => ({ ...prev, [selectedDay]: false }))}
+                      className="px-4 py-2 text-sm text-blue-600 hover:text-blue-800 font-bold uppercase tracking-wider"
+                    >
+                      Editar registros
+                    </button>
                   )}
-                </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)}
+                    className={`flex items-center gap-3 px-10 py-4 rounded-xl text-sm font-black uppercase tracking-widest transition-all shadow-xl ${
+                      isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:scale-105 active:scale-95 shadow-indigo-200'
+                    }`}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Activity className="w-5 h-5 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-5 h-5" />
+                        Salvar e Notificar
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -1634,6 +1869,61 @@ export default function App() {
                   className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Adicionar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Modal */}
+      {showEditEmployeeModal && editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">Editar Funcionário</h3>
+              <button 
+                onClick={() => {
+                  setShowEditEmployeeModal(false);
+                  setEditingEmployee(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateEmployee} className="p-4 sm:p-6 space-y-4">
+              <div>
+                <label htmlFor="editEmployeeName" className="block text-sm font-medium text-gray-700 mb-1">
+                  Nome Completo
+                </label>
+                <input
+                  id="editEmployeeName"
+                  type="text"
+                  required
+                  value={editingEmployee.name}
+                  onChange={(e) => setEditingEmployee({ ...editingEmployee, name: e.target.value })}
+                  placeholder="Digite o nome do funcionário..."
+                  className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all uppercase"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditEmployeeModal(false);
+                    setEditingEmployee(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!editingEmployee.name.trim()}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Salvar Alterações
                 </button>
               </div>
             </form>

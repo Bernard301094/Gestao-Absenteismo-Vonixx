@@ -101,12 +101,18 @@ service cloud.firestore {
     }
 
     function isValidAttendanceRecord() {
-      return hasOnlyAllowedFields(['empId', 'day', 'status', 'note', 'updatedAt', 'shift']) &&
-             hasRequiredFields(['empId', 'day', 'status', 'updatedAt', 'shift']) &&
+      return hasOnlyAllowedFields(['empId', 'day', 'month', 'year', 'status', 'note', 'updatedAt', 'shift']) &&
+             hasRequiredFields(['empId', 'day', 'month', 'year', 'status', 'updatedAt', 'shift']) &&
              isValidString('empId', 1, 50) &&
              request.resource.data.day is number &&
              request.resource.data.day >= 1 &&
              request.resource.data.day <= 31 &&
+             request.resource.data.month is number &&
+             request.resource.data.month >= 0 &&
+             request.resource.data.month <= 11 &&
+             request.resource.data.year is number &&
+             request.resource.data.year >= 2024 &&
+             request.resource.data.year <= 2030 &&
              request.resource.data.status in ['P', 'F', 'Fe', 'A'] &&
              isValidOptionalString('note', 0, 500) &&
              request.resource.data.updatedAt is timestamp &&
