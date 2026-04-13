@@ -1,0 +1,6 @@
+{
+  "name": "Dashboard de Absenteísmo Vonixx",
+  "description": "Sistema de controle de frequência e absenteísmo por turnos com integração Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

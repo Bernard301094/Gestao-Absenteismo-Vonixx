@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Represents an employee in the system",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the employee"
+        },
+        "createdAt": {
+          "type": "timestamp",
+          "description": "When the employee was added"
+        },
+        "shift": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D"],
+          "description": "The shift this employee belongs to"
+        }
+      },
+      "required": ["name", "createdAt", "shift"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "Represents a daily attendance record for an employee",
+      "type": "object",
+      "properties": {
+        "empId": {
+          "type": "string",
+          "description": "ID of the employee"
+        },
+        "day": {
+          "type": "number",
+          "description": "Day of the month"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["P", "F", "Fe", "A"],
+          "description": "Attendance status"
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional note"
+        },
+        "updatedAt": {
+          "type": "timestamp",
+          "description": "When the record was last updated"
+        },
+        "shift": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D"],
+          "description": "The shift this record belongs to"
+        }
+      },
+      "required": ["empId", "day", "status", "updatedAt", "shift"]
+    },
+    "ShiftCompletion": {
+      "title": "Shift Completion",
+      "description": "Represents a completed attendance list for a shift and day",
+      "type": "object",
+      "properties": {
+        "shift": {
+          "type": "string",
+          "enum": ["A", "B", "C", "D"],
+          "description": "The shift that completed the list"
+        },
+        "day": {
+          "type": "number",
+          "description": "Day of the month"
+        },
+        "completedAt": {
+          "type": "timestamp",
+          "description": "When the list was completed"
+        },
+        "completedBy": {
+          "type": "string",
+          "description": "Email of the user who completed the list"
+        }
+      },
+      "required": ["shift", "day", "completedAt", "completedBy"]
+    }
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": { "$ref": "#/entities/Employee" },
+      "description": "Collection of employees"
+    },
+    "/attendance/{recordId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Collection of attendance records"
+    },
+    "/completions/{completionId}": {
+      "schema": { "$ref": "#/entities/ShiftCompletion" },
+      "description": "Collection of shift completion notifications"
+    }
+  }
+}

@@ -1,0 +1,144 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: employees
+    // Document ID: auto-generated or custom string
+    // Fields:
+    //   - name: string (required, max 100 chars)
+    //   - createdAt: timestamp (required, immutable)
+    //   - shift: string (required, 'A', 'B', 'C', 'D')
+    //
+    // Collection: attendance
+    // Document ID: {empId}_{day}
+    // Fields:
+    //   - empId: string (required)
+    //   - day: number (required, 1-31)
+    //   - status: string (required, 'P', 'F', 'Fe', 'A')
+    //   - note: string (optional, max 500 chars)
+    //   - updatedAt: timestamp (required)
+    //   - shift: string (required, 'A', 'B', 'C', 'D')
+    //
+    // Collection: completions
+    // Document ID: {shift}_{day}
+    // Fields:
+    //   - shift: string (required)
+    //   - day: number (required)
+    //   - completedAt: timestamp (required)
+    //   - completedBy: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'bernard30101994@gmail.com' ||
+        request.auth.token.email == 'supervisao@vonixx.com'
+      );
+    }
+
+    function getUserShift() {
+      let email = request.auth.token.email;
+      return (email == 'turnoa@vonixx.com' || email == 'turno.a@vonixx.com') ? 'A' :
+             (email == 'turnob@vonixx.com' || email == 'turno.b@vonixx.com') ? 'B' :
+             (email == 'turnoc@vonixx.com' || email == 'turno.c@vonixx.com') ? 'C' :
+             (email == 'turnod@vonixx.com' || email == 'turno.d@vonixx.com') ? 'D' : null;
+    }
+
+    function isOwnerShift() {
+      let shift = getUserShift();
+      return isAdmin() || (shift != null && (
+        (!('shift' in resource.data) && shift == 'A') || 
+        resource.data.shift == shift
+      ));
+    }
+
+    function isCreatingOwnShift() {
+      return isAdmin() || request.resource.data.shift == getUserShift();
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidString(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+             request.resource.data[field].size() >= minLen &&
+             request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !('note' in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidEmployee() {
+      return hasOnlyAllowedFields(['name', 'createdAt', 'shift']) &&
+             hasRequiredFields(['name', 'createdAt', 'shift']) &&
+             isValidString('name', 1, 100) &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.shift in ['A', 'B', 'C', 'D'];
+    }
+
+    function isValidAttendanceRecord() {
+      return hasOnlyAllowedFields(['empId', 'day', 'status', 'note', 'updatedAt', 'shift']) &&
+             hasRequiredFields(['empId', 'day', 'status', 'updatedAt', 'shift']) &&
+             isValidString('empId', 1, 50) &&
+             request.resource.data.day is number &&
+             request.resource.data.day >= 1 &&
+             request.resource.data.day <= 31 &&
+             request.resource.data.status in ['P', 'F', 'Fe', 'A'] &&
+             isValidOptionalString('note', 0, 500) &&
+             request.resource.data.updatedAt is timestamp &&
+             request.resource.data.shift in ['A', 'B', 'C', 'D'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated() && isOwnerShift();
+      allow create: if isAuthenticated() && isValidEmployee() && isCreatingOwnShift();
+      allow update: if isAuthenticated() && isValidEmployee() && isOwnerShift() && isCreatingOwnShift() && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAuthenticated() && isOwnerShift();
+    }
+
+    match /attendance/{recordId} {
+      allow read: if isAuthenticated() && isOwnerShift();
+      allow create: if isAuthenticated() && isValidAttendanceRecord() && isCreatingOwnShift();
+      allow update: if isAuthenticated() && isValidAttendanceRecord() && isOwnerShift() && isCreatingOwnShift();
+      allow delete: if isAuthenticated() && isOwnerShift();
+    }
+
+    match /completions/{completionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                    hasRequiredFields(['shift', 'day', 'completedAt', 'completedBy']) &&
+                    request.resource.data.shift in ['A', 'B', 'C', 'D'] &&
+                    request.resource.data.day is number &&
+                    request.resource.data.completedAt is timestamp &&
+                    request.resource.data.completedBy == request.auth.token.email;
+    }
+  }
+}

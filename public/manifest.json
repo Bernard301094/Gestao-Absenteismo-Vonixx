@@ -1,0 +1,17 @@
+{
+  "name": "Absenteísmo Vonixx",
+  "short_name": "Vonixx",
+  "description": "Dashboard de Absenteísmo Vonixx",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e3a8a",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3589/3589030.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
