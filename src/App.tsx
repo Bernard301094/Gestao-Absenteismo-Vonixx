@@ -749,6 +749,7 @@ export default function App() {
             completedBy: user.email
           }, { merge: true });
         }
+        setIsLocked(true); // Bloquear sempre após salvar
 
         // Limpar estados pendentes
         setPendingAttendance({});
