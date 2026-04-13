@@ -255,6 +255,7 @@ export default function App() {
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, Record<number, Status>>>({});
   const [pendingNotes, setPendingNotes] = useState<Record<string, Record<number, string>>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     const preventDefault = (e: TouchEvent) => {
@@ -564,16 +565,15 @@ export default function App() {
   }, [totalFaltasMes, employees.length, attendance]);
 
   const dailyData = useMemo(() => {
-    // Mostrar todos os dias de trabalho do mês (Abril tem 30 dias)
-    const allWorkDays = Array.from({ length: 30 }, (_, i) => i + 1).filter(d => isWorkDay(d) && d !== 1);
-    return allWorkDays.map(day => {
+    // Mostrar apenas até o dia atual
+    return VALID_WORK_DAYS.map(day => {
       let faltas = 0;
       Object.values(attendance).forEach(empRecord => {
         if (empRecord[day] === 'F') faltas++;
       });
       return { day: day.toString(), faltas };
     });
-  }, [attendance]);
+  }, [attendance, VALID_WORK_DAYS]);
 
   const weekdayData = useMemo(() => {
     const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -1232,6 +1232,7 @@ export default function App() {
                         </button>
                       </th>
                       <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-center whitespace-nowrap hidden sm:table-cell">Status</th>
+                      <th className="py-3 px-4 sm:px-6 text-xs 2xl:text-sm font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200 text-left whitespace-nowrap">Observações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1271,6 +1272,13 @@ export default function App() {
                               <AlertCircle className="w-3 h-3" /> Atenção
                             </span>
                           )}
+                        </td>
+                        <td className="py-3 px-4 sm:px-6 text-xs text-gray-500 max-w-[200px] truncate">
+                          {Object.entries(attendance[emp.id] || {})
+                            .filter(([_, status]) => status === 'F')
+                            .map(([day, _]) => notes[emp.id]?.[Number(day)])
+                            .filter(Boolean)
+                            .join(', ')}
                         </td>
                       </tr>
                     ))}
@@ -1388,16 +1396,18 @@ export default function App() {
                             {isModified && <span className="w-2 h-2 bg-blue-500 rounded-full" title="Alteração não salva"></span>}
                           </div>
                           <span className="text-xs text-gray-400">ID: {emp.id.padStart(3, '0')}</span>
+                          {currentNote && <span className="text-xs text-blue-600 mt-1 italic">Obs: {currentNote}</span>}
                         </div>
                         
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 bg-gray-100 p-1 sm:p-1.5 rounded-lg shrink-0 self-start sm:self-auto max-w-full">
                           <button 
                             onClick={() => setStatus(emp.id, selectedDay, 'P')}
+                            disabled={isLocked && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'P' 
                                 ? 'bg-white text-green-700 shadow-sm ring-1 ring-gray-200' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            }`}
+                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Presente"
                           >
                             <span className="sm:hidden">P</span>
@@ -1405,11 +1415,12 @@ export default function App() {
                           </button>
                           <button 
                             onClick={() => setStatus(emp.id, selectedDay, 'F')}
+                            disabled={isLocked && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'F' 
                                 ? 'bg-red-500 text-white shadow-sm ring-1 ring-red-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            }`}
+                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Falta"
                           >
                             <span className="sm:hidden">F</span>
@@ -1417,11 +1428,12 @@ export default function App() {
                           </button>
                           <button 
                             onClick={() => setStatus(emp.id, selectedDay, 'Fe')}
+                            disabled={isLocked && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'Fe' 
                                 ? 'bg-blue-500 text-white shadow-sm ring-1 ring-blue-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            }`}
+                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Férias/Feriado"
                           >
                             <span className="sm:hidden">Fe</span>
@@ -1429,11 +1441,12 @@ export default function App() {
                           </button>
                           <button 
                             onClick={() => setStatus(emp.id, selectedDay, 'A')}
+                            disabled={isLocked && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'A' 
                                 ? 'bg-purple-500 text-white shadow-sm ring-1 ring-purple-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            }`}
+                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Afastamento"
                           >
                             <span className="sm:hidden">A</span>
@@ -1449,8 +1462,9 @@ export default function App() {
                           type="text" 
                           placeholder="Adicionar observação..." 
                           value={currentNote}
+                          readOnly={isLocked && !isModified}
                           onChange={(e) => setNote(emp.id, selectedDay, e.target.value)}
-                          className="flex-1 text-sm bg-transparent border-b border-gray-200 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors"
+                          className={`flex-1 text-sm bg-transparent border-b border-gray-200 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors ${isLocked && !isModified ? 'cursor-not-allowed' : ''}`}
                         />
                       </div>
                     </div>
@@ -1461,11 +1475,19 @@ export default function App() {
 
             {/* Save Button Area */}
             {isWorkDay(selectedDay) && (
-              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+                {isLocked && (
+                  <button
+                    onClick={() => setIsLocked(false)}
+                    className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
+                    Editar registros
+                  </button>
+                )}
                 <button
                   onClick={handleSave}
                   disabled={isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)}
-                  className={`flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all shadow-lg ${
+                  className={`flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-bold uppercase tracking-wider transition-all shadow-lg ml-auto ${
                     isSaving || (Object.keys(pendingAttendance).length === 0 && Object.keys(pendingNotes).length === 0)
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed shadow-none'
                       : 'bg-green-600 hover:bg-green-700 text-white hover:scale-105 active:scale-95'
