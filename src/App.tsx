@@ -32,7 +32,10 @@ import {
   Tooltip, 
   ResponsiveContainer,
   Cell,
-  LabelList
+  LabelList,
+  PieChart,
+  Pie,
+  Legend
 } from 'recharts';
 import { auth, db, loginWithEmail, logout, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -203,7 +206,7 @@ const VALID_WORK_DAYS = Array.from({ length: CURRENT_DAY }, (_, i) => i + 1).fil
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'registro'>('dashboard');
-  const [selectedDay, setSelectedDay] = useState<number>(CURRENT_DAY); // Dia padrão com dados
+  const [selectedDay, setSelectedDay] = useState<number | 'all'>('all'); // Dia padrão com dados
   const [searchTerm, setSearchTerm] = useState('');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'regular' | 'atencao' | 'critico'>('all');
@@ -255,7 +258,7 @@ export default function App() {
   const [pendingAttendance, setPendingAttendance] = useState<Record<string, Record<number, Status>>>({});
   const [pendingNotes, setPendingNotes] = useState<Record<string, Record<number, string>>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [isLocked, setIsLocked] = useState(false);
+  const [lockedDays, setLockedDays] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     const preventDefault = (e: TouchEvent) => {
@@ -321,6 +324,7 @@ export default function App() {
     let active = true;
     let unsubEmployees: (() => void) | null = null;
     let unsubAttendance: (() => void) | null = null;
+    let unsubCompletions: (() => void) | null = null;
 
     if (!user || !currentShift) {
       setEmployees([]);
@@ -452,6 +456,20 @@ export default function App() {
       }, (error) => {
         if (active) handleFirestoreError(error, OperationType.GET, 'attendance');
       });
+
+      // Listen to completions
+      const qCompletions = query(collection(db, 'completions'), where('shift', '==', shiftToQuery));
+      unsubCompletions = onSnapshot(qCompletions, (snapshot) => {
+        if (!active) return;
+        const newLockedDays: Record<number, boolean> = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          newLockedDays[data.day] = true;
+        });
+        setLockedDays(newLockedDays);
+      }, (error) => {
+        if (active) handleFirestoreError(error, OperationType.GET, 'completions');
+      });
     };
 
     setupListeners();
@@ -460,6 +478,7 @@ export default function App() {
       active = false;
       if (unsubEmployees) unsubEmployees();
       if (unsubAttendance) unsubAttendance();
+      if (unsubCompletions) unsubCompletions();
     };
   }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser]);
 
@@ -488,18 +507,18 @@ export default function App() {
 
   // Ensure selectedDay is valid initially
   React.useEffect(() => {
-    if (!VALID_WORK_DAYS.includes(selectedDay) && VALID_WORK_DAYS.length > 0) {
+    if (selectedDay !== 'all' && !VALID_WORK_DAYS.includes(selectedDay as number) && VALID_WORK_DAYS.length > 0) {
       setSelectedDay(VALID_WORK_DAYS[VALID_WORK_DAYS.length - 1]);
     }
   }, [selectedDay]);
 
   const handlePrevDay = () => {
-    const currentIndex = VALID_WORK_DAYS.indexOf(selectedDay);
+    const currentIndex = selectedDay === 'all' ? VALID_WORK_DAYS.length : VALID_WORK_DAYS.indexOf(selectedDay as number);
     if (currentIndex > 0) setSelectedDay(VALID_WORK_DAYS[currentIndex - 1]);
   };
 
   const handleNextDay = () => {
-    const currentIndex = VALID_WORK_DAYS.indexOf(selectedDay);
+    const currentIndex = selectedDay === 'all' ? -1 : VALID_WORK_DAYS.indexOf(selectedDay as number);
     if (currentIndex < VALID_WORK_DAYS.length - 1) setSelectedDay(VALID_WORK_DAYS[currentIndex + 1]);
   };
 
@@ -565,15 +584,24 @@ export default function App() {
   }, [totalFaltasMes, employees.length, attendance]);
 
   const dailyData = useMemo(() => {
-    // Mostrar apenas até o dia atual
-    return VALID_WORK_DAYS.map(day => {
+    // Se selectedDay for 'all', mostrar evolução do mês, senão mostrar apenas o dia selecionado
+    if (selectedDay === 'all') {
+      return VALID_WORK_DAYS.map(day => {
+        let faltas = 0;
+        Object.values(attendance).forEach(empRecord => {
+          if (empRecord[day] === 'F') faltas++;
+        });
+        return { day: day.toString(), faltas };
+      });
+    } else {
+      // Para um dia específico, mostrar apenas esse dia
       let faltas = 0;
       Object.values(attendance).forEach(empRecord => {
-        if (empRecord[day] === 'F') faltas++;
+        if (empRecord[selectedDay] === 'F') faltas++;
       });
-      return { day: day.toString(), faltas };
-    });
-  }, [attendance, VALID_WORK_DAYS]);
+      return [{ day: selectedDay.toString(), faltas }];
+    }
+  }, [attendance, VALID_WORK_DAYS, selectedDay]);
 
   const weekdayData = useMemo(() => {
     const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -582,7 +610,8 @@ export default function App() {
     Object.values(attendance).forEach(empRecord => {
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = parseInt(dayStr);
-        if (status === 'F' && isWorkDay(day)) {
+        // Se selectedDay for 'all', considera o mês, senão apenas o dia selecionado
+        if (status === 'F' && isWorkDay(day) && (selectedDay === 'all' || day === selectedDay)) {
           // Abril de 2026 começa numa Quarta-feira
           const date = new Date(2026, 3, day); 
           const weekday = weekdays[date.getDay()];
@@ -594,23 +623,29 @@ export default function App() {
     // Ordenar para começar na Segunda
     const orderedDays = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
     return orderedDays.map(wd => ({ day: wd, faltas: counts[wd] }));
-  }, [attendance]);
+  }, [attendance, selectedDay]);
 
   const employeeData = useMemo(() => {
     return employees.map(emp => {
       let faltas = 0;
       if (attendance[emp.id]) {
-        Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
-          const day = Number(dayStr);
-          if (status === 'F' && isWorkDay(day)) faltas++;
-        });
+        // Se selectedDay for 'all' ou não definido, conta o mês todo, senão apenas o dia
+        if (selectedDay === 'all') {
+          Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
+            const day = Number(dayStr);
+            if (status === 'F' && isWorkDay(day)) faltas++;
+          });
+        } else {
+          const status = attendance[emp.id][selectedDay];
+          if (status === 'F') faltas = 1;
+        }
       }
       return {
         ...emp,
         faltas
       };
     }).sort((a, b) => b.faltas - a.faltas);
-  }, [attendance, employees]);
+  }, [attendance, employees, selectedDay]);
 
   const filteredEmployees = useMemo(() => {
     let result = employeeData;
@@ -749,7 +784,7 @@ export default function App() {
             completedBy: user.email
           }, { merge: true });
         }
-        setIsLocked(true); // Bloquear sempre após salvar
+        setLockedDays(prev => ({ ...prev, [selectedDay]: true })); // Bloquear sempre após salvar
 
         // Limpar estados pendentes
         setPendingAttendance({});
@@ -890,7 +925,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12">
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-12 overflow-x-hidden">
       {/* Header */}
       <header className="bg-[#1e3a8a] border-b border-blue-900 sticky top-0 z-20 shadow-md">
         <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:h-16 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -928,7 +963,7 @@ export default function App() {
               {activeTab === 'registro' && (
                 <button 
                   onClick={handlePrevDay}
-                  disabled={VALID_WORK_DAYS.indexOf(selectedDay) <= 0}
+                  disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) <= 0}
                   className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -939,9 +974,10 @@ export default function App() {
                 <CalendarDays className="w-4 h-4 text-blue-200 ml-2 hidden sm:block" />
                 <select 
                   value={selectedDay} 
-                  onChange={(e) => setSelectedDay(Number(e.target.value))}
+                  onChange={(e) => setSelectedDay(e.target.value === 'all' ? 'all' : Number(e.target.value))}
                   className="bg-transparent border-none text-sm font-medium text-white focus:ring-0 cursor-pointer py-1 pr-8 pl-2 [&>option]:text-gray-900"
                 >
+                  <option value="all">Todos os dias</option>
                   {VALID_WORK_DAYS.map(d => (
                     <option key={d} value={d}>Dia {d}</option>
                   ))}
@@ -951,7 +987,7 @@ export default function App() {
               {activeTab === 'registro' && (
                 <button 
                   onClick={handleNextDay}
-                  disabled={VALID_WORK_DAYS.indexOf(selectedDay) >= VALID_WORK_DAYS.length - 1}
+                  disabled={selectedDay !== 'all' && VALID_WORK_DAYS.indexOf(selectedDay as number) >= VALID_WORK_DAYS.length - 1}
                   className="p-1 text-white/70 hover:text-white hover:bg-white/10 rounded disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <ChevronRight className="w-4 h-4" />
@@ -1006,18 +1042,25 @@ export default function App() {
         
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               {/* Total Faltas */}
               <div className="bg-red-50 rounded-xl p-4 sm:p-6 border border-red-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">Total de Faltas no Mês</h3>
-                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-red-600">{totalFaltasMes}</div>
+                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+                  {selectedDay === 'all' ? 'Total de Faltas no Mês' : 'Faltas no Dia'}
+                </h3>
+                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-red-600">
+                  {selectedDay === 'all' ? totalFaltasMes : dailyData[0]?.faltas || 0}
+                </div>
               </div>
 
-              {/* Taxa Absenteismo */}
+              {/* Taxa Absenteismo / Presentes */}
               <div className="bg-orange-50 rounded-xl p-4 sm:p-6 border border-orange-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">Taxa de Absenteísmo</h3>
-                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-orange-600">{taxaAbsenteismo}%</div>
+                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+                  {selectedDay === 'all' ? 'Taxa de Absenteísmo' : 'Presentes'}
+                </h3>
+                <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-orange-600">
+                  {selectedDay === 'all' ? `${taxaAbsenteismo}%` : (employees.length - (dailyData[0]?.faltas || 0))}
+                </div>
               </div>
 
               {/* Funcionarios */}
@@ -1026,147 +1069,167 @@ export default function App() {
                 <div className="text-3xl sm:text-4xl 2xl:text-5xl font-bold text-blue-600">{employees.length}</div>
               </div>
 
-              {/* Maior No Faltas */}
+              {/* Maior No Faltas / Afastamentos */}
               <div className="bg-green-50 rounded-xl p-4 sm:p-6 border border-green-100 shadow-sm flex flex-col items-center justify-center text-center">
-                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">Maior Nº de Faltas</h3>
+                <h3 className="text-xs sm:text-sm 2xl:text-base font-medium text-gray-700 mb-2">
+                  {selectedDay === 'all' ? 'Maior Nº de Faltas' : 'Afastamentos/Férias'}
+                </h3>
                 <div className="text-sm sm:text-base 2xl:text-lg font-bold text-green-700 leading-tight uppercase">
-                  {topEmployee ? topEmployee.name : '-'}
+                  {selectedDay === 'all' 
+                    ? (topEmployee ? topEmployee.name : '-')
+                    : employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length
+                  }
                 </div>
-                <div className="mt-1 text-sm 2xl:text-base font-bold text-green-600">
-                  {topEmployee ? `(${topEmployee.faltas}F)` : ''}
-                </div>
+                {selectedDay === 'all' && (
+                  <div className="mt-1 text-sm 2xl:text-base font-bold text-green-600">
+                    {topEmployee ? `(${topEmployee.faltas}F)` : ''}
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               
-              {/* Left Column: Tables */}
-              <div className="lg:col-span-1 space-y-6">
-                {/* Table: Dia vs Faltas no Dia */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
-                  <div className="bg-[#1e3a8a] px-4 py-3 shrink-0">
-                    <h3 className="text-xs font-semibold text-white uppercase tracking-wider text-center">Dia vs Faltas no Dia</h3>
-                  </div>
-                  <div className="overflow-y-auto flex-1">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dia</th>
-                          <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Faltas</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {dailyData.map((d, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 text-xs font-medium text-gray-900">{d.day.padStart(2, '0')}/abr</td>
-                            <td className="px-4 py-2 text-xs text-gray-500 text-center">{d.faltas}</td>
+              {/* Left Column: Tables (Only for 'all') */}
+              {selectedDay === 'all' && (
+                <div className="lg:col-span-1 space-y-6">
+                  {/* Table: Dia vs Faltas no Dia */}
+                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
+                    <div className="bg-[#1e3a8a] px-4 py-3 shrink-0">
+                      <h3 className="text-xs font-semibold text-white uppercase tracking-wider text-center">Dia vs Faltas no Dia</h3>
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dia</th>
+                            <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Faltas</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {dailyData.map((d, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 text-xs font-medium text-gray-900">{d.day.padStart(2, '0')}/abr</td>
+                              <td className="px-4 py-2 text-xs text-gray-500 text-center">{d.faltas}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
-
-                {/* Table: Dia Semana vs Faltas */}
-                <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="bg-[#1e3a8a] px-4 py-3">
-                    <h3 className="text-xs font-semibold text-white uppercase tracking-wider text-center">Dia Semana vs Faltas</h3>
-                  </div>
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dia Semana</th>
-                        <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Faltas</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {weekdayData.map((wd, idx) => (
-                        <tr key={idx} className="hover:bg-gray-50">
-                          <td className="px-4 py-2 text-xs font-medium text-gray-900">{wd.day}</td>
-                          <td className="px-4 py-2 text-xs text-gray-500 text-center">{wd.faltas}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              )}
 
               {/* Right Column: Charts */}
-              <div className="lg:col-span-3 space-y-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Ranking Chart */}
-                  <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
-                    <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Faltas por Funcionário (Ranking)</h3>
-                    <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
+              <div className={`${selectedDay === 'all' ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-6`}>
+                {selectedDay === 'all' ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Ranking Chart */}
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
+                      <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Faltas por Funcionário (Ranking)</h3>
+                      <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={topEmployees} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                            <XAxis type="number" hide />
+                            <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                            <Tooltip 
+                              cursor={{ fill: '#f3f4f6' }}
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            />
+                            <Bar dataKey="faltas" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={12}>
+                              <LabelList dataKey="faltas" position="right" fill="#6b7280" fontSize={10} />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Weekday Chart */}
+                    <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
+                      <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Faltas por Dia da Semana</h3>
+                      <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={weekdayData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                            <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                            <Tooltip 
+                              cursor={{ fill: '#f3f4f6' }}
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            />
+                            <Bar dataKey="faltas" fill="#f97316" radius={[4, 4, 0, 0]} barSize={32} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Single Day View: Donut Chart */
+                  <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col items-center">
+                    <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Distribuição de Asistencia - Dia {selectedDay}</h3>
+                    <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full max-w-[500px]">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={topEmployees} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
-                          <XAxis type="number" hide />
-                          <YAxis dataKey="name" type="category" width={150} tick={{ fontSize: 10, fill: '#6b7280' }} />
-                          <Tooltip 
-                            cursor={{ fill: '#f3f4f6' }}
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                          />
-                          <Bar dataKey="faltas" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={12}>
-                            <LabelList dataKey="faltas" position="right" fill="#6b7280" fontSize={10} />
-                          </Bar>
-                        </BarChart>
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Presentes', value: employees.length - employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length },
+                              { name: 'Faltas', value: employees.filter(emp => attendance[emp.id]?.[selectedDay as number] === 'F').length },
+                              { name: 'Outros', value: employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={80}
+                            outerRadius={120}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            <Cell fill="#16a34a" /> {/* Presentes */}
+                            <Cell fill="#dc2626" /> {/* Faltas */}
+                            <Cell fill="#3b82f6" /> {/* Outros */}
+                          </Pie>
+                          <Tooltip />
+                          <Legend />
+                        </PieChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
+                )}
 
-                  {/* Weekday Chart */}
+                {/* Daily Evolution Chart (Only for 'all') */}
+                {selectedDay === 'all' && (
                   <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
-                    <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Faltas por Dia da Semana</h3>
+                    <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Evolução Diária de Faltas</h3>
                     <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={weekdayData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                        <LineChart data={dailyData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                          <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                          <XAxis 
+                            dataKey="day" 
+                            tick={{ fontSize: 12, fill: '#6b7280' }} 
+                            axisLine={false} 
+                            tickLine={false}
+                            tickFormatter={(val) => `${val}/4/26`}
+                          />
                           <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
                           <Tooltip 
-                            cursor={{ fill: '#f3f4f6' }}
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0, 0, 0, 0.1)' }}
+                            labelFormatter={(label) => `Dia ${label} de Abril`}
                           />
-                          <Bar dataKey="faltas" fill="#f97316" radius={[4, 4, 0, 0]} barSize={32} />
-                        </BarChart>
+                          <Line 
+                            type="monotone" 
+                            dataKey="faltas" 
+                            stroke="#1e3a8a" 
+                            strokeWidth={2}
+                            dot={{ r: 3, fill: '#1e3a8a', strokeWidth: 0 }}
+                            activeDot={{ r: 5, fill: '#3b82f6', strokeWidth: 0 }}
+                          />
+                        </LineChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
-                </div>
-
-                {/* Daily Evolution Chart */}
-                <div className="bg-white rounded-2xl p-4 sm:p-6 border border-gray-200 shadow-sm flex flex-col">
-                  <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">Evolução Diária de Faltas</h3>
-                  <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={dailyData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                        <XAxis 
-                          dataKey="day" 
-                          tick={{ fontSize: 12, fill: '#6b7280' }} 
-                          axisLine={false} 
-                          tickLine={false}
-                          tickFormatter={(val) => `${val}/4/26`}
-                        />
-                        <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                        <Tooltip 
-                          contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                          labelFormatter={(label) => `Dia ${label} de Abril`}
-                        />
-                        <Line 
-                          type="monotone" 
-                          dataKey="faltas" 
-                          stroke="#1e3a8a" 
-                          strokeWidth={2}
-                          dot={{ r: 3, fill: '#1e3a8a', strokeWidth: 0 }}
-                          activeDot={{ r: 5, fill: '#3b82f6', strokeWidth: 0 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
 
@@ -1264,22 +1327,37 @@ export default function App() {
                           </span>
                         </td>
                         <td className="py-3 px-4 sm:px-6 text-center hidden sm:table-cell">
-                          {emp.faltas === 0 ? (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
-                              <CheckCircle2 className="w-3 h-3" /> Regular
-                            </span>
+                          {selectedDay !== 'all' ? (
+                            attendance[emp.id]?.[selectedDay] === 'F' ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                                <AlertCircle className="w-3 h-3" /> Falta
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                <CheckCircle2 className="w-3 h-3" /> Presente
+                              </span>
+                            )
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600">
-                              <AlertCircle className="w-3 h-3" /> Atenção
-                            </span>
+                            emp.faltas === 0 ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600">
+                                <CheckCircle2 className="w-3 h-3" /> Regular
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600">
+                                <AlertCircle className="w-3 h-3" /> Atenção
+                              </span>
+                            )
                           )}
                         </td>
                         <td className="py-3 px-4 sm:px-6 text-xs text-gray-500 max-w-[200px] truncate">
-                          {Object.entries(attendance[emp.id] || {})
-                            .filter(([_, status]) => status === 'F')
-                            .map(([day, _]) => notes[emp.id]?.[Number(day)])
-                            .filter(Boolean)
-                            .join(', ')}
+                          {selectedDay !== 'all' 
+                            ? (notes[emp.id]?.[selectedDay] || '')
+                            : Object.entries(attendance[emp.id] || {})
+                                .filter(([_, status]) => status === 'F')
+                                .map(([day, _]) => notes[emp.id]?.[Number(day)])
+                                .filter(Boolean)
+                                .join(', ')
+                          }
                         </td>
                       </tr>
                     ))}
@@ -1305,7 +1383,7 @@ export default function App() {
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     Lançamento de Frequência
-                    {!isWorkDay(selectedDay) && (
+                    {selectedDay !== 'all' && !isWorkDay(selectedDay as number) && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800 border border-gray-300">
                         Folga (12x36)
                       </span>
@@ -1371,7 +1449,7 @@ export default function App() {
             </div>
 
             {/* Employee List for Attendance */}
-            {!isWorkDay(selectedDay) ? (
+            {selectedDay !== 'all' && !isWorkDay(selectedDay as number) ? (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                 <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                   <CalendarX className="w-8 h-8 text-gray-400" />
@@ -1384,9 +1462,10 @@ export default function App() {
             ) : (
               <div className="overflow-y-auto flex-1 divide-y divide-gray-100 p-2 sm:p-4">
                 {filteredRegistroEmployees.map(emp => {
-                  const currentStatus = pendingAttendance[emp.id]?.[selectedDay] ?? attendance[emp.id]?.[selectedDay] ?? 'P';
-                  const currentNote = pendingNotes[emp.id]?.[selectedDay] ?? notes[emp.id]?.[selectedDay] ?? '';
-                  const isModified = pendingAttendance[emp.id]?.[selectedDay] !== undefined || pendingNotes[emp.id]?.[selectedDay] !== undefined;
+                  const day = selectedDay === 'all' ? CURRENT_DAY : (selectedDay as number);
+                  const currentStatus = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
+                  const currentNote = pendingNotes[emp.id]?.[day] ?? notes[emp.id]?.[day] ?? '';
+                  const isModified = pendingAttendance[emp.id]?.[day] !== undefined || pendingNotes[emp.id]?.[day] !== undefined;
                   
                   return (
                     <div key={emp.id} className={`p-3 sm:p-4 flex flex-col gap-3 hover:bg-gray-50 rounded-xl transition-colors ${isModified ? 'bg-blue-50/30' : ''}`}>
@@ -1402,52 +1481,52 @@ export default function App() {
                         
                         <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:gap-2 bg-gray-100 p-1 sm:p-1.5 rounded-lg shrink-0 self-start sm:self-auto max-w-full">
                           <button 
-                            onClick={() => setStatus(emp.id, selectedDay, 'P')}
-                            disabled={isLocked && !isModified}
+                            onClick={() => setStatus(emp.id, day, 'P')}
+                            disabled={lockedDays[day] && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'P' 
                                 ? 'bg-white text-green-700 shadow-sm ring-1 ring-gray-200' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Presente"
                           >
                             <span className="sm:hidden">P</span>
                             <span className="hidden sm:inline">Presente</span>
                           </button>
                           <button 
-                            onClick={() => setStatus(emp.id, selectedDay, 'F')}
-                            disabled={isLocked && !isModified}
+                            onClick={() => setStatus(emp.id, day, 'F')}
+                            disabled={lockedDays[day] && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'F' 
                                 ? 'bg-red-500 text-white shadow-sm ring-1 ring-red-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Falta"
                           >
                             <span className="sm:hidden">F</span>
                             <span className="hidden sm:inline">Falta</span>
                           </button>
                           <button 
-                            onClick={() => setStatus(emp.id, selectedDay, 'Fe')}
-                            disabled={isLocked && !isModified}
+                            onClick={() => setStatus(emp.id, day, 'Fe')}
+                            disabled={lockedDays[day] && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'Fe' 
                                 ? 'bg-blue-500 text-white shadow-sm ring-1 ring-blue-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Férias/Feriado"
                           >
                             <span className="sm:hidden">Fe</span>
                             <span className="hidden sm:inline">Férias</span>
                           </button>
                           <button 
-                            onClick={() => setStatus(emp.id, selectedDay, 'A')}
-                            disabled={isLocked && !isModified}
+                            onClick={() => setStatus(emp.id, day, 'A')}
+                            disabled={lockedDays[day] && !isModified}
                             className={`flex-1 sm:flex-none flex items-center justify-center min-w-[40px] sm:min-w-[80px] px-2 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
                               currentStatus === 'A' 
                                 ? 'bg-purple-500 text-white shadow-sm ring-1 ring-purple-600' 
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'
-                            } ${isLocked && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            } ${lockedDays[day] && !isModified ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="Afastamento"
                           >
                             <span className="sm:hidden">A</span>
@@ -1463,9 +1542,9 @@ export default function App() {
                           type="text" 
                           placeholder="Adicionar observação..." 
                           value={currentNote}
-                          readOnly={isLocked && !isModified}
-                          onChange={(e) => setNote(emp.id, selectedDay, e.target.value)}
-                          className={`flex-1 text-sm bg-transparent border-b border-gray-200 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors ${isLocked && !isModified ? 'cursor-not-allowed' : ''}`}
+                          readOnly={lockedDays[day] && !isModified}
+                          onChange={(e) => setNote(emp.id, day, e.target.value)}
+                          className={`flex-1 text-sm bg-transparent border-b border-gray-200 focus:border-blue-500 focus:outline-none px-1 py-1 transition-colors ${lockedDays[day] && !isModified ? 'cursor-not-allowed' : ''}`}
                         />
                       </div>
                     </div>
@@ -1477,9 +1556,9 @@ export default function App() {
             {/* Save Button Area */}
             {isWorkDay(selectedDay) && (
               <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-                {isLocked && (
+                {lockedDays[selectedDay] && (
                   <button
-                    onClick={() => setIsLocked(false)}
+                    onClick={() => setLockedDays(prev => ({ ...prev, [selectedDay]: false }))}
                     className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                   >
                     Editar registros
