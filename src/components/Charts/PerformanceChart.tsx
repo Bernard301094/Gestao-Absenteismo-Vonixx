@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Cell, LabelList
 } from 'recharts';
-import type { LeaderboardEntry } from '../../../types';
+import type { LeaderboardEntry } from '../../types';
 
 interface PerformanceChartProps {
   data: LeaderboardEntry[];

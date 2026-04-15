@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   collection, doc, setDoc, onSnapshot, getDocs, writeBatch,
   query, where, serverTimestamp, updateDoc, deleteDoc, limit
@@ -8,159 +8,8 @@ import toast from '../utils/toast';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import type {
   Status, ShiftType, Employee, GlobalEmployee,
-  AttendanceRecord, NotesRecord, LockedDaysRecord
+  AttendanceRecord, NotesRecord, LockedDaysRecord, Vacation
 } from '../types';
-
-// ─── Dados Iniciais (Bootstrap) ───────────────────────────────────────────────
-const EMPLOYEES_BOOTSTRAP: Employee[] = [
-  { id: '1', name: 'PEDRO DAVI LIMA CAVALCANTE' },
-  { id: '2', name: 'MARCILIO DA CONCEIÇÃO' },
-  { id: '3', name: 'CARLOS ALBERTO VIEIRA DA SILVA' },
-  { id: '4', name: 'KAUA JADSON SOUSA RABELO' },
-  { id: '5', name: 'LUCAS UCHOA ALVES DE SOUSA' },
-  { id: '6', name: 'THIAGO DOS SANTOS SOUZA' },
-  { id: '7', name: 'CARLOS WILLAME ALEXANDRE LIMA' },
-  { id: '8', name: 'ADRIEL FREITAS LOPES' },
-  { id: '9', name: 'FRANCISCO VINICIUS DA SILVA MENEZES' },
-  { id: '10', name: 'JONATHAN MOURA MODESTO' },
-  { id: '11', name: 'KAUA SILVA FERREIRA' },
-  { id: '12', name: 'PEDRO RUAN DAMASCENO DE PAULA' },
-  { id: '13', name: 'SAMUEL RABELO LIONEL' },
-  { id: '14', name: 'ANTONIO WESSLEY ALVES COSTA' },
-  { id: '15', name: 'CÁSSIO HENRIQUE SANTOS' },
-  { id: '16', name: 'JANDERSON DE AZEVEDO SANTIAGO' },
-  { id: '17', name: 'MARIA VANESSA LIMA EVANGELISTA' },
-  { id: '18', name: 'ANTONIO BRENDON DE SOUSA ROCHA' },
-  { id: '19', name: 'DAVYSSON DA SILVA MENDONCA' },
-  { id: '20', name: 'ENDERSON NUNES DE OLIVEIRA' },
-  { id: '21', name: 'GLEIDSON RODRIGUES DO VALE' },
-  { id: '22', name: 'JEREMIAS ROMUALDO FERREIRA PINTO' },
-  { id: '23', name: 'JOAO IRANDILMO PEREIRA DE SOUSA FILHO' },
-  { id: '24', name: 'JOAO VICTOR DE SOUSA BERNARDO' },
-  { id: '25', name: 'LEIDIANE DOS SANTOS FIGUEIREDO' },
-  { id: '26', name: 'LEONARDO GOMES DE OLIVEIRA' },
-  { id: '27', name: 'LUCIANO DA SILVA CARDOSO FILHO' },
-  { id: '28', name: 'RYAN DO NASCIMENTO COSTA' },
-  { id: '29', name: 'UESLEI DE SOUSA LIMA' },
-  { id: '30', name: 'WANDERLEIA TEIXEIRA LIMA' },
-  { id: '31', name: 'PEDRO AUAN DANTAS BORGES' },
-  { id: '32', name: 'LUIZ HENRIQUE' },
-  { id: '33', name: 'FRANCISCO FABRICIO DA SILVA LIMA' },
-  { id: '34', name: 'IURY KAEFF FERREIRA BRAÚNA' },
-  { id: '35', name: 'RYNALDO ALVES DE ARAÚJO' },
-  { id: '36', name: 'BRUNO ROBERTI DE SOUZA' },
-  { id: '37', name: 'BRENO OLIVEIRA DA COSTA' },
-  { id: '38', name: 'IZADORA DE OLIVEIRA GONÇALVES' },
-  { id: '39', name: 'JOAQUIM FRANCISCO DOS SANTOS RODRIGUES' },
-  { id: '40', name: 'ABNER JONNAS DA SILVA' },
-  { id: '41', name: 'ALEX PEREIRA SILVA' },
-  { id: '42', name: 'ANDERSON RODRIGUES DA SILVA' },
-  { id: '43', name: 'ANDRE LUIZ OLIVEIRA DA SILVA' },
-  { id: '44', name: 'ANTONIA ANAPAULA CORREIA FREIRE' },
-  { id: '45', name: 'ANTONIO REVESTON DEODORO DE FRANCA' },
-  { id: '46', name: 'ANTONIO ZITO ALVES DA SILVA' },
-  { id: '47', name: 'BERNARD EDUARDO DE FREITAS CASTILLO' },
-  { id: '48', name: 'DAVI DA SILVA NOBRE' },
-  { id: '49', name: 'DEUVID PEREIRA LIMA' },
-  { id: '50', name: 'DIANA ABREU DA SILVA' },
-  { id: '51', name: 'ERIVANDA DE LIMA VIEIRA' },
-  { id: '52', name: 'EUGENIA FIRMINO DO NASCIMENTO' },
-  { id: '53', name: 'EUNICE SEBASTIAO RODRIGUES' },
-  { id: '54', name: 'EVANDERSON DE SOUSA DUTRA' },
-  { id: '55', name: 'EVANDRO MARQUES ALMEIDA' },
-  { id: '56', name: 'FERNANDO SANTOS CARVALHO' },
-  { id: '57', name: 'FLAVIO CORREIA ALMEIDA' },
-  { id: '58', name: 'FRANCINEIDE DA SILVA GOMES' },
-  { id: '59', name: 'FRANCISCO DE ASSIS MENDONCA BARBOSA' },
-  { id: '60', name: 'FRANCISCO FELIPE COSME' },
-  { id: '61', name: 'FRANCISCO HERNANDES DE SOUZA MOREIRA FILHO' },
-  { id: '62', name: 'FRANCISCO JEFFERSON PEREIRA' },
-  { id: '63', name: 'FRANCISCO MAURICIO LIMA FILHO' },
-  { id: '64', name: 'GABRIEL DE OLIVEIRA SILVA' },
-  { id: '65', name: 'GABRIELA LOURDES DE OLIVEIRA NASCIMENTO' },
-  { id: '66', name: 'JAMILLE DOMINGOS DA SILVA' },
-  { id: '67', name: 'JOSE JOAQUIM MARQUES TEIXEIRA' },
-  { id: '68', name: 'JOSE WILLAME TOME SOARES' },
-  { id: '69', name: 'KAIO VINICIUS DE SOUSA CARDOSO' },
-  { id: '70', name: 'LAZARO TEONAS ALVES BEZERRA' },
-  { id: '71', name: 'PHABLO MATOS DE ARAUJO' },
-  { id: '72', name: 'ROSIMEIRE FERREIRA SILVA' },
-  { id: '73', name: 'RYAN DE SOUZA MARQUES' },
-  { id: '74', name: 'SAMARA BRAGA DE MOURA' },
-  { id: '75', name: 'SAMUEL GOMES DO CARMO' },
-  { id: '76', name: 'SERGIO RICHARD MOREIRA DE FREITAS' },
-  { id: '77', name: 'WALEF DOS SANTOS NUNES' },
-  { id: '78', name: 'YURI MENDONCA QUIRINO' },
-  { id: '79', name: 'JOSIMAR SILVA DANTAS' },
-  { id: '80', name: 'DEYVISON FERREIRA' },
-  { id: '81', name: 'MARINALVA DOS SANTOS' },
-  { id: '82', name: 'SAMUEL BESERRA' },
-  { id: '83', name: 'IAN PABLO' },
-  { id: '84', name: 'LUTYGARD DA SILVA MACIEL' },
-  { id: '85', name: 'NATANAEL VALENCIO DA SILVA' },
-  { id: '86', name: 'STAEL BERNARDO UCHOA DE SOUSA' },
-  { id: '87', name: 'BRUNO MIRANDA DE OLIVEIRA' },
-  { id: '88', name: 'ANTONIO JOSE SANTOS GONÇALVES' },
-  { id: '89', name: 'MARIA NAYARA LEITE DA SILVA' },
-  { id: '90', name: 'RAIMUNDA ALVES PEREIRA' },
-  { id: '91', name: 'VITÓRIA REGIA MOURA' },
-  { id: '92', name: 'VANESSA GOMES DE LIMA' },
-  { id: '93', name: 'CARLOS ALEXANDRE DE LIMA RODRIGUES' },
-  { id: '94', name: 'JEANE PEREIRA DE OLIVEIRA CASTRO' },
-  { id: '95', name: 'JOSÉ MILTON DE OLIVEIRA SOUZA' },
-  { id: '96', name: 'ÍTALO RODIGUES DOS SANTOS' },
-  { id: '97', name: 'GERMANO ALVES LOPES DUARTE' },
-  { id: '98', name: 'MARCOS ANTONIO DOS SANTOS PIRES' },
-  { id: '99', name: 'ISRAEL DA SILVA MENEZES' },
-  { id: '100', name: 'ALEXANDRE SOUSA' },
-];
-
-const INITIAL_ATTENDANCE_BOOTSTRAP: Record<string, Record<number, Status>> = {
-  '1': { 3: 'F', 5: 'F', 7: 'F', 9: 'F', 11: 'F', 13: 'F' },
-  '2': { 5: 'F', 7: 'F', 9: 'F', 11: 'F', 13: 'F' },
-  '3': { 3: 'F', 5: 'F', 11: 'F', 13: 'F' },
-  '4': { 3: 'F', 5: 'F', 11: 'F', 13: 'F' },
-  '5': { 3: 'F', 5: 'F', 9: 'F', 11: 'F' },
-  '6': { 3: 'F', 5: 'F', 11: 'F', 13: 'F' },
-  '7': { 3: 'F', 5: 'F', 11: 'F' },
-  '8': { 3: 'F', 9: 'F', 13: 'F' },
-  '9': { 11: 'F', 13: 'F' },
-  '10': { 3: 'F', 11: 'F' },
-  '11': { 11: 'F', 13: 'F' },
-  '12': { 5: 'F', 13: 'F' },
-  '13': { 3: 'F', 13: 'F' },
-  '14': { 5: 'F', 13: 'F' },
-  '15': { 7: 'F', 9: 'F' },
-  '16': { 7: 'F', 11: 'F' },
-  '17': { 5: 'F', 13: 'F' },
-  '18': { 11: 'F' },
-  '19': { 3: 'F', 7: 'Fe', 9: 'Fe', 11: 'Fe', 13: 'Fe' },
-  '20': { 5: 'F' },
-  '21': { 13: 'F' },
-  '22': { 11: 'F' },
-  '23': { 13: 'F' },
-  '24': { 13: 'F' },
-  '25': { 3: 'F' },
-  '26': { 13: 'F' },
-  '27': { 11: 'F' },
-  '28': { 13: 'F' },
-  '29': { 13: 'F' },
-  '30': { 11: 'F' },
-  '31': { 3: 'F' },
-  '32': { 13: 'F' },
-  '33': { 9: 'F' },
-  '34': { 13: 'F' },
-  '35': { 3: 'F' },
-  '36': { 9: 'F' },
-  '37': { 13: 'F' },
-  '38': { 13: 'F' },
-  '39': { 3: 'F' },
-  '45': { 7: 'Fe', 9: 'Fe', 11: 'Fe', 13: 'Fe' },
-  '58': { 3: 'A', 5: 'A', 7: 'A', 9: 'A', 11: 'A', 13: 'A' },
-  '63': { 7: 'Fe', 9: 'Fe', 11: 'Fe', 13: 'Fe' },
-  '70': { 3: 'Fe' },
-  '86': { 3: 'A', 5: 'A', 7: 'A', 9: 'A', 11: 'A', 13: 'A' },
-};
 
 // ─── Parámetros del Hook ──────────────────────────────────────────────────────
 interface UseFirestoreDataParams {
@@ -196,6 +45,7 @@ export function useFirestoreData({
 
   const [attendance, setAttendance] = useState<AttendanceRecord>({});
   const [notes, setNotes] = useState<NotesRecord>({});
+  const [vacations, setVacations] = useState<Vacation[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   const [pendingAttendance, setPendingAttendance] = useState<AttendanceRecord>({});
@@ -204,6 +54,7 @@ export function useFirestoreData({
   const [lockedDays, setLockedDays] = useState<LockedDaysRecord>({});
 
   const [newEmployeeName, setNewEmployeeName] = useState('');
+  const [newEmployeeAdmissionDate, setNewEmployeeAdmissionDate] = useState(new Date().toISOString().split('T')[0]);
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -214,7 +65,36 @@ export function useFirestoreData({
 
     const unsubEmployees = onSnapshot(collection(db, 'employees'), (snapshot) => {
       const emps: GlobalEmployee[] = [];
-      snapshot.forEach(d => emps.push({ id: d.id, ...d.data() } as GlobalEmployee));
+      snapshot.forEach(d => {
+        const data = d.data();
+        // Try all possible field names for admission date
+        let rawDate = data.dataAdmissao || data.admissionDate || data.data_admissao;
+        let admissionDate = '';
+
+        if (rawDate) {
+          if (typeof rawDate === 'object' && 'toDate' in rawDate) {
+            // Handle Firestore Timestamp
+            admissionDate = rawDate.toDate().toISOString().split('T')[0];
+          } else if (typeof rawDate === 'string') {
+            if (rawDate.includes('/')) {
+              // Handle DD/MM/YYYY format
+              const parts = rawDate.split('/');
+              if (parts.length === 3) {
+                // Check if it's DD/MM/YYYY or MM/DD/YYYY (assuming DD/MM/YYYY based on "06/05/2024")
+                const day = parts[0].padStart(2, '0');
+                const month = parts[1].padStart(2, '0');
+                const year = parts[2];
+                admissionDate = `${year}-${month}-${day}`;
+              }
+            } else {
+              // Assume YYYY-MM-DD
+              admissionDate = rawDate;
+            }
+          }
+        }
+        
+        emps.push({ id: d.id, ...data, admissionDate } as GlobalEmployee);
+      });
       setGlobalEmployees(emps);
     });
 
@@ -239,10 +119,59 @@ export function useFirestoreData({
       setGlobalCompletions(comps);
     });
 
+    const unsubVacations = onSnapshot(collection(db, 'vacations'), (snapshot) => {
+      const vacs: Vacation[] = [];
+      snapshot.forEach(d => {
+        const data = d.data();
+        
+        // Normalize vacation dates from various possible formats
+        const normalizeDate = (dateVal: any) => {
+          if (!dateVal) return '';
+          if (typeof dateVal === 'object' && 'toDate' in dateVal) return dateVal.toDate().toISOString().split('T')[0];
+          if (typeof dateVal === 'string') {
+            if (dateVal.includes('/')) {
+              const parts = dateVal.split('/');
+              if (parts.length === 3) {
+                // Assuming DD/MM/YYYY or MM/DD/YYYY. Based on returnDate "10/31/2026", it's MM/DD/YYYY
+                // But admissionDate "06/05/2024" looks like DD/MM/YYYY.
+                // Let's handle both by checking if the first part > 12
+                let day, month, year;
+                if (parseInt(parts[0]) > 12) {
+                  day = parts[0].padStart(2, '0');
+                  month = parts[1].padStart(2, '0');
+                } else if (parseInt(parts[1]) > 12) {
+                  month = parts[0].padStart(2, '0');
+                  day = parts[1].padStart(2, '0');
+                } else {
+                  // Ambiguous, default to DD/MM/YYYY for Brazil
+                  day = parts[0].padStart(2, '0');
+                  month = parts[1].padStart(2, '0');
+                }
+                year = parts[2];
+                return `${year}-${month}-${day}`;
+              }
+            }
+            return dateVal;
+          }
+          return '';
+        };
+
+        vacs.push({
+          id: d.id,
+          employeeId: data.employeeId || d.id, // Fallback if employeeId is missing
+          startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
+          endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
+          status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken'
+        } as Vacation);
+      });
+      setVacations(vacs);
+    });
+
     return () => {
       unsubEmployees();
       unsubAttendance();
       unsubCompletions();
+      unsubVacations();
     };
   }, [isSupervision, currentMonth, currentYear]);
 
@@ -292,43 +221,7 @@ export function useFirestoreData({
 
     setDataLoading(true);
 
-    const bootstrapData = async () => {
-      if (currentShift !== 'A' && !isAdminUser) return;
-      if (window.sessionStorage.getItem('bootstrapped')) return;
-
-      try {
-        const empSnapshot = await getDocs(query(collection(db, 'employees'), limit(1)));
-        if (!active) return;
-
-        if (empSnapshot.empty) {
-          const batch = writeBatch(db);
-          EMPLOYEES_BOOTSTRAP.forEach(emp => {
-            batch.set(doc(db, 'employees', emp.id), {
-              name: emp.name,
-              createdAt: new Date(),
-              shift: 'A',
-            });
-          });
-          Object.entries(INITIAL_ATTENDANCE_BOOTSTRAP).forEach(([empId, days]) => {
-            Object.entries(days).forEach(([dayStr, status]) => {
-              const day = parseInt(dayStr);
-              const recordId = `${empId}_2026_3_${day}`;
-              batch.set(doc(db, 'attendance', recordId), {
-                empId, day, month: 3, year: 2026,
-                status, note: '', updatedAt: new Date(), shift: 'A',
-              });
-            });
-          });
-          await batch.commit();
-        }
-        window.sessionStorage.setItem('bootstrapped', 'true');
-      } catch (e) {
-        console.error('Bootstrap error:', e);
-      }
-    };
-
     const setupListeners = async () => {
-      await bootstrapData();
       if (!active) return;
 
       const shiftToQuery = isSupervision ? supervisionShiftFilter : currentShift;
@@ -339,7 +232,39 @@ export function useFirestoreData({
         (snapshot) => {
           if (!active) return;
           const emps: Employee[] = [];
-          snapshot.forEach(d => emps.push({ id: d.id, name: d.data().name }));
+          snapshot.forEach(d => {
+            const data = d.data();
+            // Try all possible field names for admission date
+            let rawDate = data.dataAdmissao || data.admissionDate || data.data_admissao;
+            let admissionDate = '';
+
+            if (rawDate) {
+              if (typeof rawDate === 'object' && 'toDate' in rawDate) {
+                // Handle Firestore Timestamp
+                admissionDate = rawDate.toDate().toISOString().split('T')[0];
+              } else if (typeof rawDate === 'string') {
+                if (rawDate.includes('/')) {
+                  // Handle DD/MM/YYYY format
+                  const parts = rawDate.split('/');
+                  if (parts.length === 3) {
+                    const day = parts[0].padStart(2, '0');
+                    const month = parts[1].padStart(2, '0');
+                    const year = parts[2];
+                    admissionDate = `${year}-${month}-${day}`;
+                  }
+                } else {
+                  // Assume YYYY-MM-DD
+                  admissionDate = rawDate;
+                }
+              }
+            }
+            
+            emps.push({ 
+              id: d.id, 
+              name: data.name, 
+              admissionDate: admissionDate 
+            });
+          });
           setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
           setDataLoading(false);
         },
@@ -411,8 +336,10 @@ export function useFirestoreData({
         name: newEmployeeName.toUpperCase(),
         createdAt: serverTimestamp(),
         shift: shiftToAssign,
+        admissionDate: newEmployeeAdmissionDate,
       });
       setNewEmployeeName('');
+      setNewEmployeeAdmissionDate(new Date().toISOString().split('T')[0]);
       setShowAddEmployeeModal(false);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'employees');
@@ -425,6 +352,7 @@ export function useFirestoreData({
     try {
       await updateDoc(doc(db, 'employees', editingEmployee.id), {
         name: editingEmployee.name.trim().toUpperCase(),
+        admissionDate: editingEmployee.admissionDate,
       });
       setShowEditEmployeeModal(false);
       setEditingEmployee(null);
@@ -561,14 +489,36 @@ export function useFirestoreData({
     });
   };
 
+  // ─── Vacaciones ────────────────────────────────────────────────────────────
+  const handleAddVacation = async (vacation: Omit<Vacation, 'id'>) => {
+    try {
+      const newVacationRef = doc(collection(db, 'vacations'));
+      await setDoc(newVacationRef, vacation);
+      toast.success('Férias agendadas com sucesso!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'vacations');
+    }
+  };
+
+  const handleDeleteVacation = async (id: string) => {
+    if (!window.confirm('Deseja cancelar este agendamento de férias?')) return;
+    try {
+      await deleteDoc(doc(db, 'vacations', id));
+      toast.success('Férias canceladas.');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'vacations');
+    }
+  };
+
   return {
     // Estado
     employees, globalEmployees, globalAttendance, globalCompletions,
-    attendance, notes, dataLoading,
+    attendance, notes, vacations, dataLoading,
     pendingAttendance, pendingNotes, isSaving,
     lockedDays, setLockedDays,
     selectedEmployeeDetail, setSelectedEmployeeDetail,
     newEmployeeName, setNewEmployeeName,
+    newEmployeeAdmissionDate, setNewEmployeeAdmissionDate,
     showAddEmployeeModal, setShowAddEmployeeModal,
     showEditEmployeeModal, setShowEditEmployeeModal,
     editingEmployee, setEditingEmployee,
@@ -577,5 +527,6 @@ export function useFirestoreData({
     handleMarkAllPresent, handleSave,
     setStatus, setNote, getStatusForDay,
     handleExportExcel,
+    handleAddVacation, handleDeleteVacation,
   };
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, loginWithEmail, logout as firebaseLogout } from '../firebase';
 import type { ShiftType, LoginShiftType } from '../types';

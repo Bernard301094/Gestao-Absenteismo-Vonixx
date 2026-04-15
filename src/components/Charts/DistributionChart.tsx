@@ -7,7 +7,7 @@ import {
   ResponsiveContainer,
   type TooltipProps,
 } from 'recharts';
-import type { Employee, AttendanceRecord } from '../../../types';
+import type { Employee, AttendanceRecord } from '../../types';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

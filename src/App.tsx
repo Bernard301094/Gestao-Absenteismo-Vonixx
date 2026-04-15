@@ -11,6 +11,7 @@ import Header from './components/Header/Header';
 
 const Dashboard   = lazy(() => import('./components/Dashboard/Dashboard'));
 const Registro    = lazy(() => import('./components/Registro/Registro'));
+const Vacations   = lazy(() => import('./components/Vacations/Vacations'));
 const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/AddEmployeeModal'));
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
 const EmployeeDetailModal = lazy(() => import('./components/EmployeeDetailModal/EmployeeDetailModal'));
@@ -31,7 +32,7 @@ const INITIAL_YEAR = now.getFullYear();
 
 export default function App() {
   // ─── UI State ───────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'registro'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'registro' | 'ferias'>('dashboard');
   const [currentMonth, setCurrentMonth] = useState(INITIAL_MONTH);
   const [currentYear, setCurrentYear] = useState(INITIAL_YEAR);
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
@@ -85,6 +86,7 @@ export default function App() {
     globalEmployees: data.globalEmployees,
     globalAttendance: data.globalAttendance,
     globalCompletions: data.globalCompletions,
+    vacations: data.vacations,
     selectedDay,
     currentMonth,
     currentYear,
@@ -229,6 +231,16 @@ export default function App() {
                 isSaving={data.isSaving}
               />
             )}
+
+            {activeTab === 'ferias' && (
+              <Vacations
+                employees={data.employees}
+                vacations={data.vacations}
+                vacationStats={analytics.vacationStats}
+                handleAddVacation={data.handleAddVacation}
+                handleDeleteVacation={data.handleDeleteVacation}
+              />
+            )}
           </Suspense>
         </ErrorBoundary>
       </main>
@@ -242,6 +254,8 @@ export default function App() {
             handleAddEmployee={data.handleAddEmployee}
             newEmployeeName={data.newEmployeeName}
             setNewEmployeeName={data.setNewEmployeeName}
+            newEmployeeAdmissionDate={data.newEmployeeAdmissionDate}
+            setNewEmployeeAdmissionDate={data.setNewEmployeeAdmissionDate}
           />
         </Suspense>
       </ErrorBoundary>

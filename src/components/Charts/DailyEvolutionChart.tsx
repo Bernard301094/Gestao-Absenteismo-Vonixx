@@ -3,7 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts';
-import type { DayData } from '../../../types';
+import type { DayData } from '../../types';
 
 interface DailyEvolutionChartProps {
   data: DayData[];

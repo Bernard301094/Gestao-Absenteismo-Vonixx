@@ -1,6 +1,5 @@
 import React from 'react';
 import { X } from 'lucide-react';
-import styles from './AddEmployeeModal.module.css';
 
 interface AddEmployeeModalProps {
   showAddEmployeeModal: boolean;
@@ -8,6 +7,8 @@ interface AddEmployeeModalProps {
   handleAddEmployee: (e: React.FormEvent) => void;
   newEmployeeName: string;
   setNewEmployeeName: (name: string) => void;
+  newEmployeeAdmissionDate: string;
+  setNewEmployeeAdmissionDate: (date: string) => void;
 }
 
 export default function AddEmployeeModal({
@@ -15,7 +16,9 @@ export default function AddEmployeeModal({
   setShowAddEmployeeModal,
   handleAddEmployee,
   newEmployeeName,
-  setNewEmployeeName
+  setNewEmployeeName,
+  newEmployeeAdmissionDate,
+  setNewEmployeeAdmissionDate
 }: AddEmployeeModalProps) {
   if (!showAddEmployeeModal) return null;
 
@@ -44,6 +47,19 @@ export default function AddEmployeeModal({
               onChange={(e) => setNewEmployeeName(e.target.value)}
               placeholder="Digite o nome do funcionário..."
               className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all uppercase"
+            />
+          </div>
+          <div>
+            <label htmlFor="admissionDate" className="block text-sm font-medium text-gray-700 mb-1">
+              Data de Admissão
+            </label>
+            <input
+              id="admissionDate"
+              type="date"
+              required
+              value={newEmployeeAdmissionDate}
+              onChange={(e) => setNewEmployeeAdmissionDate(e.target.value)}
+              className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
           <div className="flex items-center justify-end gap-3 pt-4">

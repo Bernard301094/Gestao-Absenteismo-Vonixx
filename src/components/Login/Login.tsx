@@ -1,6 +1,5 @@
 import React from 'react';
 import { Activity } from 'lucide-react';
-import styles from './Login.module.css';
 
 type ShiftType = 'A' | 'B' | 'C' | 'D' | 'SUPERVISAO';
 

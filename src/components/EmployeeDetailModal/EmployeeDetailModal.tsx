@@ -1,6 +1,5 @@
 import React from 'react';
 import { X, TrendingUp, TrendingDown, CalendarDays } from 'lucide-react';
-import styles from './EmployeeDetailModal.module.css';
 
 interface EmployeeDetailModalProps {
   selectedEmployeeDetail: any | null;
@@ -46,6 +45,11 @@ export default function EmployeeDetailModal({
                 <div className="flex items-center gap-2 mt-1">
                   <span className="px-2 py-0.5 bg-white/20 rounded-lg text-[10px] font-bold uppercase tracking-widest">ID: #{selectedEmployeeDetail.id.padStart(3, '0')}</span>
                   <span className="px-2 py-0.5 bg-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">Ativo</span>
+                  {selectedEmployeeDetail.admissionDate && (
+                    <span className="px-2 py-0.5 bg-blue-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">
+                      Adm: {new Date(selectedEmployeeDetail.admissionDate).toLocaleDateString('pt-BR')}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

@@ -3,7 +3,8 @@ import { AlertCircle, XCircle } from 'lucide-react';
 import { isWorkDay } from '../utils/dateUtils';
 import type {
   Employee, GlobalEmployee, AttendanceRecord, NotesRecord,
-  EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert
+  EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert,
+  Vacation, VacationStats
 } from '../types';
 
 interface UseDashboardAnalyticsParams {
@@ -12,6 +13,7 @@ interface UseDashboardAnalyticsParams {
   globalEmployees: GlobalEmployee[];
   globalAttendance: AttendanceRecord;
   globalCompletions: any[];
+  vacations: Vacation[];
   selectedDay: number | 'all';
   currentMonth: number;
   currentYear: number;
@@ -40,6 +42,7 @@ export function useDashboardAnalytics({
   sortOrder,
   registroSearchTerm,
   isValidDay,
+  vacations,
 }: UseDashboardAnalyticsParams) {
 
   // ─── KPIs Básicos ─────────────────────────────────────────────────────────
@@ -232,11 +235,78 @@ export function useDashboardAnalytics({
     return newAlerts;
   }, [isSupervision, globalCompletions, globalEmployees, globalAttendance, currentMonth, currentYear]);
 
+  // ─── Analytics de Férias ───────────────────────────────────────────────────
+
+  const vacationStats = useMemo<VacationStats[]>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return employees
+      .filter(emp => emp.admissionDate && emp.admissionDate.length >= 10) // Only process employees with a valid-looking date
+      .map(emp => {
+        const admissionDate = new Date(emp.admissionDate!);
+        
+        // Check for invalid dates or extremely old dates (like 1900)
+        if (isNaN(admissionDate.getTime()) || admissionDate.getFullYear() < 1970) {
+          return null;
+        }
+
+        const empVacations = vacations.filter(v => v.employeeId === emp.id);
+        
+        // Encontrar férias atuais ou agendadas
+        const currentVacation = empVacations.find(v => {
+          const start = new Date(v.startDate);
+          const end = new Date(v.endDate);
+          return today >= start && today <= end;
+        });
+
+        const scheduledVacation = empVacations.find(v => {
+          const start = new Date(v.startDate);
+          return start > today;
+        });
+
+        // Cálculo do prazo máximo
+        const periodsTaken = empVacations.filter(v => v.status === 'taken' || new Date(v.endDate) < today).length;
+        
+        const deadlineDate = new Date(admissionDate);
+        deadlineDate.setFullYear(deadlineDate.getFullYear() + periodsTaken + 1);
+        deadlineDate.setDate(deadlineDate.getDate() - 1);
+
+        const diffTime = deadlineDate.getTime() - today.getTime();
+        const daysUntilDeadline = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let status: VacationStats['status'] = 'pending';
+        if (currentVacation) status = 'on_vacation';
+        else if (scheduledVacation) status = 'scheduled';
+        else if (daysUntilDeadline < 0) status = 'overdue';
+
+        let daysUntilReturn: number | undefined;
+        if (currentVacation) {
+          const returnDate = new Date(currentVacation.endDate);
+          const diffReturn = returnDate.getTime() - today.getTime();
+          daysUntilReturn = Math.ceil(diffReturn / (1000 * 60 * 60 * 24));
+        }
+
+        return {
+          employeeId: emp.id,
+          employeeName: emp.name,
+          admissionDate: admissionDate.toISOString().split('T')[0],
+          nextVacationDeadline: deadlineDate.toISOString().split('T')[0],
+          daysUntilDeadline,
+          status,
+          currentVacation: currentVacation || scheduledVacation,
+          daysUntilReturn,
+        };
+      })
+      .filter((stat): stat is any => stat !== null);
+  }, [employees, vacations]);
+
   return {
     totalFaltasMes, faltasDoDia, taxaAbsenteismo,
     dailyData, weekdayData,
     employeeData, filteredEmployees, filteredRegistroEmployees,
     topEmployees, topEmployee,
     leaderboardData, alerts,
+    vacationStats,
   };
 }

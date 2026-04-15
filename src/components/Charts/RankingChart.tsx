@@ -1,6 +1,6 @@
 import React from 'react';
 import { Trophy, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import type { EmployeeWithStats } from '../../../types';
+import type { EmployeeWithStats } from '../../types';
 
 interface RankingChartProps {
   data: EmployeeWithStats[];

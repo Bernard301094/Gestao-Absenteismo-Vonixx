@@ -1,3 +1,5 @@
+import React from 'react';
+
 // ─── Tipos de Domínio ────────────────────────────────────────────────────────
 
 export type Status = 'P' | 'F' | 'Fe' | 'A';
@@ -9,6 +11,26 @@ export type LoginShiftType = 'A' | 'B' | 'C' | 'D' | 'SUPERVISAO';
 export interface Employee {
   id: string;
   name: string;
+  admissionDate?: string; // ISO string YYYY-MM-DD
+}
+
+export interface Vacation {
+  id: string;
+  employeeId: string;
+  startDate: string; // ISO string YYYY-MM-DD
+  endDate: string;   // ISO string YYYY-MM-DD
+  status: 'scheduled' | 'taken';
+}
+
+export interface VacationStats {
+  employeeId: string;
+  employeeName: string;
+  admissionDate: string;
+  nextVacationDeadline: string;
+  daysUntilDeadline: number;
+  status: 'on_vacation' | 'scheduled' | 'pending' | 'overdue';
+  currentVacation?: Vacation;
+  daysUntilReturn?: number;
 }
 
 export interface GlobalEmployee extends Employee {

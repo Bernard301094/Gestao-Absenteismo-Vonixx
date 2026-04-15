@@ -1,7 +1,6 @@
 import React from 'react';
-import { LogOut, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, Calendar } from 'lucide-react';
 import { MONTH_NAMES, now } from '../../utils/constants';
-import styles from './Header.module.css';
 
 interface HeaderProps {
   isSupervision: boolean;
@@ -12,8 +11,8 @@ interface HeaderProps {
   setCurrentYear: (year: number) => void;
   supervisionShiftFilter: 'A'|'B'|'C'|'D';
   setSupervisionShiftFilter: (shift: 'A'|'B'|'C'|'D') => void;
-  activeTab: 'dashboard' | 'registro';
-  setActiveTab: (tab: 'dashboard' | 'registro') => void;
+  activeTab: 'dashboard' | 'registro' | 'ferias';
+  setActiveTab: (tab: 'dashboard' | 'registro' | 'ferias') => void;
   selectedDay: number | 'all';
   setSelectedDay: (day: number | 'all') => void;
   VALID_WORK_DAYS: number[];
@@ -243,6 +242,20 @@ export default function Header({
                 Registro
               </button>
             )}
+
+            <button
+              onClick={() => setActiveTab('ferias')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-widest transition-all duration-200 ${
+                activeTab === 'ferias'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                  : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <Calendar className={`w-4 h-4 transition-transform duration-200 ${
+                activeTab === 'ferias' ? 'scale-110' : ''
+              }`} />
+              Férias
+            </button>
           </div>
         </div>
       </div>

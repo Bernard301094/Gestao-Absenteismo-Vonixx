@@ -3,7 +3,7 @@ import {
   Search, Filter, ArrowUpDown, ArrowDown,
   TrendingUp, TrendingDown, Minus, MessageSquare, Activity
 } from 'lucide-react';
-import type { EmployeeWithStats, AttendanceRecord, NotesRecord } from '../../../types';
+import type { EmployeeWithStats, AttendanceRecord, NotesRecord } from '../../types';
 
 const STATUS_LABELS: Record<string, string> = {
   P: 'Presente',
