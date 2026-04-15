@@ -96,7 +96,7 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidEmployee() {
-      return hasOnlyAllowedFields(['name', 'createdAt', 'shift', 'admissionDate', 'role', 'dataAdmissao', 'data_admissao', 'vacationStart', 'dataInicioFerias', 'vacationEnd', 'dataFimFerias', 'returnDate', 'vacationStatus', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos']) &&
+      return hasOnlyAllowedFields(['name', 'createdAt', 'shift', 'admissionDate', 'role', 'cargo', 'dataAdmissao', 'data_admissao', 'vacationStart', 'dataInicioFerias', 'vacationEnd', 'dataFimFerias', 'returnDate', 'vacationStatus', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos', 'updatedAt']) &&
              hasRequiredFields(['name', 'createdAt', 'shift']) &&
              isValidString('name', 1, 100) &&
              request.resource.data.createdAt is timestamp &&
@@ -104,12 +104,15 @@ service cloud.firestore {
     }
 
     function isValidVacation() {
-      return hasOnlyAllowedFields(['employeeId', 'startDate', 'endDate', 'returnDate', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos', 'updatedAt']) &&
-             hasRequiredFields(['employeeId', 'startDate', 'endDate', 'status']) &&
-             isValidString('employeeId', 1, 50) &&
+      return hasOnlyAllowedFields(['employeeId', 'employeeName', 'startDate', 'endDate', 'returnDate', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos', 'updatedAt', 'createdAt', 'shift']) &&
+             hasRequiredFields(['employeeId', 'employeeName', 'startDate', 'endDate', 'status', 'createdAt', 'shift']) &&
+             isValidString('employeeId', 1, 100) &&
+             isValidString('employeeName', 1, 100) &&
              isValidString('startDate', 1, 20) &&
              isValidString('endDate', 1, 20) &&
-             request.resource.data.status in ['scheduled', 'taken'];
+             request.resource.data.status in ['scheduled', 'taken', 'cancelled'] &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.shift in ['A', 'B', 'C', 'D'];
     }
 
     function isValidAttendanceRecord() {
