@@ -161,7 +161,11 @@ export function useFirestoreData({
           employeeId: data.employeeId || d.id, // Fallback if employeeId is missing
           startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
           endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
-          status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken'
+          returnDate: normalizeDate(data.returnDate || ''),
+          status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
+          diasDireito: data.diasDireito ?? 30,
+          vendeuFerias: data.vendeuFerias ?? false,
+          diasVendidos: data.diasVendidos ?? 0,
         } as Vacation);
       });
       setVacations(vacs);

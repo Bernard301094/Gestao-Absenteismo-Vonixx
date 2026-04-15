@@ -58,7 +58,7 @@ const PIE_COLORS = [PALETTE.presentes.solid, PALETTE.faltas.solid, PALETTE.outro
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
 
-const CustomTooltip: React.FC<TooltipProps<number, string>> = ({ active, payload }) => {
+const CustomTooltip: React.FC<any> = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
 
   const entry = payload[0];

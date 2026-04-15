@@ -19,18 +19,34 @@ export interface Vacation {
   employeeId: string;
   startDate: string; // ISO string YYYY-MM-DD
   endDate: string;   // ISO string YYYY-MM-DD
+  returnDate?: string;
   status: 'scheduled' | 'taken';
+  diasDireito?: number;
+  vendeuFerias?: boolean;
+  diasVendidos?: number;
 }
+
+export type VacationStatusType = 
+  | 'aguardando_dados'
+  | 'em_ferias_agora'
+  | 'ferias_concluidas'
+  | 'ferias_agendadas'
+  | 'critico_vencido'
+  | 'agendar_em_breve'
+  | 'em_per_aquisitivo';
 
 export interface VacationStats {
   employeeId: string;
   employeeName: string;
   admissionDate: string;
-  nextVacationDeadline: string;
-  daysUntilDeadline: number;
-  status: 'on_vacation' | 'scheduled' | 'pending' | 'overdue';
+  inicioAquisitivo: string;
+  fimAquisitivo: string;
+  fimConcessivo: string;
+  dataLimiteConcessao: string;
+  diasParaVencer: number;
+  status: VacationStatusType;
   currentVacation?: Vacation;
-  daysUntilReturn?: number;
+  diasRestantes?: number;
 }
 
 export interface GlobalEmployee extends Employee {

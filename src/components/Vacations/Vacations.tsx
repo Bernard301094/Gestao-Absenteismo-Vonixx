@@ -35,18 +35,37 @@ export default function Vacations({
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  const [diasDireito, setDiasDireito] = useState(30);
+  const [vendeuFerias, setVendeuFerias] = useState(false);
+  const [diasVendidos, setDiasVendidos] = useState(0);
+
   const filteredStats = useMemo(() => {
     return vacationStats.filter(stat => 
       stat.employeeName.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => a.daysUntilDeadline - b.daysUntilDeadline);
+    ).sort((a, b) => {
+      // Prioritize critical/overdue, then scheduled, then others
+      const priority = {
+        critico_vencido: 1,
+        agendar_em_breve: 2,
+        em_ferias_agora: 3,
+        ferias_agendadas: 4,
+        em_per_aquisitivo: 5,
+        ferias_concluidas: 6,
+        aguardando_dados: 7
+      };
+      if (priority[a.status] !== priority[b.status]) {
+        return priority[a.status] - priority[b.status];
+      }
+      return a.diasParaVencer - b.diasParaVencer;
+    });
   }, [vacationStats, searchTerm]);
 
   const currentVacations = useMemo(() => {
-    return vacationStats.filter(stat => stat.status === 'on_vacation');
+    return vacationStats.filter(stat => stat.status === 'em_ferias_agora');
   }, [vacationStats]);
 
   const scheduledVacations = useMemo(() => {
-    return vacationStats.filter(stat => stat.status === 'scheduled');
+    return vacationStats.filter(stat => stat.status === 'ferias_agendadas');
   }, [vacationStats]);
 
   const employeesMissingAdmission = useMemo(() => {
@@ -55,19 +74,24 @@ export default function Vacations({
 
   const onAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEmployeeId || !startDate || !endDate) return;
+    if (!selectedEmployeeId || !startDate) return;
 
     await handleAddVacation({
       employeeId: selectedEmployeeId,
       startDate,
-      endDate,
-      status: 'scheduled'
+      endDate: '', // Will be calculated by the hook based on diasDireito and diasVendidos
+      status: 'scheduled',
+      diasDireito,
+      vendeuFerias,
+      diasVendidos: vendeuFerias ? diasVendidos : 0
     });
 
     setShowAddModal(false);
     setSelectedEmployeeId('');
     setStartDate('');
-    setEndDate('');
+    setDiasDireito(30);
+    setVendeuFerias(false);
+    setDiasVendidos(0);
   };
 
   return (
@@ -129,7 +153,7 @@ export default function Vacations({
           <div>
             <p className="text-sm font-medium text-gray-500">Prazos Próximos</p>
             <p className="text-2xl font-black text-gray-900">
-              {vacationStats.filter(s => s.daysUntilDeadline < 60 && s.status !== 'on_vacation').length}
+              {vacationStats.filter(s => s.diasParaVencer < 60 && s.status !== 'em_ferias_agora').length}
             </p>
           </div>
         </motion.div>
@@ -194,40 +218,54 @@ export default function Vacations({
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
-                        <span className={`text-xs font-bold ${stat.daysUntilDeadline < 30 ? 'text-red-600' : stat.daysUntilDeadline < 90 ? 'text-amber-600' : 'text-gray-700'}`}>
-                          {new Date(stat.nextVacationDeadline).toLocaleDateString('pt-BR')}
+                        <span className={`text-xs font-bold ${stat.diasParaVencer < 30 ? 'text-red-600' : stat.diasParaVencer < 90 ? 'text-amber-600' : 'text-gray-700'}`}>
+                          {new Date(stat.dataLimiteConcessao).toLocaleDateString('pt-BR')}
                         </span>
                         <span className="text-[10px] text-gray-400">
-                          {stat.daysUntilDeadline < 0 
-                            ? `Vencido há ${Math.abs(stat.daysUntilDeadline)} dias` 
-                            : `Faltam ${stat.daysUntilDeadline} dias`}
+                          {stat.diasParaVencer < 0 
+                            ? `Vencido há ${Math.abs(stat.diasParaVencer)} dias` 
+                            : `Faltam ${stat.diasParaVencer} dias`}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      {stat.status === 'on_vacation' ? (
+                      {stat.status === 'em_ferias_agora' ? (
                         <div className="flex flex-col gap-1">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-                            Em Férias
+                            Em Férias AGORA
                           </span>
                           <span className="text-[10px] text-blue-600 font-medium ml-1">
-                            Volta em {stat.daysUntilReturn} dias
+                            Volta em {stat.diasRestantes} dias
                           </span>
                         </div>
-                      ) : stat.status === 'scheduled' ? (
+                      ) : stat.status === 'ferias_agendadas' ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200">
                           <CheckCircle2 className="w-3 h-3" />
                           Agendada
                         </span>
-                      ) : stat.status === 'overdue' ? (
+                      ) : stat.status === 'critico_vencido' ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
                           <AlertTriangle className="w-3 h-3" />
-                          Vencida
+                          Crítico / Vencido
+                        </span>
+                      ) : stat.status === 'agendar_em_breve' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
+                          <Clock className="w-3 h-3" />
+                          Agendar em breve
+                        </span>
+                      ) : stat.status === 'em_per_aquisitivo' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200">
+                          Em Per. Aquisitivo
+                        </span>
+                      ) : stat.status === 'ferias_concluidas' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-600 border border-gray-200">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Férias Concluídas
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-600 border border-gray-200">
-                          Pendente
+                          Aguardando dados
                         </span>
                       )}
                     </td>
@@ -281,9 +319,9 @@ export default function Vacations({
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Início</label>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Início das Férias</label>
                     <input
                       type="date"
                       required
@@ -292,16 +330,45 @@ export default function Vacations({
                       className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Fim</label>
-                    <input
-                      type="date"
-                      required
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                    />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">Dias de Direito</label>
+                      <input
+                        type="number"
+                        required
+                        value={diasDireito}
+                        onChange={(e) => setDiasDireito(Number(e.target.value))}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">Vendeu Férias?</label>
+                      <select
+                        value={vendeuFerias ? 'sim' : 'nao'}
+                        onChange={(e) => setVendeuFerias(e.target.value === 'sim')}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      >
+                        <option value="nao">Não</option>
+                        <option value="sim">Sim</option>
+                      </select>
+                    </div>
                   </div>
+
+                  {vendeuFerias && (
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700 mb-1">Dias Vendidos (Máx 10)</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max="10"
+                        value={diasVendidos}
+                        onChange={(e) => setDiasVendidos(Number(e.target.value))}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button

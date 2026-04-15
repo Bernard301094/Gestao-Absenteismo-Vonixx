@@ -241,6 +241,18 @@ export function useDashboardAnalytics({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const addYears = (date: Date, years: number) => {
+      const d = new Date(date);
+      d.setFullYear(d.getFullYear() + years);
+      return d;
+    };
+
+    const addDays = (date: Date, days: number) => {
+      const d = new Date(date);
+      d.setDate(d.getDate() + days);
+      return d;
+    };
+
     return employees
       .filter(emp => emp.admissionDate && emp.admissionDate.length >= 10) // Only process employees with a valid-looking date
       .map(emp => {
@@ -251,51 +263,79 @@ export function useDashboardAnalytics({
           return null;
         }
 
-        const empVacations = vacations.filter(v => v.employeeId === emp.id);
+        // Process all vacations for this employee to calculate exact end dates
+        const processedVacations = vacations
+          .filter(v => v.employeeId === emp.id)
+          .map(v => {
+            const diasDireito = v.diasDireito ?? 30;
+            const diasVendidos = v.vendeuFerias ? (v.diasVendidos ?? 0) : 0;
+            const diasAGozar = diasDireito - diasVendidos;
+            
+            const startDate = new Date(v.startDate);
+            // Data Fim Férias: (Data Início Férias) + (Dias a Gozar) - 1 día
+            const endDate = addDays(startDate, diasAGozar - 1);
+            // Data de Retorno: Data Fim Férias + 1 día
+            const returnDate = addDays(endDate, 1);
+
+            return {
+              ...v,
+              endDate: endDate.toISOString().split('T')[0],
+              returnDate: returnDate.toISOString().split('T')[0],
+              parsedStartDate: startDate,
+              parsedEndDate: endDate,
+              parsedReturnDate: returnDate,
+            };
+          });
+
+        // Find current or scheduled vacation
+        const currentVacation = processedVacations.find(v => today >= v.parsedStartDate && today <= v.parsedEndDate);
+        const scheduledVacation = processedVacations.find(v => v.parsedStartDate > today);
+        const activeVacation = currentVacation || scheduledVacation;
+
+        // Calculate periods taken (only fully completed vacations)
+        const periodsTaken = processedVacations.filter(v => v.parsedEndDate < today).length;
         
-        // Encontrar férias atuais ou agendadas
-        const currentVacation = empVacations.find(v => {
-          const start = new Date(v.startDate);
-          const end = new Date(v.endDate);
-          return today >= start && today <= end;
-        });
+        const inicioAquisitivo = addYears(admissionDate, periodsTaken);
+        const fimAquisitivo = addYears(inicioAquisitivo, 1);
+        const fimConcessivo = addYears(fimAquisitivo, 1);
+        const dataLimiteConcessao = addDays(fimConcessivo, -30);
 
-        const scheduledVacation = empVacations.find(v => {
-          const start = new Date(v.startDate);
-          return start > today;
-        });
+        const diasParaVencer = Math.ceil((dataLimiteConcessao.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        // Cálculo do prazo máximo
-        const periodsTaken = empVacations.filter(v => v.status === 'taken' || new Date(v.endDate) < today).length;
-        
-        const deadlineDate = new Date(admissionDate);
-        deadlineDate.setFullYear(deadlineDate.getFullYear() + periodsTaken + 1);
-        deadlineDate.setDate(deadlineDate.getDate() - 1);
+        let status: VacationStats['status'] = 'aguardando_dados';
+        let diasRestantes: number | undefined;
 
-        const diffTime = deadlineDate.getTime() - today.getTime();
-        const daysUntilDeadline = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        let status: VacationStats['status'] = 'pending';
-        if (currentVacation) status = 'on_vacation';
-        else if (scheduledVacation) status = 'scheduled';
-        else if (daysUntilDeadline < 0) status = 'overdue';
-
-        let daysUntilReturn: number | undefined;
         if (currentVacation) {
-          const returnDate = new Date(currentVacation.endDate);
-          const diffReturn = returnDate.getTime() - today.getTime();
-          daysUntilReturn = Math.ceil(diffReturn / (1000 * 60 * 60 * 24));
+          status = 'em_ferias_agora';
+          diasRestantes = Math.ceil((currentVacation.parsedEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        } else if (scheduledVacation) {
+          status = 'ferias_agendadas';
+        } else if (diasParaVencer <= 0) {
+          status = 'critico_vencido';
+        } else if (diasParaVencer <= 60) {
+          status = 'agendar_em_breve';
+        } else if (today < fimAquisitivo) {
+          status = 'em_per_aquisitivo';
+        } else {
+          // Fallback if none of the above, but has completed aquisitive period and not yet in warning
+          status = 'ferias_concluidas'; // or just pending, but let's map to ferias_concluidas if they just finished one, or keep it as a default
+          // Actually, if they are between fimAquisitivo and dataLimiteConcessao - 60, they are just "pending"
+          // Let's use 'ferias_concluidas' if they have no active vacation and are in a safe period
+          status = 'ferias_concluidas';
         }
 
         return {
           employeeId: emp.id,
           employeeName: emp.name,
           admissionDate: admissionDate.toISOString().split('T')[0],
-          nextVacationDeadline: deadlineDate.toISOString().split('T')[0],
-          daysUntilDeadline,
+          inicioAquisitivo: inicioAquisitivo.toISOString().split('T')[0],
+          fimAquisitivo: fimAquisitivo.toISOString().split('T')[0],
+          fimConcessivo: fimConcessivo.toISOString().split('T')[0],
+          dataLimiteConcessao: dataLimiteConcessao.toISOString().split('T')[0],
+          diasParaVencer,
           status,
-          currentVacation: currentVacation || scheduledVacation,
-          daysUntilReturn,
+          currentVacation: activeVacation,
+          diasRestantes,
         };
       })
       .filter((stat): stat is any => stat !== null);
