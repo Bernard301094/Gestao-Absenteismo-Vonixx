@@ -4,7 +4,7 @@ import { isWorkDay } from '../utils/dateUtils';
 import type {
   Employee, GlobalEmployee, AttendanceRecord, NotesRecord,
   EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert,
-  Vacation, VacationStats
+  Vacation, VacationStats, VacationStatusType
 } from '../types';
 
 interface UseDashboardAnalyticsParams {
@@ -254,19 +254,20 @@ export function useDashboardAnalytics({
     };
 
     return employees
-      .filter(emp => emp.admissionDate && emp.admissionDate.length >= 10) // Only process employees with a valid-looking date
       .map(emp => {
-        const admissionDate = new Date(emp.admissionDate!);
+        const empVacations = vacations.filter(v => v.employeeId === emp.id);
+        const hasAdmission = emp.admissionDate && emp.admissionDate.length >= 10;
+        let admissionDate: Date | null = null;
         
-        // Check for invalid dates or extremely old dates (like 1900)
-        if (isNaN(admissionDate.getTime()) || admissionDate.getFullYear() < 1970) {
-          return null;
+        if (hasAdmission) {
+          admissionDate = new Date(emp.admissionDate!);
+          if (isNaN(admissionDate.getTime()) || admissionDate.getFullYear() < 1970) {
+            admissionDate = null;
+          }
         }
 
         // Process all vacations for this employee to calculate exact end dates
-        const processedVacations = vacations
-          .filter(v => v.employeeId === emp.id)
-          .map(v => {
+        const processedVacations = empVacations.map(v => {
             const diasDireito = v.diasDireito ?? 30;
             const diasVendidos = v.vendeuFerias ? (v.diasVendidos ?? 0) : 0;
             const diasAGozar = diasDireito - diasVendidos;
@@ -284,6 +285,9 @@ export function useDashboardAnalytics({
               parsedStartDate: startDate,
               parsedEndDate: endDate,
               parsedReturnDate: returnDate,
+              diasDireito,
+              diasVendidos,
+              diasAGozar
             };
           });
 
@@ -292,8 +296,36 @@ export function useDashboardAnalytics({
         const scheduledVacation = processedVacations.find(v => v.parsedStartDate > today);
         const activeVacation = currentVacation || scheduledVacation;
 
+        if (!admissionDate) {
+          return {
+            employeeId: emp.id,
+            employeeName: emp.name,
+            cargo: emp.role || 'Operador de Produção',
+            admissionDate: '',
+            numeroPeriodo: '',
+            inicioAquisitivo: '',
+            fimAquisitivo: '',
+            fimConcessivo: '',
+            diasDireito: activeVacation?.diasDireito ?? 30,
+            vendeuFerias: activeVacation?.vendeuFerias ? 'Sim' : 'Não',
+            diasVendidos: activeVacation?.diasVendidos ?? 0,
+            diasAGozar: activeVacation?.diasAGozar ?? 30,
+            dataLimiteConcessao: '',
+            dataInicioFerias: activeVacation?.startDate || '',
+            dataFimFerias: activeVacation?.endDate || '',
+            diasGozados: activeVacation?.diasAGozar ?? 30,
+            diasParaVencer: '',
+            status: activeVacation ? 'agendado_sem_admissao' : 'aguardando_dados',
+            currentVacation: activeVacation,
+            diasRestantes: '',
+            dataRetorno: activeVacation?.returnDate || '',
+            observacoes: ''
+          };
+        }
+
         // Calculate periods taken (only fully completed vacations)
         const periodsTaken = processedVacations.filter(v => v.parsedEndDate < today).length;
+        const numeroPeriodo = periodsTaken + 1;
         
         const inicioAquisitivo = addYears(admissionDate, periodsTaken);
         const fimAquisitivo = addYears(inicioAquisitivo, 1);
@@ -302,8 +334,8 @@ export function useDashboardAnalytics({
 
         const diasParaVencer = Math.ceil((dataLimiteConcessao.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
-        let status: VacationStats['status'] = 'aguardando_dados';
-        let diasRestantes: number | undefined;
+        let status: VacationStatusType = 'aguardando_dados';
+        let diasRestantes: number | string = '';
 
         if (currentVacation) {
           status = 'em_ferias_agora';
@@ -317,25 +349,32 @@ export function useDashboardAnalytics({
         } else if (today < fimAquisitivo) {
           status = 'em_per_aquisitivo';
         } else {
-          // Fallback if none of the above, but has completed aquisitive period and not yet in warning
-          status = 'ferias_concluidas'; // or just pending, but let's map to ferias_concluidas if they just finished one, or keep it as a default
-          // Actually, if they are between fimAquisitivo and dataLimiteConcessao - 60, they are just "pending"
-          // Let's use 'ferias_concluidas' if they have no active vacation and are in a safe period
           status = 'ferias_concluidas';
         }
 
         return {
           employeeId: emp.id,
           employeeName: emp.name,
+          cargo: emp.role || 'Operador de Produção',
           admissionDate: admissionDate.toISOString().split('T')[0],
+          numeroPeriodo,
           inicioAquisitivo: inicioAquisitivo.toISOString().split('T')[0],
           fimAquisitivo: fimAquisitivo.toISOString().split('T')[0],
           fimConcessivo: fimConcessivo.toISOString().split('T')[0],
+          diasDireito: activeVacation?.diasDireito ?? 30,
+          vendeuFerias: activeVacation?.vendeuFerias ? 'Sim' : 'Não',
+          diasVendidos: activeVacation?.diasVendidos ?? 0,
+          diasAGozar: activeVacation?.diasAGozar ?? 30,
           dataLimiteConcessao: dataLimiteConcessao.toISOString().split('T')[0],
+          dataInicioFerias: activeVacation?.startDate || '',
+          dataFimFerias: activeVacation?.endDate || '',
+          diasGozados: activeVacation?.diasAGozar ?? 30,
           diasParaVencer,
           status,
           currentVacation: activeVacation,
           diasRestantes,
+          dataRetorno: activeVacation?.returnDate || '',
+          observacoes: ''
         };
       })
       .filter((stat): stat is any => stat !== null);

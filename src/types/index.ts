@@ -12,6 +12,7 @@ export interface Employee {
   id: string;
   name: string;
   admissionDate?: string; // ISO string YYYY-MM-DD
+  role?: string;
 }
 
 export interface Vacation {
@@ -33,20 +34,32 @@ export type VacationStatusType =
   | 'ferias_agendadas'
   | 'critico_vencido'
   | 'agendar_em_breve'
-  | 'em_per_aquisitivo';
+  | 'em_per_aquisitivo'
+  | 'agendado_sem_admissao';
 
 export interface VacationStats {
   employeeId: string;
   employeeName: string;
+  cargo: string;
   admissionDate: string;
+  numeroPeriodo: number | string;
   inicioAquisitivo: string;
   fimAquisitivo: string;
   fimConcessivo: string;
+  diasDireito: number | string;
+  vendeuFerias: string;
+  diasVendidos: number | string;
+  diasAGozar: number | string;
   dataLimiteConcessao: string;
-  diasParaVencer: number;
+  dataInicioFerias: string;
+  dataFimFerias: string;
+  diasGozados: number | string;
+  diasParaVencer: number | string;
   status: VacationStatusType;
   currentVacation?: Vacation;
-  diasRestantes?: number;
+  diasRestantes: number | string;
+  dataRetorno: string;
+  observacoes: string;
 }
 
 export interface GlobalEmployee extends Employee {
