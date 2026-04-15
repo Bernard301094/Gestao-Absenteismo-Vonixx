@@ -41,10 +41,20 @@ function daysBetween(from: Date, to: Date): number {
   return Math.round(diff / (1000 * 60 * 60 * 24));
 }
 
-/** Diferença em meses completos entre duas datas */
-function monthsBetween(from: Date, to: Date): number {
-  return (to.getFullYear() - from.getFullYear()) * 12 +
-    (to.getMonth() - from.getMonth());
+/** Diferença em anos completos entre duas datas (DATADIF "Y") */
+function completedYears(from: Date, to: Date): number {
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
+  let years = to.getFullYear() - from.getFullYear();
+  const m = to.getMonth() - from.getMonth();
+  if (m < 0 || (m === 0 && to.getDate() < from.getDate())) {
+    years--;
+  }
+  return years;
+}
+
+/** Simula a função DATA(ano; mês; dia) do Excel */
+function excelDate(y: number, m: number, d: number): Date {
+  return new Date(y, m - 1, d);
 }
 
 // ─── Cálculo de Período CLT ───────────────────────────────────────────────────
@@ -60,14 +70,28 @@ interface PeriodInfo {
 
 /**
  * Calcula as datas do período aquisitivo/concessivo para um ciclo específico.
- * Ciclo 0 = 1º ano completo de trabalho.
+ * Baseado nas fórmulas Excel:
+ * Inic. Per. Aquisitivo: DATA(ANO(Adm)+Periodo-1; MÊS(Adm); DIA(Adm))
+ * Fim Per. Aquisitivo: DATA(ANO(Adm)+Periodo; MÊS(Adm); DIA(Adm))
+ * Fim Per. Concessivo: DATA(ANO(Adm)+Periodo+1; MÊS(Adm); DIA(Adm))
  */
-function getPeriod(admDate: Date, cycle: number): PeriodInfo {
-  const inicioAquisitivo = addMonths(admDate, cycle * 12);
-  const fimAquisitivo = addMonths(admDate, (cycle + 1) * 12);
-  const fimConcessivo = addMonths(admDate, (cycle + 2) * 12);
+function getPeriod(admDate: Date, periodNumber: number): PeriodInfo {
+  const y = admDate.getFullYear();
+  const m = admDate.getMonth() + 1;
+  const d = admDate.getDate();
+
+  const inicioAquisitivo = excelDate(y + periodNumber - 1, m, d);
+  const fimAquisitivo = excelDate(y + periodNumber, m, d);
+  const fimConcessivo = excelDate(y + periodNumber + 1, m, d);
   const dataLimiteConcessao = addDays(fimConcessivo, -30);
-  return { cycle, inicioAquisitivo, fimAquisitivo, fimConcessivo, dataLimiteConcessao };
+
+  return { 
+    cycle: periodNumber - 1, 
+    inicioAquisitivo, 
+    fimAquisitivo, 
+    fimConcessivo, 
+    dataLimiteConcessao 
+  };
 }
 
 // ─── Cálculo de Datas de Férias ───────────────────────────────────────────────
@@ -135,6 +159,13 @@ export function computeVacationStats(
 
     // ── Sem data de admissão ────────────────────────────────────────────────
     if (!emp.admissionDate || emp.admissionDate.length < 10) {
+      const empVacations = vacations
+        .filter(v => v.employeeId === emp.id)
+        .sort((a, b) => a.startDate.localeCompare(b.startDate));
+      
+      const activeVacation = empVacations.find(v => todayISO >= v.startDate && todayISO <= (v.endDate || '')) || 
+                             empVacations.find(v => v.startDate > todayISO);
+
       return {
         ...base,
         inicioAquisitivo: '',
@@ -142,7 +173,11 @@ export function computeVacationStats(
         fimConcessivo: '',
         dataLimiteConcessao: '',
         diasParaVencer: 0,
-        status: 'aguardando_dados' as VacationStatusType,
+        status: activeVacation ? ('agendado_sem_admissao' as VacationStatusType) : ('aguardando_dados' as VacationStatusType),
+        currentVacation: activeVacation,
+        dataInicioFerias: activeVacation?.startDate || '',
+        dataFimFerias: activeVacation?.endDate || '',
+        dataRetorno: activeVacation?.returnDate || '',
       };
     }
 
@@ -158,47 +193,45 @@ export function computeVacationStats(
         status: 'aguardando_dados' as VacationStatusType,
       };
     }
-    const totalMonths = monthsBetween(admDate, today);
-    const earnedCycles = Math.floor(totalMonths / 12);
 
     // ── Férias do funcionário, ordenadas por início ───────────────────────
     const empVacations = vacations
       .filter(v => v.employeeId === emp.id)
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-    // ── Encontra o ciclo alvo (focado no presente em diante) ──────────────
-    let targetCycle = 0;
-    const currentYear = today.getFullYear();
-
-    // Percorremos os ciclos para achar o primeiro que não foi "gozado" (taken)
-    // Começamos a busca de forma que foque no "ano presente em diante"
-    for (let c = 0; c <= earnedCycles + 1; c++) {
-      const p = getPeriod(admDate, c);
-      
-      // Se o período concessivo terminou antes do ano atual, pulamos para focar no presente
-      // A menos que seja o único ciclo disponível (c == earnedCycles)
-      if (p.fimConcessivo.getFullYear() < currentYear && c < earnedCycles) {
-        continue;
-      }
-
-      const fimAqISO = toISO(p.fimAquisitivo);
-      const fimConISO = toISO(p.fimConcessivo);
-
-      const takenVac = empVacations.find(
-        v => v.status === 'taken' && v.startDate >= fimAqISO && v.startDate < fimConISO,
-      );
-
-      if (!takenVac) {
-        targetCycle = c;
-        break;
-      }
-      
-      targetCycle = c + 1;
+    // ── Encontra o ciclo alvo segundo a fórmula Excel fornecida ───────────
+    // Periodo: =SE(D4="";"";SE(E(P4>=L4;O4<>"";O4<HOJE());DATADIF(D4;HOJE();"Y")+2;DATADIF(D4;HOJE();"Y")+1))
+    
+    const years = completedYears(admDate, today);
+    
+    // Verificamos se as férias do ciclo atual (years + 1) já foram concluídas
+    // Nota: years + 1 é o período padrão.
+    const pCurrent = getPeriod(admDate, years + 1);
+    const fimAqISO_C = toISO(pCurrent.inicioAquisitivo);
+    const fimConISO_C = toISO(pCurrent.fimConcessivo);
+    
+    const currentVac = empVacations.find(
+      v => v.startDate >= fimAqISO_C && v.startDate < fimConISO_C
+    );
+    
+    const diasAGozar_C = (currentVac?.diasDireito ?? 30) - (currentVac?.diasVendidos ?? 0);
+    let diasGozados_C = 0;
+    if (currentVac?.startDate && currentVac?.endDate) {
+      diasGozados_C = daysBetween(parseISO(currentVac.startDate), parseISO(currentVac.endDate)) + 1;
     }
+    
+    const isFinished = currentVac && 
+                       currentVac.status === 'taken' && 
+                       diasGozados_C >= diasAGozar_C && 
+                       currentVac.endDate && parseISO(currentVac.endDate) < today;
 
-    const period = getPeriod(admDate, targetCycle);
-    const fimAqISO = toISO(period.fimAquisitivo);
+    const periodNumber = isFinished ? years + 2 : years + 1;
+
+    const period = getPeriod(admDate, periodNumber);
+    const fimAqISO = toISO(period.inicioAquisitivo);
     const fimConISO = toISO(period.fimConcessivo);
+    
+    // Dias p/ Vencer: =SE(M4="";"";M4-HOJE())
     const diasParaVencer = daysBetween(today, period.dataLimiteConcessao);
 
     // ── Férias deste ciclo ────────────────────────────────────────────────
@@ -206,40 +239,41 @@ export function computeVacationStats(
       v => v.startDate >= fimAqISO && v.startDate < fimConISO,
     );
 
-    // ── Determina Status ──────────────────────────────────────────────────
+    // ── Determina Status conforme fórmula Excel ───────────────────────────
     let status: VacationStatusType;
-    let diasRestantes: number | undefined;
+    let diasRestantes: number | string = '';
 
-    if (currentVacation) {
-      const vStart = currentVacation.startDate;
+    const L4 = (currentVacation?.diasDireito ?? 30) - (currentVacation?.diasVendidos ?? 0);
+    const N4 = currentVacation?.startDate || '';
+    const O4 = currentVacation?.endDate || '';
+    const P4 = (N4 && O4) ? daysBetween(parseISO(N4), parseISO(O4)) + 1 : 0;
+    const H4 = period.fimConcessivo;
+    const M4 = period.dataLimiteConcessao;
+    const G4 = period.fimAquisitivo;
 
-      // Recalcula endDate a partir dos dias (prioriza dado armazenado)
-      const diasAGozar =
-        (currentVacation.diasDireito ?? 30) - (currentVacation.diasVendidos ?? 0);
-      const computedEnd =
-        currentVacation.endDate ||
-        toISO(addDays(parseISO(vStart), diasAGozar - 1));
-
-      if (todayISO >= vStart && todayISO <= computedEnd) {
-        status = 'em_ferias_agora';
-        diasRestantes = daysBetween(today, parseISO(computedEnd));
-      } else if (todayISO > computedEnd) {
-        status = 'ferias_concluidas';
-      } else {
-        status = 'ferias_agendadas';
-      }
-    } else if (diasParaVencer <= 0) {
-      status = 'critico_vencido';
-    } else if (diasParaVencer <= 60) {
+    if (P4 >= L4 && O4 && parseISO(O4) < today) {
+      status = 'ferias_concluidas';
+    } else if (N4 && todayISO >= N4 && todayISO <= O4) {
+      status = 'em_ferias_agora';
+      // Dias restantes: =SE(R4="🏖️ Em Férias AGORA";O4-HOJE()+1;"")
+      diasRestantes = daysBetween(today, parseISO(O4)) + 1;
+    } else if (N4 && O4 && parseISO(O4) > today) {
+      status = 'ferias_agendadas';
+    } else if (today > H4) {
+      status = 'critico_vencido'; // VENCIDO - Agendar JÁ
+    } else if (today > M4) {
+      status = 'critico_vencido'; // Crítico - Agendar JÁ
+    } else if (daysBetween(today, M4) <= 60) {
       status = 'agendar_em_breve';
+    } else if (today < G4) {
+      status = 'em_per_aquisitivo';
     } else {
-      // Tem direito adquirido, mais de 60 dias de prazo, nada agendado
-      status = 'agendar_em_breve';
+      status = 'a_vencer'; // "🟢 A Vencer"
     }
 
     return {
       ...base,
-      numeroPeriodo: (targetCycle + 1).toString(),
+      numeroPeriodo: periodNumber.toString(),
       inicioAquisitivo: toISO(period.inicioAquisitivo),
       fimAquisitivo: toISO(period.fimAquisitivo),
       fimConcessivo: toISO(period.fimConcessivo),
@@ -251,10 +285,13 @@ export function computeVacationStats(
       diasDireito: currentVacation?.diasDireito?.toString() || '30',
       vendeuFerias: currentVacation?.vendeuFerias ? 'Sim' : 'Não',
       diasVendidos: currentVacation?.diasVendidos?.toString() || '0',
-      diasAGozar: ((currentVacation?.diasDireito ?? 30) - (currentVacation?.diasVendidos ?? 0)).toString(),
-      dataInicioFerias: currentVacation?.startDate || '',
-      dataFimFerias: currentVacation?.endDate || '',
-      dataRetorno: currentVacation?.returnDate || '',
+      diasAGozar: L4.toString(),
+      dataInicioFerias: N4,
+      dataFimFerias: O4,
+      dataRetorno: (status === 'em_ferias_agora' || status === 'ferias_agendadas') && O4
+        ? toISO(addDays(parseISO(O4), 1))
+        : '',
+      diasGozados: P4.toString(),
     };
   });
 }

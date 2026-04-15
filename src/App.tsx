@@ -12,6 +12,7 @@ import Header from './components/Header/Header';
 const Dashboard   = lazy(() => import('./components/Dashboard/Dashboard'));
 const Registro    = lazy(() => import('./components/Registro/Registro'));
 const Vacations   = lazy(() => import('./components/Vacations/Vacations'));
+const VacationDashboard = lazy(() => import('./components/Vacations/VacationDashboard'));
 const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/AddEmployeeModal'));
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
 const EmployeeDetailModal = lazy(() => import('./components/EmployeeDetailModal/EmployeeDetailModal'));
@@ -32,7 +33,7 @@ const INITIAL_YEAR = now.getFullYear();
 
 export default function App() {
   // ─── UI State ───────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'registro' | 'ferias'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard'>('dashboard');
   const [currentMonth, setCurrentMonth] = useState(INITIAL_MONTH);
   const [currentYear, setCurrentYear] = useState(INITIAL_YEAR);
   const [selectedDay, setSelectedDay] = useState<number | 'all'>('all');
@@ -240,6 +241,14 @@ export default function App() {
                 handleDeleteVacation={data.handleDeleteVacation}
                 handleUpdateVacation={data.handleUpdateVacation}
                 updateEmployeeData={data.updateEmployeeData}
+              />
+            )}
+
+            {activeTab === 'ferias_dashboard' && (
+              <VacationDashboard
+                vacationStats={analytics.vacationStats}
+                vacationMonthlyBreakdown={analytics.vacationMonthlyBreakdown}
+                currentShift={auth.currentShift || 'A'}
               />
             )}
           </Suspense>

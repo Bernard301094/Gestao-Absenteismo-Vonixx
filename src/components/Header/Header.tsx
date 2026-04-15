@@ -11,8 +11,8 @@ interface HeaderProps {
   setCurrentYear: (year: number) => void;
   supervisionShiftFilter: 'A'|'B'|'C'|'D';
   setSupervisionShiftFilter: (shift: 'A'|'B'|'C'|'D') => void;
-  activeTab: 'dashboard' | 'registro' | 'ferias';
-  setActiveTab: (tab: 'dashboard' | 'registro' | 'ferias') => void;
+  activeTab: 'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard';
+  setActiveTab: (tab: 'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard') => void;
   selectedDay: number | 'all';
   setSelectedDay: (day: number | 'all') => void;
   VALID_WORK_DAYS: number[];
@@ -255,6 +255,20 @@ export default function Header({
                 activeTab === 'ferias' ? 'scale-110' : ''
               }`} />
               Férias
+            </button>
+
+            <button
+              onClick={() => setActiveTab('ferias_dashboard')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-widest transition-all duration-200 ${
+                activeTab === 'ferias_dashboard'
+                  ? 'bg-orange-600 text-white shadow-md shadow-orange-200'
+                  : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <LayoutDashboard className={`w-4 h-4 transition-transform duration-200 ${
+                activeTab === 'ferias_dashboard' ? 'scale-110' : ''
+              }`} />
+              Dash Férias
             </button>
           </div>
         </div>

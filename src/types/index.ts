@@ -36,7 +36,8 @@ export type VacationStatusType =
   | 'critico_vencido'
   | 'agendar_em_breve'
   | 'em_per_aquisitivo'
-  | 'agendado_sem_admissao';
+  | 'agendado_sem_admissao'
+  | 'a_vencer';
 
 export interface VacationStats {
   employeeId: string;

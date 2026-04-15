@@ -44,56 +44,70 @@ function StatusBadge({ stat }: { stat: VacationStats }) {
     case 'em_ferias_agora':
       return (
         <div className="flex flex-col gap-1">
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
-            Em Férias AGORA
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 border border-orange-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse" />
+            🏖️ Em Férias AGORA
           </span>
-          {stat.diasRestantes !== undefined && (
-            <span className="text-[10px] text-blue-600 font-medium ml-1">
-              Volta em {stat.diasRestantes} dia{stat.diasRestantes !== 1 ? 's' : ''}
+          {stat.diasRestantes !== undefined && stat.diasRestantes !== '' && (
+            <span className="text-[10px] text-orange-600 font-medium ml-1">
+              {stat.diasRestantes} dia{stat.diasRestantes !== 1 ? 's' : ''} restantes
             </span>
           )}
         </div>
       );
     case 'ferias_agendadas':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200">
-          <CheckCircle2 className="w-3 h-3" />
-          Agendada
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+          <CalendarDays className="w-3 h-3" />
+          📅 Agendado
         </span>
       );
     case 'critico_vencido':
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
           <AlertTriangle className="w-3 h-3" />
-          Crítico / Vencido
+          🔴 Crítico / Vencido
         </span>
       );
     case 'agendar_em_breve':
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200">
           <Clock className="w-3 h-3" />
-          Agendar em breve
+          🟡 Agendar em Breve
         </span>
       );
     case 'em_per_aquisitivo':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-100 text-cyan-700 border border-cyan-200">
           <CalendarDays className="w-3 h-3" />
-          Per. Aquisitivo
+          🔵 Em Per. Aquisitivo
         </span>
       );
     case 'ferias_concluidas':
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-600 border border-gray-200">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200">
           <CheckCircle2 className="w-3 h-3" />
-          Concluídas
+          ✅ Concluído
+        </span>
+      );
+    case 'agendado_sem_admissao':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-500 border border-blue-100 italic">
+          <CalendarDays className="w-3 h-3" />
+          📅 Agendado (sem admissão)
+        </span>
+      );
+    case 'a_vencer':
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-green-100 text-green-700 border border-green-200">
+          <CheckCircle2 className="w-3 h-3" />
+          🟢 A Vencer
         </span>
       );
     default:
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-gray-100 text-gray-400 border border-gray-200">
-          Aguardando dados
+          ⬜ Aguardando dados
         </span>
       );
   }
@@ -431,9 +445,10 @@ export default function Vacations({
     agendar_em_breve: 2,
     em_ferias_agora: 3,
     ferias_agendadas: 4,
-    em_per_aquisitivo: 5,
-    ferias_concluidas: 6,
-    aguardando_dados: 7,
+    a_vencer: 5,
+    em_per_aquisitivo: 6,
+    ferias_concluidas: 7,
+    aguardando_dados: 8,
   };
 
   const filteredStats = useMemo(

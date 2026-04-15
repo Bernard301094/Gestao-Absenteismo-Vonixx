@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { AlertCircle, XCircle } from 'lucide-react';
 import { isWorkDay } from '../utils/dateUtils';
+import { computeVacationStats } from './useVacationStats';
 import type {
   Employee, GlobalEmployee, AttendanceRecord, NotesRecord,
   EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert,
@@ -236,212 +237,28 @@ export function useDashboardAnalytics({
   }, [isSupervision, globalCompletions, globalEmployees, globalAttendance, currentMonth, currentYear]);
 
   // ─── Analytics de Férias ───────────────────────────────────────────────────
-
-  const vacationStats = useMemo<VacationStats[]>(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const addYears = (date: Date, years: number) => {
-      const d = new Date(date);
-      d.setFullYear(d.getFullYear() + years);
-      return d;
-    };
-
-    const addDays = (date: Date, days: number) => {
-      const d = new Date(date);
-      d.setDate(d.getDate() + days);
-      return d;
-    };
-
-    return employees
-      .map(emp => {
-        const empVacations = vacations.filter(v => v.employeeId === emp.id);
-        const hasAdmission = emp.admissionDate && emp.admissionDate.length >= 10;
-        let admissionDate: Date | null = null;
-        
-        if (hasAdmission) {
-          const parts = emp.admissionDate!.split('-').map(Number);
-          if (parts.length === 3) {
-            admissionDate = new Date(parts[0], parts[1] - 1, parts[2]);
-          } else {
-            admissionDate = new Date(emp.admissionDate!);
-          }
-          if (isNaN(admissionDate.getTime()) || admissionDate.getFullYear() < 1970) {
-            admissionDate = null;
-          }
-        }
-
-        // Process all vacations for this employee to calculate exact end dates
-        const processedVacations = empVacations.map(v => {
-            const diasDireito = v.diasDireito ?? 30;
-            const diasVendidos = v.vendeuFerias ? (v.diasVendidos ?? 0) : 0;
-            const diasAGozar = diasDireito - diasVendidos;
-            
-            const parts = v.startDate.split('-').map(Number);
-            const startDate = parts.length === 3 
-              ? new Date(parts[0], parts[1] - 1, parts[2])
-              : new Date(v.startDate);
-            
-            let endDateStr = v.endDate || '';
-            let returnDateStr = v.returnDate || '';
-            let parsedEndDate = new Date(NaN);
-            let parsedReturnDate = new Date(NaN);
-
-            if (!isNaN(startDate.getTime())) {
-              // Data Fim Férias: (Data Início Férias) + (Dias a Gozar) - 1 día
-              const endDate = addDays(startDate, diasAGozar - 1);
-              // Data de Retorno: Data Fim Férias + 1 día
-              const returnDate = addDays(endDate, 1);
-              
-              endDateStr = endDate.toISOString().split('T')[0];
-              returnDateStr = returnDate.toISOString().split('T')[0];
-              parsedEndDate = endDate;
-              parsedReturnDate = returnDate;
-            }
-
-            return {
-              ...v,
-              endDate: endDateStr,
-              returnDate: returnDateStr,
-              parsedStartDate: startDate,
-              parsedEndDate: parsedEndDate,
-              parsedReturnDate: parsedReturnDate,
-              diasDireito,
-              diasVendidos,
-              diasAGozar
-            };
-          });
-
-        // Find current or scheduled vacation (fallback for when admission is missing)
-        const currentVacationFallback = processedVacations.find(v => today >= v.parsedStartDate && today <= v.parsedEndDate);
-        const scheduledVacationFallback = processedVacations.find(v => v.parsedStartDate > today);
-        const activeVacation = currentVacationFallback || scheduledVacationFallback;
-
-        if (!admissionDate) {
-          return {
-            employeeId: emp.id,
-            employeeName: emp.name,
-            cargo: emp.role || 'Operador de Produção',
-            admissionDate: '',
-            numeroPeriodo: '',
-            inicioAquisitivo: '',
-            fimAquisitivo: '',
-            fimConcessivo: '',
-            diasDireito: activeVacation?.diasDireito ?? 30,
-            vendeuFerias: activeVacation?.vendeuFerias ? 'Sim' : 'Não',
-            diasVendidos: activeVacation?.diasVendidos ?? 0,
-            diasAGozar: activeVacation?.diasAGozar ?? 30,
-            dataLimiteConcessao: '',
-            dataInicioFerias: activeVacation?.startDate || '',
-            dataFimFerias: activeVacation?.endDate || '',
-            diasGozados: activeVacation?.diasAGozar ?? 30,
-            diasParaVencer: '',
-            status: activeVacation ? 'agendado_sem_admissao' : 'aguardando_dados',
-            currentVacation: activeVacation,
-            diasRestantes: '',
-            dataRetorno: activeVacation?.returnDate || '',
-            observacoes: ''
-          };
-        }
-
-        // Calculate target cycle (focus on present year onwards)
-        const currentYear = today.getFullYear();
-        const totalMonths = (today.getFullYear() - admissionDate.getFullYear()) * 12 + (today.getMonth() - admissionDate.getMonth());
-        const earnedCycles = Math.floor(totalMonths / 12);
-        
-        let targetCycle = 0;
-        for (let c = 0; c <= earnedCycles + 1; c++) {
-          const inicioAq = addYears(admissionDate, c);
-          const fimAq = addYears(inicioAq, 1);
-          const fimCon = addYears(fimAq, 1);
-          
-          // Skip old cycles if they are before the current year
-          if (fimCon.getFullYear() < currentYear && c < earnedCycles) {
-            continue;
-          }
-          
-          const inicioAqISO = inicioAq.toISOString().split('T')[0];
-          const fimConISO = fimCon.toISOString().split('T')[0];
-          
-          const takenVac = processedVacations.find(v => 
-            v.status === 'taken' && 
-            v.startDate >= inicioAqISO && 
-            v.startDate < fimConISO
-          );
-          
-          if (!takenVac) {
-            targetCycle = c;
-            break;
-          }
-          targetCycle = c + 1;
-        }
-        
-        const numeroPeriodo = targetCycle + 1;
-        const inicioAquisitivo = addYears(admissionDate, targetCycle);
-        const fimAquisitivo = addYears(inicioAquisitivo, 1);
-        const fimConcessivo = addYears(fimAquisitivo, 1);
-        const dataLimiteConcessao = addDays(fimConcessivo, -30);
-
-        const diasParaVencer = Math.ceil((dataLimiteConcessao.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-        // Find current or scheduled vacation for THIS cycle
-        const inicioAqISO = inicioAquisitivo.toISOString().split('T')[0];
-        const fimConISO = fimConcessivo.toISOString().split('T')[0];
-        
-        const cycleVacation = processedVacations.find(v => 
-          v.startDate >= inicioAqISO && 
-          v.startDate < fimConISO
-        );
-
-        let status: VacationStatusType = 'aguardando_dados';
-        let diasRestantes: number | string = '';
-
-        if (cycleVacation) {
-          if (today >= cycleVacation.parsedStartDate && today <= cycleVacation.parsedEndDate) {
-            status = 'em_ferias_agora';
-            diasRestantes = Math.ceil((cycleVacation.parsedEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          } else if (today > cycleVacation.parsedEndDate) {
-            status = 'ferias_concluidas';
-          } else {
-            status = 'ferias_agendadas';
-          }
-        } else if (diasParaVencer <= 0) {
-          status = 'critico_vencido';
-        } else if (diasParaVencer <= 60) {
-          status = 'agendar_em_breve';
-        } else if (today < fimAquisitivo) {
-          status = 'em_per_aquisitivo';
-        } else {
-          status = 'agendar_em_breve';
-        }
-
-        return {
-          employeeId: emp.id,
-          employeeName: emp.name,
-          cargo: emp.role || 'Operador de Produção',
-          admissionDate: admissionDate.toISOString().split('T')[0],
-          numeroPeriodo,
-          inicioAquisitivo: inicioAquisitivo.toISOString().split('T')[0],
-          fimAquisitivo: fimAquisitivo.toISOString().split('T')[0],
-          fimConcessivo: fimConcessivo.toISOString().split('T')[0],
-          diasDireito: cycleVacation?.diasDireito ?? 30,
-          vendeuFerias: cycleVacation?.vendeuFerias ? 'Sim' : 'Não',
-          diasVendidos: cycleVacation?.diasVendidos ?? 0,
-          diasAGozar: cycleVacation?.diasAGozar ?? 30,
-          dataLimiteConcessao: dataLimiteConcessao.toISOString().split('T')[0],
-          dataInicioFerias: cycleVacation?.startDate || '',
-          dataFimFerias: cycleVacation?.endDate || '',
-          diasGozados: cycleVacation?.diasAGozar ?? 30,
-          diasParaVencer,
-          status,
-          currentVacation: cycleVacation,
-          diasRestantes,
-          dataRetorno: cycleVacation?.returnDate || '',
-          observacoes: ''
-        };
-      })
-      .filter((stat): stat is any => stat !== null);
+  const vacationStats = useMemo(() => {
+    return computeVacationStats(employees, vacations);
   }, [employees, vacations]);
+
+  const vacationMonthlyBreakdown = useMemo(() => {
+    const years = [2026, 2027, 2028];
+    const months = Array.from({ length: 12 }, (_, i) => i);
+    
+    const breakdown: Record<number, number[]> = {};
+    
+    years.forEach(year => {
+      breakdown[year] = months.map(month => {
+        return vacations.filter(v => {
+          if (!v.startDate) return false;
+          const start = new Date(v.startDate + 'T12:00:00');
+          return start.getFullYear() === year && start.getMonth() === month;
+        }).length;
+      });
+    });
+    
+    return breakdown;
+  }, [vacations]);
 
   return {
     totalFaltasMes, faltasDoDia, taxaAbsenteismo,
@@ -450,5 +267,6 @@ export function useDashboardAnalytics({
     topEmployees, topEmployee,
     leaderboardData, alerts,
     vacationStats,
+    vacationMonthlyBreakdown,
   };
 }
