@@ -473,8 +473,18 @@ export function useFirestoreData({
   const handleMarkAllPresent = () => {
     const day = selectedDay === 'all' ? new Date().getDate() : (selectedDay as number);
     if (lockedDays[day]) return;
+    
+    const targetDate = new Date(currentYear, currentMonth, day);
+    
     const batch: Record<string, Status> = {};
     employees.forEach(emp => {
+      // Skip if employee hasn't joined yet
+      if (emp.admissionDate) {
+        const [y, m, d] = emp.admissionDate.split('-').map(Number);
+        const admDate = new Date(y, m - 1, d);
+        if (targetDate < admDate) return;
+      }
+
       const s = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
       if (s !== 'P') batch[emp.id] = 'P';
     });
@@ -496,8 +506,18 @@ export function useFirestoreData({
       let hasChanges = false;
 
       Object.entries(pendingAttendance).forEach(([empId, days]) => {
+        const emp = employees.find(e => e.id === empId);
         Object.entries(days).forEach(([dayStr, status]) => {
           const day = parseInt(dayStr);
+          
+          // Skip if before admission
+          if (emp?.admissionDate) {
+            const [y, m, d] = emp.admissionDate.split('-').map(Number);
+            const admDate = new Date(y, m - 1, d);
+            const targetDate = new Date(currentYear, currentMonth, day);
+            if (targetDate < admDate) return;
+          }
+
           batch.set(
             doc(db, 'attendance', `${empId}_${currentYear}_${currentMonth}_${day}`),
             {
@@ -512,9 +532,19 @@ export function useFirestoreData({
       });
 
       Object.entries(pendingNotes).forEach(([empId, days]) => {
+        const emp = employees.find(e => e.id === empId);
         Object.entries(days).forEach(([dayStr, note]) => {
           const day = parseInt(dayStr);
           if (pendingAttendance[empId]?.[day]) return;
+
+          // Skip if before admission
+          if (emp?.admissionDate) {
+            const [y, m, d] = emp.admissionDate.split('-').map(Number);
+            const admDate = new Date(y, m - 1, d);
+            const targetDate = new Date(currentYear, currentMonth, day);
+            if (targetDate < admDate) return;
+          }
+
           batch.set(
             doc(db, 'attendance', `${empId}_${currentYear}_${currentMonth}_${day}`),
             {

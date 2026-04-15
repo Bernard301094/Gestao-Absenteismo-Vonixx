@@ -138,6 +138,14 @@ export default function Registro({
   const isLocked  = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
+  const activeEmployees = employees.filter(emp => {
+    if (!emp.admissionDate) return true;
+    const [y, m, d] = emp.admissionDate.split('-').map(Number);
+    const admDate = new Date(y, m - 1, d);
+    const targetDate = new Date(currentYear, currentMonth, dayNum);
+    return targetDate >= admDate;
+  });
+
   const pendingCount =
     Object.values(pendingAttendance).reduce((s, d) => s + Object.keys(d).length, 0) +
     Object.values(pendingNotes).reduce((s, d) => s + Object.keys(d).length, 0);
@@ -146,8 +154,8 @@ export default function Registro({
     key,
     count:
       key === 'P'
-        ? employees.length - employees.filter(e => getStatusForDay(e.id, dayNum) !== 'P').length
-        : employees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
+        ? activeEmployees.length - activeEmployees.filter(e => getStatusForDay(e.id, dayNum) !== 'P').length
+        : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
   }));
 
   return (
@@ -202,10 +210,10 @@ export default function Registro({
                   </span>
                 )}
               </div>
-              <p className="mt-1.5 text-slate-400 text-xs sm:text-sm font-medium">
+            <p className="mt-1.5 text-slate-400 text-xs sm:text-sm font-medium">
                 {MONTH_NAMES[currentMonth]} {currentYear}
                 {selectedDay !== 'all' && (
-                  <span className="text-slate-500"> · {employees.length} colaborador{employees.length !== 1 ? 'es' : ''}</span>
+                  <span className="text-slate-500"> · {activeEmployees.length} ativo{activeEmployees.length !== 1 ? 's' : ''}</span>
                 )}
               </p>
             </div>
@@ -216,7 +224,7 @@ export default function Registro({
             <div className="grid grid-cols-4 gap-2 shrink-0">
               {kpiCounts.map(({ key, count }) => {
                 const cfg = STATUS_CONFIG[key as Status];
-                const pct = employees.length > 0 ? Math.round((count / employees.length) * 100) : 0;
+                const pct = activeEmployees.length > 0 ? Math.round((count / activeEmployees.length) * 100) : 0;
                 return (
                   <div
                     key={key}
@@ -320,9 +328,19 @@ export default function Registro({
             const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
             const currentNote   = pendingNotes[emp.id]?.[dayNum] ?? notes[emp.id]?.[dayNum] ?? '';
             const isModified    = pendingAttendance[emp.id]?.[dayNum] !== undefined || pendingNotes[emp.id]?.[dayNum] !== undefined;
+            
+            // Check if employee has joined yet
+            let isNotYetHired = false;
+            if (emp.admissionDate) {
+              const [y, m, d] = emp.admissionDate.split('-').map(Number);
+              const admDate = new Date(y, m - 1, d);
+              const targetDate = new Date(currentYear, currentMonth, dayNum);
+              isNotYetHired = targetDate < admDate;
+            }
+
             const cfg           = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
             const StatusIcon    = cfg.icon;
-            const isDayLocked   = isLocked && !isModified;
+            const isDayLocked   = (isLocked && !isModified) || isNotYetHired;
 
             return (
               <div
@@ -350,6 +368,11 @@ export default function Registro({
                         <span className="text-[13px] font-black text-gray-900 uppercase tracking-tight truncate leading-none">
                           {emp.name}
                         </span>
+                        {isNotYetHired && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-black bg-gray-100 text-gray-400 uppercase tracking-[0.15em] shrink-0 leading-none">
+                            Pré-Admissão
+                          </span>
+                        )}
                         {isModified && (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[7px] font-black bg-blue-100 text-blue-500 uppercase tracking-[0.15em] shrink-0 leading-none">
                             <span className="w-1 h-1 bg-blue-500 rounded-full animate-pulse inline-block" />
