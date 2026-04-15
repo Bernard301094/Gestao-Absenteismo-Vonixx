@@ -392,10 +392,17 @@ export function useFirestoreData({
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmployeeName.trim()) return;
-    const maxId = Math.max(...employees.map(emp => parseInt(emp.id)), 0);
-    const newId = (maxId + 1).toString();
     const shiftToAssign = isSupervision ? supervisionShiftFilter : currentShift;
     if (!shiftToAssign || shiftToAssign === 'ALL') return;
+
+    // FIX Bug 4: ID de funcionário com prefixo de turno
+    const shiftEmployees = employees.filter(emp => emp.shift === shiftToAssign);
+    const maxId = shiftEmployees.reduce((max, emp) => {
+      const numericPart = parseInt(emp.id.replace(/^[A-D]/, ''));
+      return isNaN(numericPart) ? max : Math.max(max, numericPart);
+    }, 0);
+    const newId = `${shiftToAssign}${(maxId + 1).toString().padStart(4, '0')}`;
+
     try {
       await setDoc(doc(db, 'employees', newId), {
         name: newEmployeeName.toUpperCase(),
@@ -533,7 +540,20 @@ export function useFirestoreData({
   };
 
   const handleSave = async () => {
-    if (!user || !currentShift || currentShift === 'ALL' || isSaving) return;
+    // FIX Bug 1: Garante que admin com currentShift nulo ainda consiga salvar
+    // usando o supervisionShiftFilter como fallback
+    const effectiveShift =
+      isSupervision
+        ? supervisionShiftFilter
+        : (currentShift ?? (isAdminUser ? supervisionShiftFilter : null));
+
+    if (!user || !effectiveShift || isSaving) {
+      if (!effectiveShift && !isSaving) {
+        toast.error('Turno inválido. Selecione um turno antes de salvar.');
+      }
+      return;
+    }
+
     setIsSaving(true);
     try {
       const batch = writeBatch(db);
@@ -552,12 +572,13 @@ export function useFirestoreData({
             if (targetDate < admDate) return;
           }
 
+          // FIX Bug 4: ID do documento de attendance inclui o turno
           batch.set(
-            doc(db, 'attendance', `${empId}_${currentYear}_${currentMonth}_${day}`),
+            doc(db, 'attendance', `${effectiveShift}_${empId}_${currentYear}_${currentMonth}_${day}`),
             {
               empId, day, month: currentMonth, year: currentYear, status,
               note: pendingNotes[empId]?.[day] ?? notes[empId]?.[day] ?? '',
-              updatedAt: serverTimestamp(), shift: currentShift,
+              updatedAt: serverTimestamp(), shift: effectiveShift,
             },
             { merge: true }
           );
@@ -579,12 +600,13 @@ export function useFirestoreData({
             if (targetDate < admDate) return;
           }
 
+          // FIX Bug 4: ID do documento de attendance inclui o turno
           batch.set(
-            doc(db, 'attendance', `${empId}_${currentYear}_${currentMonth}_${day}`),
+            doc(db, 'attendance', `${effectiveShift}_${empId}_${currentYear}_${currentMonth}_${day}`),
             {
               empId, day, month: currentMonth, year: currentYear,
               status: attendance[empId]?.[day] ?? 'P',
-              note, updatedAt: serverTimestamp(), shift: currentShift,
+              note, updatedAt: serverTimestamp(), shift: effectiveShift,
             },
             { merge: true }
           );
@@ -594,17 +616,41 @@ export function useFirestoreData({
 
       if (hasChanges) {
         await batch.commit();
-        const completionId = `${currentShift}_${currentYear}_${currentMonth}_${selectedDay}`;
-        await setDoc(
-          doc(db, 'completions', completionId),
-          {
-            shift: currentShift, day: selectedDay,
-            month: currentMonth, year: currentYear,
-            completedAt: serverTimestamp(), completedBy: user.email, isLocked: true,
-          },
-          { merge: true }
+
+        // FIX Bug 3: Coleta todos os dias únicos que foram alterados
+        const savedDays = new Set<number>();
+        Object.values(pendingAttendance).forEach(days =>
+          Object.keys(days).forEach(d => savedDays.add(parseInt(d)))
         );
-        setLockedDays(prev => ({ ...prev, [selectedDay as number]: true }));
+        Object.values(pendingNotes).forEach(days =>
+          Object.keys(days).forEach(d => savedDays.add(parseInt(d)))
+        );
+
+        // Cria um completion/lock para CADA dia alterado
+        const completionBatch = writeBatch(db);
+        savedDays.forEach(dayNum => {
+          const completionId = `${effectiveShift}_${currentYear}_${currentMonth}_${dayNum}`;
+          completionBatch.set(
+            doc(db, 'completions', completionId),
+            {
+              shift: effectiveShift,
+              day: dayNum,
+              month: currentMonth,
+              year: currentYear,
+              completedAt: serverTimestamp(),
+              completedBy: user.email,
+              isLocked: true,
+            },
+            { merge: true }
+          );
+        });
+        await completionBatch.commit();
+
+        setLockedDays(prev => {
+          const next = { ...prev };
+          savedDays.forEach(d => { next[d] = true; });
+          return next;
+        });
         setPendingAttendance({});
         setPendingNotes({});
         toast.success('Alterações salvas com sucesso!');
