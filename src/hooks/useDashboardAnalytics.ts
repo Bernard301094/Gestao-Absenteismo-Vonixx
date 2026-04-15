@@ -268,5 +268,47 @@ export function useDashboardAnalytics({
     leaderboardData, alerts,
     vacationStats,
     vacationMonthlyBreakdown,
+    vacationLiability: useMemo(() => {
+      return vacationStats.reduce((acc, s) => acc + (Number(s.diasAGozar) || 0), 0);
+    }, [vacationStats]),
+    vacationOverlapAlerts: useMemo(() => {
+      const alerts: string[] = [];
+      const today = new Date();
+      const roles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
+      
+      roles.forEach(role => {
+        const roleEmps = employees.filter(e => e.role === role);
+        if (roleEmps.length < 2) return;
+
+        const onVacation = vacationStats.filter(s => 
+          s.cargo === role && s.status === 'em_ferias_agora'
+        );
+
+        const percentage = (onVacation.length / roleEmps.length) * 100;
+        if (percentage >= 30) {
+          alerts.push(`${Math.round(percentage)}% dos ${role}s estão de férias simultaneamente.`);
+        }
+      });
+      return alerts;
+    }, [employees, vacationStats]),
+    vacationHeatmap: useMemo(() => {
+      const heatmap: Record<string, number> = {};
+      const year = new Date().getFullYear();
+      
+      vacations.forEach(v => {
+        if (!v.startDate || !v.endDate) return;
+        let current = new Date(v.startDate + 'T12:00:00');
+        const end = new Date(v.endDate + 'T12:00:00');
+        
+        while (current <= end) {
+          if (current.getFullYear() === year) {
+            const key = current.toISOString().split('T')[0];
+            heatmap[key] = (heatmap[key] || 0) + 1;
+          }
+          current.setDate(current.getDate() + 1);
+        }
+      });
+      return heatmap;
+    }, [vacations]),
   };
 }

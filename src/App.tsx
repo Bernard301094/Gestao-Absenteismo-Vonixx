@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useFirestoreData } from './hooks/useFirestoreData';
+import { testConnection } from './firebase';
 import { useDashboardAnalytics } from './hooks/useDashboardAnalytics';
 import { getDaysInMonth, isWorkDay, getWeekdayName, getInitials } from './utils/dateUtils';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
@@ -69,6 +70,10 @@ export default function App() {
   // ─── Custom Hooks ───────────────────────────────────────────────────────────
   const auth = useAuth();
 
+  useEffect(() => {
+    testConnection();
+  }, []);
+
   const data = useFirestoreData({
     user: auth.user,
     currentShift: auth.currentShift,
@@ -99,6 +104,13 @@ export default function App() {
     registroSearchTerm,
     isValidDay,
   });
+
+  // ─── Access Control ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (auth.isSupervision && (activeTab === 'registro' || activeTab === 'ferias')) {
+      setActiveTab('dashboard');
+    }
+  }, [auth.isSupervision, activeTab]);
 
   // ─── Day Navigation ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -166,13 +178,18 @@ export default function App() {
           deferredPrompt={auth.deferredPrompt}
           isStandalone={auth.isStandalone}
           handleInstallClick={auth.handleInstallClick}
+          connectionError={data.connectionError}
+          handleRetry={data.handleRetry}
         />
       </ErrorBoundary>
 
       <main className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 2xl:py-10">
-        <ErrorBoundary>
-          <Suspense fallback={<SectionLoader />}>
-            {activeTab === 'dashboard' && (
+        {data.dataLoading && data.employees.length === 0 ? (
+          <SectionLoader />
+        ) : (
+          <ErrorBoundary>
+            <Suspense fallback={<SectionLoader />}>
+              {activeTab === 'dashboard' && (
               <Dashboard
                 handleExportExcel={data.handleExportExcel}
                 isSupervision={auth.isSupervision}
@@ -248,11 +265,15 @@ export default function App() {
               <VacationDashboard
                 vacationStats={analytics.vacationStats}
                 vacationMonthlyBreakdown={analytics.vacationMonthlyBreakdown}
+                vacationLiability={analytics.vacationLiability}
+                vacationOverlapAlerts={analytics.vacationOverlapAlerts}
+                vacationHeatmap={analytics.vacationHeatmap}
                 currentShift={auth.currentShift || 'A'}
               />
             )}
           </Suspense>
         </ErrorBoundary>
+        )}
       </main>
 
       {/* Modals — lazy with individual error boundaries */}

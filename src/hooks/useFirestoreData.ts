@@ -88,6 +88,8 @@ export function useFirestoreData({
   const [notes, setNotes] = useState<NotesRecord>({});
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const [pendingAttendance, setPendingAttendance] = useState<AttendanceRecord>({});
   const [pendingNotes, setPendingNotes] = useState<NotesRecord>({});
@@ -171,26 +173,32 @@ export function useFirestoreData({
     if (!user) return;
     const startTime = Date.now();
 
-    const unsub = onSnapshot(collection(db, 'completions'), (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const data = change.doc.data();
-          const completedAt = data.completedAt?.toMillis();
-          if (completedAt && completedAt > startTime && data.shift !== currentShift) {
-            if ('Notification' in window && Notification.permission === 'granted') {
-              try {
-                new Notification('Turno Finalizado', {
-                  body: `O Turno ${data.shift} finalizou a lista do dia ${data.day}.`,
-                  icon: 'https://cdn-icons-png.flaticon.com/512/3589/3589030.png',
-                });
-              } catch (e) {
-                console.log('Notification error:', e);
+    const unsub = onSnapshot(
+      collection(db, 'completions'), 
+      (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+          if (change.type === 'added') {
+            const data = change.doc.data();
+            const completedAt = data.completedAt?.toMillis();
+            if (completedAt && completedAt > startTime && data.shift !== currentShift) {
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification('Turno Finalizado', {
+                    body: `O Turno ${data.shift} finalizou a lista do dia ${data.day}.`,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/3589/3589030.png',
+                  });
+                } catch (e) {
+                  console.log('Notification error:', e);
+                }
               }
             }
           }
-        }
-      });
-    });
+        });
+      },
+      (error) => {
+        console.error("Push notifications listener error:", error);
+      }
+    );
 
     return () => unsub();
   }, [user, currentShift]);
@@ -214,6 +222,7 @@ export function useFirestoreData({
       }
 
     setDataLoading(true);
+    setConnectionError(null);
 
     const setupListeners = async () => {
       if (!active) return;
@@ -221,126 +230,147 @@ export function useFirestoreData({
       const shiftToQuery = isSupervision ? supervisionShiftFilter : currentShift;
       if (!shiftToQuery) { setDataLoading(false); return; }
 
-      unsubEmployees = onSnapshot(
-        query(collection(db, 'employees'), where('shift', '==', shiftToQuery)),
-        (snapshot) => {
-          if (!active) return;
-          const emps: Employee[] = [];
-          const embeddedVacs: Vacation[] = [];
-          
-          snapshot.forEach(d => {
-            const data = d.data();
-            // Prefer ISO fields if they exist
-            const rawDate = data.dataAdmissao || data.data_admissao || data.admissionDate;
-            const admissionDate = normalizeDate(rawDate);
+      try {
+        unsubEmployees = onSnapshot(
+          query(collection(db, 'employees'), where('shift', '==', shiftToQuery)),
+          (snapshot) => {
+            if (!active) return;
+            const emps: Employee[] = [];
+            const embeddedVacs: Vacation[] = [];
             
-            emps.push({ 
-              id: d.id, 
-              name: data.name, 
-              admissionDate: admissionDate,
-              role: data.role || data.cargo || '',
-              shift: data.shift || ''
-            });
+            snapshot.forEach(d => {
+              const data = d.data();
+              const rawDate = data.dataAdmissao || data.data_admissao || data.admissionDate;
+              const admissionDate = normalizeDate(rawDate);
+              
+              emps.push({ 
+                id: d.id, 
+                name: data.name, 
+                admissionDate: admissionDate,
+                role: data.role || data.cargo || '',
+                shift: data.shift || ''
+              });
 
-            // Extract embedded vacation data if present
-            const vacStart = data.vacationStart || data.dataInicioFerias;
-            if (vacStart) {
-              embeddedVacs.push({
-                id: `vac_${d.id}`,
-                employeeId: d.id,
-                startDate: normalizeDate(vacStart),
-                endDate: normalizeDate(data.vacationEnd || data.dataFimFerias || ''),
+              const vacStart = data.vacationStart || data.dataInicioFerias;
+              if (vacStart) {
+                embeddedVacs.push({
+                  id: `vac_${d.id}`,
+                  employeeId: d.id,
+                  startDate: normalizeDate(vacStart),
+                  endDate: normalizeDate(data.vacationEnd || data.dataFimFerias || ''),
+                  returnDate: normalizeDate(data.returnDate || ''),
+                  status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
+                  diasDireito: data.diasDireito ?? 30,
+                  vendeuFerias: data.vendeuFerias ?? false,
+                  diasVendidos: data.diasVendidos ?? 0,
+                });
+              }
+            });
+            
+            setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
+            setVacations(prev => {
+              const collectionVacs = prev.filter(v => !v.id.startsWith('vac_'));
+              return [...embeddedVacs, ...collectionVacs];
+            });
+            setDataLoading(false);
+          },
+          (error) => { 
+            if (active) {
+              setDataLoading(false);
+              setConnectionError(error.message);
+              console.error("Employees listener error:", error);
+            }
+          }
+        );
+
+        unsubVacations = onSnapshot(
+          collection(db, 'vacations'),
+          (snapshot) => {
+            if (!active) return;
+            const collVacs: Vacation[] = [];
+            snapshot.forEach(d => {
+              const data = d.data();
+              collVacs.push({
+                id: d.id,
+                employeeId: data.employeeId || d.id,
+                startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
+                endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
                 returnDate: normalizeDate(data.returnDate || ''),
                 status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
                 diasDireito: data.diasDireito ?? 30,
                 vendeuFerias: data.vendeuFerias ?? false,
                 diasVendidos: data.diasVendidos ?? 0,
-              });
+              } as Vacation);
+            });
+            
+            setVacations(prev => {
+              const embeddedVacs = prev.filter(v => v.id.startsWith('vac_'));
+              return [...embeddedVacs, ...collVacs];
+            });
+          },
+          (error) => { 
+            if (active) {
+              console.error("Vacations listener error:", error);
             }
-          });
-          
-          setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
-          
-          // Merge embedded vacations with collection vacations
-          setVacations(prev => {
-            const collectionVacs = prev.filter(v => !v.id.startsWith('vac_'));
-            return [...embeddedVacs, ...collectionVacs];
-          });
-          
-          setDataLoading(false);
-        },
-        (error) => { if (active) handleFirestoreError(error, OperationType.GET, 'employees'); }
-      );
+          }
+        );
 
-      unsubVacations = onSnapshot(
-        collection(db, 'vacations'),
-        (snapshot) => {
-          if (!active) return;
-          const collVacs: Vacation[] = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            collVacs.push({
-              id: d.id,
-              employeeId: data.employeeId || d.id,
-              startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
-              endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
-              returnDate: normalizeDate(data.returnDate || ''),
-              status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
-              diasDireito: data.diasDireito ?? 30,
-              vendeuFerias: data.vendeuFerias ?? false,
-              diasVendidos: data.diasVendidos ?? 0,
-            } as Vacation);
-          });
-          
-          // Merge collection vacations with embedded vacations
-          setVacations(prev => {
-            const embeddedVacs = prev.filter(v => v.id.startsWith('vac_'));
-            return [...embeddedVacs, ...collVacs];
-          });
-        },
-        (error) => { if (active) handleFirestoreError(error, OperationType.GET, 'vacations'); }
-      );
-
-      unsubAttendance = onSnapshot(
-        query(collection(db, 'attendance'), where('shift', '==', shiftToQuery)),
-        (snapshot) => {
-          if (!active) return;
-          const newAttendance: AttendanceRecord = {};
-          const newNotes: NotesRecord = {};
-          snapshot.forEach(d => {
-            const data = d.data();
-            const { empId, day, status, note, month, year } = data;
-            if (month === currentMonth && year === currentYear) {
-              if (!newAttendance[empId]) newAttendance[empId] = {};
-              newAttendance[empId][day] = status as Status;
-              if (note) {
-                if (!newNotes[empId]) newNotes[empId] = {};
-                newNotes[empId][day] = note;
+        unsubAttendance = onSnapshot(
+          query(collection(db, 'attendance'), where('shift', '==', shiftToQuery)),
+          (snapshot) => {
+            if (!active) return;
+            const newAttendance: AttendanceRecord = {};
+            const newNotes: NotesRecord = {};
+            snapshot.forEach(d => {
+              const data = d.data();
+              const { empId, day, status, note, month, year } = data;
+              if (month === currentMonth && year === currentYear) {
+                if (!newAttendance[empId]) newAttendance[empId] = {};
+                newAttendance[empId][day] = status as Status;
+                if (note) {
+                  if (!newNotes[empId]) newNotes[empId] = {};
+                  newNotes[empId][day] = note;
+                }
               }
+            });
+            setAttendance(newAttendance);
+            setNotes(newNotes);
+            setDataLoading(false);
+          },
+          (error) => { 
+            if (active) {
+              setDataLoading(false);
+              setConnectionError(error.message);
+              console.error("Attendance listener error:", error);
             }
-          });
-          setAttendance(newAttendance);
-          setNotes(newNotes);
-          setDataLoading(false);
-        },
-        (error) => { if (active) handleFirestoreError(error, OperationType.GET, 'attendance'); }
-      );
+          }
+        );
 
-      unsubCompletions = onSnapshot(
-        query(collection(db, 'completions'), where('shift', '==', shiftToQuery)),
-        (snapshot) => {
-          if (!active) return;
-          const newLockedDays: LockedDaysRecord = {};
-          snapshot.forEach(d => {
-            const data = d.data();
-            if (data.month === currentMonth && data.year === currentYear) {
-              newLockedDays[data.day] = true;
+        unsubCompletions = onSnapshot(
+          query(collection(db, 'completions'), where('shift', '==', shiftToQuery)),
+          (snapshot) => {
+            if (!active) return;
+            const newLockedDays: LockedDaysRecord = {};
+            snapshot.forEach(d => {
+              const data = d.data();
+              if (data.month === currentMonth && data.year === currentYear) {
+                newLockedDays[data.day] = true;
+              }
+            });
+            setLockedDays(newLockedDays);
+          },
+          (error) => { 
+            if (active) {
+              console.error("Completions listener error:", error);
             }
-          });
-          setLockedDays(newLockedDays);
-        },
-        (error) => { if (active) handleFirestoreError(error, OperationType.GET, 'completions'); }
-      );
+          }
+        );
+      } catch (err: any) {
+        if (active) {
+          setDataLoading(false);
+          setConnectionError(err.message);
+        }
+      }
     };
 
     setupListeners();
@@ -352,7 +382,11 @@ export function useFirestoreData({
       if (unsubCompletions) unsubCompletions();
       if (unsubVacations) unsubVacations();
     };
-  }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser, currentMonth, currentYear]);
+  }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser, currentMonth, currentYear, retryCount]);
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
 
   // ─── CRUD Funcionários ─────────────────────────────────────────────────────
   const handleAddEmployee = async (e: React.FormEvent) => {
@@ -632,6 +666,8 @@ export function useFirestoreData({
     showAddEmployeeModal, setShowAddEmployeeModal,
     showEditEmployeeModal, setShowEditEmployeeModal,
     editingEmployee, setEditingEmployee,
+    handleRetry,
+    connectionError,
     // Acciones
     handleAddEmployee, handleUpdateEmployee, handleDeleteEmployee, updateEmployeeData,
     handleMarkAllPresent, handleSave,

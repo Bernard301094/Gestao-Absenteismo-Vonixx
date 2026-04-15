@@ -383,6 +383,10 @@ export default function Registro({
                       <div className="flex items-center gap-1.5 mt-[3px]">
                         <span className="text-[10px] font-black text-gray-300 font-mono">#{emp.id.padStart(3, '0')}</span>
                         <span className="text-gray-200">·</span>
+                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wide">
+                          {emp.role || 'Sem Cargo'}
+                        </span>
+                        <span className="text-gray-200">·</span>
                         <span className={`text-[10px] font-bold uppercase tracking-wide ${cfg.textColor}`}>
                           {cfg.label}
                         </span>

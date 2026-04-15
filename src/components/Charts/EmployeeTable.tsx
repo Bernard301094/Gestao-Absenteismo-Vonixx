@@ -200,8 +200,8 @@ export default function EmployeeTable({
                           <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
                             {emp.name}
                           </span>
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wide mt-0.5">
-                            Membro da Equipe
+                          <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wide mt-0.5">
+                            {emp.role || 'Membro da Equipe'}
                           </span>
                         </div>
                       </div>

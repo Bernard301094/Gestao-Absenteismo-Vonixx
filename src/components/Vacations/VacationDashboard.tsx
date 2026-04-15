@@ -19,21 +19,42 @@ import {
   TrendingUp,
   AlertCircle,
   Calendar,
-  BarChart3
+  BarChart3,
+  Filter,
+  Layers,
+  ShieldAlert
 } from 'lucide-react';
 import { VacationStats, VacationStatusType } from '../../types';
+
+const MONTH_NAMES_SHORT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 interface VacationDashboardProps {
   vacationStats: VacationStats[];
   vacationMonthlyBreakdown: Record<number, number[]>;
+  vacationLiability: number;
+  vacationOverlapAlerts: string[];
+  vacationHeatmap: Record<string, number>;
   currentShift: string;
 }
 
 export default function VacationDashboard({ 
-  vacationStats, 
+  vacationStats: rawVacationStats, 
   vacationMonthlyBreakdown,
+  vacationLiability,
+  vacationOverlapAlerts,
+  vacationHeatmap,
   currentShift 
 }: VacationDashboardProps) {
+  const [roleFilter, setRoleFilter] = React.useState<string>('all');
+
+  const roles = useMemo(() => {
+    return Array.from(new Set(rawVacationStats.map(s => s.cargo).filter(Boolean))).sort();
+  }, [rawVacationStats]);
+
+  const vacationStats = useMemo(() => {
+    if (roleFilter === 'all') return rawVacationStats;
+    return rawVacationStats.filter(s => s.cargo === roleFilter);
+  }, [rawVacationStats, roleFilter]);
   
   // ─── KPIs ──────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
@@ -50,10 +71,26 @@ export default function VacationDashboard({
     return counts;
   }, [vacationStats]);
 
+  // ─── Heatmap Logic ─────────────────────────────────────────────────────────
+  const heatmapData = useMemo(() => {
+    const year = new Date().getFullYear();
+    const months = [];
+    for (let m = 0; m < 12; m++) {
+      const days = [];
+      const date = new Date(year, m, 1);
+      while (date.getMonth() === m) {
+        const key = date.toISOString().split('T')[0];
+        days.push({ day: date.getDate(), count: vacationHeatmap[key] || 0, key });
+        date.setDate(date.getDate() + 1);
+      }
+      months.push({ name: MONTH_NAMES_SHORT[m], days });
+    }
+    return months;
+  }, [vacationHeatmap]);
+
   // ─── Dados para o Gráfico ──────────────────────────────────────────────────
   const chartData = useMemo(() => {
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    return months.map((month, i) => {
+    return MONTH_NAMES_SHORT.map((month, i) => {
       const entry: any = { name: month };
       Object.entries(vacationMonthlyBreakdown).forEach(([year, counts]) => {
         entry[year] = counts[i];
@@ -90,16 +127,34 @@ export default function VacationDashboard({
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header Estilo Excel */}
-      <div className="bg-[#1e3a5f] text-white p-4 rounded-t-lg shadow-lg flex flex-col items-center justify-center border-b-4 border-[#ff9900]">
-        <h1 className="text-xl font-bold uppercase tracking-widest flex items-center gap-3">
-          <Calendar className="w-6 h-6 text-[#ff9900]" />
-          Dashboard – Controle de Férias | Turno {currentShift} | Vonixx
-        </h1>
-        <p className="text-[10px] opacity-70 mt-1 uppercase">Atualizado em: {new Date().toLocaleDateString('pt-BR')}</p>
+      <div className="bg-[#1e3a5f] text-white p-4 rounded-t-lg shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 border-b-4 border-[#ff9900]">
+        <div className="flex flex-col items-center sm:items-start">
+          <h1 className="text-xl font-bold uppercase tracking-widest flex items-center gap-3">
+            <Calendar className="w-6 h-6 text-[#ff9900]" />
+            Dashboard – Controle de Férias | Turno {currentShift} | Vonixx
+          </h1>
+          <p className="text-[10px] opacity-70 mt-1 uppercase">Atualizado em: {new Date().toLocaleDateString('pt-BR')}</p>
+        </div>
+
+        {/* Filtro por Cargo */}
+        <div className="flex items-center gap-2 bg-white/10 p-2 rounded-xl border border-white/20">
+          <Filter className="w-4 h-4 text-blue-300" />
+          <span className="text-[10px] font-bold uppercase text-blue-200">Filtrar Cargo:</span>
+          <select 
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className="bg-transparent text-white text-xs font-bold focus:outline-none cursor-pointer"
+          >
+            <option value="all" className="text-gray-900">TODOS OS CARGOS</option>
+            {roles.map(role => (
+              <option key={role} value={role} className="text-gray-900">{role.toUpperCase()}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* KPI Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-0 shadow-xl rounded-b-lg overflow-hidden border border-gray-200">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-0 shadow-xl rounded-b-lg overflow-hidden border border-gray-200">
         <KPICard label="Total" value={kpis.total} color="bg-[#1e3a5f]" />
         <KPICard label="Em Férias" value={kpis.em_ferias} color="bg-[#d35400]" />
         <KPICard label="Concluídas" value={kpis.concluidas} color="bg-[#27ae60]" />
@@ -108,7 +163,66 @@ export default function VacationDashboard({
         <KPICard label="Críticos" value={kpis.criticos} color="bg-[#c0392b]" />
         <KPICard label="Em Aquisitivo" value={kpis.em_aquisitivo} color="bg-[#16a085]" />
         <KPICard label="Aguardando" value={kpis.aguardando} color="bg-[#7f8c8d]" />
+        <KPICard label="Passivo (Dias)" value={vacationLiability} color="bg-[#2c3e50]" />
       </div>
+
+      {/* Alertas de Traslape (Overlap) */}
+      {vacationOverlapAlerts.length > 0 && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-pulse">
+          <ShieldAlert className="w-6 h-6 text-amber-600 shrink-0" />
+          <div className="flex flex-col">
+            <h3 className="text-sm font-bold text-amber-900 uppercase tracking-tight">Alerta de Cobertura Crítica</h3>
+            <div className="mt-1 space-y-1">
+              {vacationOverlapAlerts.map((alert, i) => (
+                <p key={i} className="text-xs text-amber-800 font-medium">• {alert}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mapa de Calor de Disponibilidade */}
+      <DashboardSection 
+        title="Mapa de Calor de Disponibilidade (Ocupação Diária)" 
+        icon={<Layers className="w-5 h-5" />}
+        headerColor="bg-[#34495e]"
+      >
+        <div className="p-4 overflow-x-auto">
+          <div className="flex gap-4 min-w-max">
+            {heatmapData.map(month => (
+              <div key={month.name} className="flex flex-col gap-1">
+                <span className="text-[9px] font-bold text-gray-400 uppercase text-center mb-1">{month.name}</span>
+                <div className="grid grid-cols-7 gap-1">
+                  {month.days.map(d => (
+                    <div 
+                      key={d.key}
+                      title={`${d.key}: ${d.count} em férias`}
+                      className={`w-3 h-3 rounded-sm transition-colors ${
+                        d.count === 0 ? 'bg-gray-100' :
+                        d.count === 1 ? 'bg-blue-200' :
+                        d.count === 2 ? 'bg-blue-400' :
+                        d.count === 3 ? 'bg-blue-600' :
+                        'bg-blue-900'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-4 text-[9px] font-bold text-gray-500 uppercase">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-gray-100 rounded-sm" /> 0 em férias
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-blue-200 rounded-sm" /> 1 em férias
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-blue-900 rounded-sm" /> 4+ em férias
+            </div>
+          </div>
+        </div>
+      </DashboardSection>
 
       {/* Seção: Quem está de Férias AGORA */}
       <DashboardSection 
@@ -312,7 +426,7 @@ export default function VacationDashboard({
                 <thead>
                   <tr className="bg-gray-800 text-white text-[10px] uppercase font-bold border-b">
                     <th className="px-2 py-2 border-r w-16">Ano</th>
-                    {['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'].map(m => (
+                    {MONTH_NAMES_SHORT.map(m => (
                       <th key={m} className="px-2 py-2 border-r">{m}</th>
                     ))}
                   </tr>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LogOut, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, Calendar } from 'lucide-react';
+import { LogOut, ChevronLeft, ChevronRight, LayoutDashboard, ClipboardList, Calendar, RefreshCw } from 'lucide-react';
 import { MONTH_NAMES, now } from '../../utils/constants';
 
 interface HeaderProps {
@@ -22,6 +22,8 @@ interface HeaderProps {
   deferredPrompt: any;
   isStandalone: boolean;
   handleInstallClick: () => void;
+  connectionError: string | null;
+  handleRetry: () => void;
 }
 
 export default function Header({
@@ -43,7 +45,9 @@ export default function Header({
   logout,
   deferredPrompt,
   isStandalone,
-  handleInstallClick
+  handleInstallClick,
+  connectionError,
+  handleRetry
 }: HeaderProps) {
   return (
     <header className="bg-[#1e3a8a] border-b border-blue-900 sticky top-0 z-20 shadow-lg">
@@ -58,7 +62,9 @@ export default function Header({
                   <span className="text-white font-black text-xs sm:text-sm tracking-tighter select-none">VA</span>
                 </div>
                 {/* Pulse dot */}
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#1e3a8a] shadow-sm" />
+                <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[#1e3a8a] shadow-sm ${
+                  connectionError ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
+                }`} title={connectionError ? `Erro de conexão: ${connectionError}` : 'Conectado'} />
               </div>
 
               {/* Text */}
@@ -180,14 +186,25 @@ export default function Header({
             </div>
 
             {/* Desktop Logout */}
-            <button 
-              onClick={logout}
-              className="hidden sm:flex items-center gap-2 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all font-bold text-xs uppercase tracking-widest"
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sair</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {connectionError && (
+                <button 
+                  onClick={handleRetry}
+                  className="flex items-center gap-1 px-2 py-1 bg-red-500/20 text-red-200 rounded-lg text-[10px] font-bold border border-red-500/30 hover:bg-red-500/30 transition-all"
+                >
+                  <RefreshCw className="w-3 h-3 animate-spin-slow" />
+                  Reconectar
+                </button>
+              )}
+              <button 
+                onClick={logout}
+                className="hidden sm:flex items-center gap-2 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all font-bold text-xs uppercase tracking-widest"
+                title="Sair"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Sair</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -243,19 +260,21 @@ export default function Header({
               </button>
             )}
 
-            <button
-              onClick={() => setActiveTab('ferias')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-widest transition-all duration-200 ${
-                activeTab === 'ferias'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                  : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              <Calendar className={`w-4 h-4 transition-transform duration-200 ${
-                activeTab === 'ferias' ? 'scale-110' : ''
-              }`} />
-              Férias
-            </button>
+            {!isSupervision && (
+              <button
+                onClick={() => setActiveTab('ferias')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-widest transition-all duration-200 ${
+                  activeTab === 'ferias'
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Calendar className={`w-4 h-4 transition-transform duration-200 ${
+                  activeTab === 'ferias' ? 'scale-110' : ''
+                }`} />
+                Férias
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab('ferias_dashboard')}

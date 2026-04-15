@@ -42,7 +42,10 @@ export default function EmployeeDetailModal({
               </div>
               <div>
                 <h2 className="text-2xl font-black uppercase tracking-tight leading-tight">{selectedEmployeeDetail.name}</h2>
-                <div className="flex items-center gap-2 mt-1">
+                <p className="text-blue-200 text-xs font-bold uppercase tracking-widest mt-0.5">
+                  {selectedEmployeeDetail.role || selectedEmployeeDetail.cargo || 'Membro da Equipe'}
+                </p>
+                <div className="flex items-center gap-2 mt-2">
                   <span className="px-2 py-0.5 bg-white/20 rounded-lg text-[10px] font-bold uppercase tracking-widest">ID: #{selectedEmployeeDetail.id.padStart(3, '0')}</span>
                   <span className="px-2 py-0.5 bg-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">Ativo</span>
                   {selectedEmployeeDetail.admissionDate && (

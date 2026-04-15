@@ -42,6 +42,21 @@ export const logout = async () => {
   }
 };
 
+import { getDocFromServer, doc } from 'firebase/firestore';
+
+export async function testConnection() {
+  try {
+    // CRITICAL: Test connection to Firestore as per instructions
+    await getDocFromServer(doc(db, '_connection_test_', 'ping'));
+    console.log("Firestore connection successful.");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration. The client is offline.");
+    }
+    // Skip logging for other errors, as this is simply a connection test.
+  }
+}
+
 export enum OperationType {
   CREATE = 'create',
   UPDATE = 'update',

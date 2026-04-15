@@ -13,6 +13,7 @@ export interface Employee {
   name: string;
   admissionDate?: string; // ISO string YYYY-MM-DD
   role?: string;
+  cargo?: string;
   shift?: string;
 }
 
