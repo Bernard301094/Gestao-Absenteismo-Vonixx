@@ -4,8 +4,8 @@ import { X } from 'lucide-react';
 interface EditEmployeeModalProps {
   showEditEmployeeModal: boolean;
   setShowEditEmployeeModal: (show: boolean) => void;
-  editingEmployee: { id: string; name: string; admissionDate?: string } | null;
-  setEditingEmployee: (emp: { id: string; name: string; admissionDate?: string } | null) => void;
+  editingEmployee: { id: string; name: string; admissionDate?: string; role?: string } | null;
+  setEditingEmployee: (emp: { id: string; name: string; admissionDate?: string; role?: string } | null) => void;
   handleUpdateEmployee: (e: React.FormEvent) => void;
 }
 
@@ -46,6 +46,19 @@ export default function EditEmployeeModal({
               onChange={(e) => setEditingEmployee({ ...editingEmployee, name: e.target.value })}
               placeholder="Digite o nome do funcionário..."
               className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all uppercase"
+            />
+          </div>
+          <div>
+            <label htmlFor="editEmployeeRole" className="block text-sm font-medium text-gray-700 mb-1">
+              Cargo / Função
+            </label>
+            <input
+              id="editEmployeeRole"
+              type="text"
+              value={editingEmployee.role || ''}
+              onChange={(e) => setEditingEmployee({ ...editingEmployee, role: e.target.value })}
+              placeholder="Ex: Operador de Produção"
+              className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
           <div>

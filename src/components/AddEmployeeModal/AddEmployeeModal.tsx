@@ -7,6 +7,8 @@ interface AddEmployeeModalProps {
   handleAddEmployee: (e: React.FormEvent) => void;
   newEmployeeName: string;
   setNewEmployeeName: (name: string) => void;
+  newEmployeeRole: string;
+  setNewEmployeeRole: (role: string) => void;
   newEmployeeAdmissionDate: string;
   setNewEmployeeAdmissionDate: (date: string) => void;
 }
@@ -17,6 +19,8 @@ export default function AddEmployeeModal({
   handleAddEmployee,
   newEmployeeName,
   setNewEmployeeName,
+  newEmployeeRole,
+  setNewEmployeeRole,
   newEmployeeAdmissionDate,
   setNewEmployeeAdmissionDate
 }: AddEmployeeModalProps) {
@@ -47,6 +51,19 @@ export default function AddEmployeeModal({
               onChange={(e) => setNewEmployeeName(e.target.value)}
               placeholder="Digite o nome do funcionário..."
               className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all uppercase"
+            />
+          </div>
+          <div>
+            <label htmlFor="employeeRole" className="block text-sm font-medium text-gray-700 mb-1">
+              Cargo / Função
+            </label>
+            <input
+              id="employeeRole"
+              type="text"
+              value={newEmployeeRole}
+              onChange={(e) => setNewEmployeeRole(e.target.value)}
+              placeholder="Ex: Operador de Produção"
+              className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
           </div>
           <div>

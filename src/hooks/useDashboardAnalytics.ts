@@ -260,7 +260,12 @@ export function useDashboardAnalytics({
         let admissionDate: Date | null = null;
         
         if (hasAdmission) {
-          admissionDate = new Date(emp.admissionDate!);
+          const parts = emp.admissionDate!.split('-').map(Number);
+          if (parts.length === 3) {
+            admissionDate = new Date(parts[0], parts[1] - 1, parts[2]);
+          } else {
+            admissionDate = new Date(emp.admissionDate!);
+          }
           if (isNaN(admissionDate.getTime()) || admissionDate.getFullYear() < 1970) {
             admissionDate = null;
           }
@@ -272,29 +277,45 @@ export function useDashboardAnalytics({
             const diasVendidos = v.vendeuFerias ? (v.diasVendidos ?? 0) : 0;
             const diasAGozar = diasDireito - diasVendidos;
             
-            const startDate = new Date(v.startDate);
-            // Data Fim Férias: (Data Início Férias) + (Dias a Gozar) - 1 día
-            const endDate = addDays(startDate, diasAGozar - 1);
-            // Data de Retorno: Data Fim Férias + 1 día
-            const returnDate = addDays(endDate, 1);
+            const parts = v.startDate.split('-').map(Number);
+            const startDate = parts.length === 3 
+              ? new Date(parts[0], parts[1] - 1, parts[2])
+              : new Date(v.startDate);
+            
+            let endDateStr = v.endDate || '';
+            let returnDateStr = v.returnDate || '';
+            let parsedEndDate = new Date(NaN);
+            let parsedReturnDate = new Date(NaN);
+
+            if (!isNaN(startDate.getTime())) {
+              // Data Fim Férias: (Data Início Férias) + (Dias a Gozar) - 1 día
+              const endDate = addDays(startDate, diasAGozar - 1);
+              // Data de Retorno: Data Fim Férias + 1 día
+              const returnDate = addDays(endDate, 1);
+              
+              endDateStr = endDate.toISOString().split('T')[0];
+              returnDateStr = returnDate.toISOString().split('T')[0];
+              parsedEndDate = endDate;
+              parsedReturnDate = returnDate;
+            }
 
             return {
               ...v,
-              endDate: endDate.toISOString().split('T')[0],
-              returnDate: returnDate.toISOString().split('T')[0],
+              endDate: endDateStr,
+              returnDate: returnDateStr,
               parsedStartDate: startDate,
-              parsedEndDate: endDate,
-              parsedReturnDate: returnDate,
+              parsedEndDate: parsedEndDate,
+              parsedReturnDate: parsedReturnDate,
               diasDireito,
               diasVendidos,
               diasAGozar
             };
           });
 
-        // Find current or scheduled vacation
-        const currentVacation = processedVacations.find(v => today >= v.parsedStartDate && today <= v.parsedEndDate);
-        const scheduledVacation = processedVacations.find(v => v.parsedStartDate > today);
-        const activeVacation = currentVacation || scheduledVacation;
+        // Find current or scheduled vacation (fallback for when admission is missing)
+        const currentVacationFallback = processedVacations.find(v => today >= v.parsedStartDate && today <= v.parsedEndDate);
+        const scheduledVacationFallback = processedVacations.find(v => v.parsedStartDate > today);
+        const activeVacation = currentVacationFallback || scheduledVacationFallback;
 
         if (!admissionDate) {
           return {
@@ -323,25 +344,67 @@ export function useDashboardAnalytics({
           };
         }
 
-        // Calculate periods taken (only fully completed vacations)
-        const periodsTaken = processedVacations.filter(v => v.parsedEndDate < today).length;
-        const numeroPeriodo = periodsTaken + 1;
+        // Calculate target cycle (focus on present year onwards)
+        const currentYear = today.getFullYear();
+        const totalMonths = (today.getFullYear() - admissionDate.getFullYear()) * 12 + (today.getMonth() - admissionDate.getMonth());
+        const earnedCycles = Math.floor(totalMonths / 12);
         
-        const inicioAquisitivo = addYears(admissionDate, periodsTaken);
+        let targetCycle = 0;
+        for (let c = 0; c <= earnedCycles + 1; c++) {
+          const inicioAq = addYears(admissionDate, c);
+          const fimAq = addYears(inicioAq, 1);
+          const fimCon = addYears(fimAq, 1);
+          
+          // Skip old cycles if they are before the current year
+          if (fimCon.getFullYear() < currentYear && c < earnedCycles) {
+            continue;
+          }
+          
+          const inicioAqISO = inicioAq.toISOString().split('T')[0];
+          const fimConISO = fimCon.toISOString().split('T')[0];
+          
+          const takenVac = processedVacations.find(v => 
+            v.status === 'taken' && 
+            v.startDate >= inicioAqISO && 
+            v.startDate < fimConISO
+          );
+          
+          if (!takenVac) {
+            targetCycle = c;
+            break;
+          }
+          targetCycle = c + 1;
+        }
+        
+        const numeroPeriodo = targetCycle + 1;
+        const inicioAquisitivo = addYears(admissionDate, targetCycle);
         const fimAquisitivo = addYears(inicioAquisitivo, 1);
         const fimConcessivo = addYears(fimAquisitivo, 1);
         const dataLimiteConcessao = addDays(fimConcessivo, -30);
 
         const diasParaVencer = Math.ceil((dataLimiteConcessao.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
+        // Find current or scheduled vacation for THIS cycle
+        const inicioAqISO = inicioAquisitivo.toISOString().split('T')[0];
+        const fimConISO = fimConcessivo.toISOString().split('T')[0];
+        
+        const cycleVacation = processedVacations.find(v => 
+          v.startDate >= inicioAqISO && 
+          v.startDate < fimConISO
+        );
+
         let status: VacationStatusType = 'aguardando_dados';
         let diasRestantes: number | string = '';
 
-        if (currentVacation) {
-          status = 'em_ferias_agora';
-          diasRestantes = Math.ceil((currentVacation.parsedEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-        } else if (scheduledVacation) {
-          status = 'ferias_agendadas';
+        if (cycleVacation) {
+          if (today >= cycleVacation.parsedStartDate && today <= cycleVacation.parsedEndDate) {
+            status = 'em_ferias_agora';
+            diasRestantes = Math.ceil((cycleVacation.parsedEndDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+          } else if (today > cycleVacation.parsedEndDate) {
+            status = 'ferias_concluidas';
+          } else {
+            status = 'ferias_agendadas';
+          }
         } else if (diasParaVencer <= 0) {
           status = 'critico_vencido';
         } else if (diasParaVencer <= 60) {
@@ -349,7 +412,7 @@ export function useDashboardAnalytics({
         } else if (today < fimAquisitivo) {
           status = 'em_per_aquisitivo';
         } else {
-          status = 'ferias_concluidas';
+          status = 'agendar_em_breve';
         }
 
         return {
@@ -361,19 +424,19 @@ export function useDashboardAnalytics({
           inicioAquisitivo: inicioAquisitivo.toISOString().split('T')[0],
           fimAquisitivo: fimAquisitivo.toISOString().split('T')[0],
           fimConcessivo: fimConcessivo.toISOString().split('T')[0],
-          diasDireito: activeVacation?.diasDireito ?? 30,
-          vendeuFerias: activeVacation?.vendeuFerias ? 'Sim' : 'Não',
-          diasVendidos: activeVacation?.diasVendidos ?? 0,
-          diasAGozar: activeVacation?.diasAGozar ?? 30,
+          diasDireito: cycleVacation?.diasDireito ?? 30,
+          vendeuFerias: cycleVacation?.vendeuFerias ? 'Sim' : 'Não',
+          diasVendidos: cycleVacation?.diasVendidos ?? 0,
+          diasAGozar: cycleVacation?.diasAGozar ?? 30,
           dataLimiteConcessao: dataLimiteConcessao.toISOString().split('T')[0],
-          dataInicioFerias: activeVacation?.startDate || '',
-          dataFimFerias: activeVacation?.endDate || '',
-          diasGozados: activeVacation?.diasAGozar ?? 30,
+          dataInicioFerias: cycleVacation?.startDate || '',
+          dataFimFerias: cycleVacation?.endDate || '',
+          diasGozados: cycleVacation?.diasAGozar ?? 30,
           diasParaVencer,
           status,
-          currentVacation: activeVacation,
+          currentVacation: cycleVacation,
           diasRestantes,
-          dataRetorno: activeVacation?.returnDate || '',
+          dataRetorno: cycleVacation?.returnDate || '',
           observacoes: ''
         };
       })

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Plus,
   Trash2,
+  Edit2,
   Search,
   User,
   Info,
@@ -24,6 +25,8 @@ interface VacationsProps {
   vacations: Vacation[];
   handleAddVacation: (vacation: Omit<Vacation, 'id'>) => Promise<void>;
   handleDeleteVacation: (id: string) => Promise<void>;
+  handleUpdateVacation: (id: string, vacation: Partial<Vacation>) => Promise<void>;
+  updateEmployeeData: (id: string, data: any) => Promise<void>;
 }
 
 // ─── Formatação ────────────────────────────────────────────────────────────────
@@ -101,9 +104,11 @@ function StatusBadge({ stat }: { stat: VacationStats }) {
 function EmployeeRow({
   stat,
   onDelete,
+  onEdit,
 }: {
   stat: VacationStats;
   onDelete: (id: string) => void;
+  onEdit: (stat: VacationStats) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -184,6 +189,16 @@ function EmployeeRow({
         {/* Ações */}
         <td className="px-6 py-4">
           <div className="flex items-center gap-1">
+            <button
+              onClick={e => {
+                e.stopPropagation();
+                onEdit(stat);
+              }}
+              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+              title="Editar informações"
+            >
+              <Edit2 className="w-4 h-4" />
+            </button>
             {stat.currentVacation && (
               <button
                 onClick={e => {
@@ -316,16 +331,27 @@ export default function Vacations({
   vacations,
   handleAddVacation,
   handleDeleteVacation,
+  handleUpdateVacation,
+  updateEmployeeData,
 }: VacationsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
 
-  // Formulário
+  // Formulário Add
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [diasDireito, setDiasDireito] = useState(30);
   const [vendeuFerias, setVendeuFerias] = useState(false);
   const [diasVendidos, setDiasVendidos] = useState(0);
+
+  // Formulário Edit
+  const [editingStat, setEditingStat] = useState<VacationStats | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editAdmissionDate, setEditAdmissionDate] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
+  const [editDiasDireito, setEditDiasDireito] = useState(30);
+  const [editVendeuFerias, setEditVendeuFerias] = useState(false);
+  const [editDiasVendidos, setEditDiasVendidos] = useState(0);
 
   // ── Cálculo CLT via hook ──────────────────────────────────────────────────
   const vacationStats = useVacationStats(employees, vacations);
@@ -335,6 +361,69 @@ export default function Vacations({
     if (!startDate) return null;
     return calcVacationDates(startDate, diasDireito, vendeuFerias ? diasVendidos : 0);
   }, [startDate, diasDireito, vendeuFerias, diasVendidos]);
+
+  const editPreview = useMemo(() => {
+    if (!editStartDate) return null;
+    return calcVacationDates(editStartDate, editDiasDireito, editVendeuFerias ? editDiasVendidos : 0);
+  }, [editStartDate, editDiasDireito, editVendeuFerias, editDiasVendidos]);
+
+  const handleEditClick = (stat: VacationStats) => {
+    setEditingStat(stat);
+    setEditAdmissionDate(stat.admissionDate);
+    if (stat.currentVacation) {
+      setEditStartDate(stat.currentVacation.startDate);
+      setEditDiasDireito(stat.currentVacation.diasDireito ?? 30);
+      setEditVendeuFerias(stat.currentVacation.vendeuFerias ?? false);
+      setEditDiasVendidos(stat.currentVacation.diasVendidos ?? 0);
+    } else {
+      setEditStartDate('');
+      setEditDiasDireito(30);
+      setEditVendeuFerias(false);
+      setEditDiasVendidos(0);
+    }
+    setShowEditModal(true);
+  };
+
+  const onEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStat) return;
+
+    // 1. Atualizar admissão se mudou
+    if (editAdmissionDate !== editingStat.admissionDate) {
+      await updateEmployeeData(editingStat.employeeId, { admissionDate: editAdmissionDate });
+    }
+
+    // 2. Atualizar ou Criar férias
+    const sold = editVendeuFerias ? editDiasVendidos : 0;
+    const dates = editStartDate ? calcVacationDates(editStartDate, editDiasDireito, sold) : null;
+
+    if (editingStat.currentVacation) {
+      // Atualizar existente
+      await handleUpdateVacation(editingStat.currentVacation.id, {
+        startDate: dates?.startDate || editingStat.currentVacation.startDate,
+        endDate: dates?.endDate || editingStat.currentVacation.endDate,
+        returnDate: dates?.returnDate || editingStat.currentVacation.returnDate,
+        diasDireito: editDiasDireito,
+        vendeuFerias: editVendeuFerias,
+        diasVendidos: sold,
+      });
+    } else if (dates) {
+      // Criar nova se não existia mas foi preenchido data
+      await handleAddVacation({
+        employeeId: editingStat.employeeId,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        returnDate: dates.returnDate,
+        status: 'scheduled',
+        diasDireito: editDiasDireito,
+        vendeuFerias: editVendeuFerias,
+        diasVendidos: sold,
+      });
+    }
+
+    setShowEditModal(false);
+    setEditingStat(null);
+  };
 
   // ── Filtros e ordenação ───────────────────────────────────────────────────
   const priorityOrder: Record<string, number> = {
@@ -500,6 +589,7 @@ export default function Vacations({
                     key={stat.employeeId}
                     stat={stat}
                     onDelete={handleDeleteVacation}
+                    onEdit={handleEditClick}
                   />
                 ))}
                 {filteredStats.length === 0 && (
@@ -653,6 +743,147 @@ export default function Vacations({
                     className="flex-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
                   >
                     Agendar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Editar Informações */}
+      <AnimatePresence>
+        {showEditModal && editingStat && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Editar Informações</h3>
+                  <p className="text-xs text-gray-400 uppercase font-bold">{editingStat.employeeName}</p>
+                </div>
+                <button
+                  onClick={() => setShowEditModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <Plus className="w-6 h-6 rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={onEditSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                {/* Admissão */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">
+                    Data de Admissão
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editAdmissionDate}
+                    onChange={e => setEditAdmissionDate(e.target.value)}
+                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  />
+                </div>
+
+                <div className="border-t border-gray-100 pt-4">
+                   <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Dados de Férias</h4>
+                   
+                   {/* Início */}
+                   <div>
+                     <label className="block text-sm font-bold text-gray-700 mb-1">
+                       Início das Férias
+                     </label>
+                     <input
+                       type="date"
+                       value={editStartDate}
+                       onChange={e => setEditStartDate(e.target.value)}
+                       className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                     />
+                   </div>
+
+                   {/* Dias direito + vendeu */}
+                   <div className="grid grid-cols-2 gap-4 mt-4">
+                     <div>
+                       <label className="block text-sm font-bold text-gray-700 mb-1">
+                         Dias de Direito
+                       </label>
+                       <input
+                         type="number"
+                         min={1}
+                         max={30}
+                         value={editDiasDireito}
+                         onChange={e => setEditDiasDireito(Number(e.target.value))}
+                         className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                       />
+                     </div>
+                     <div>
+                       <label className="block text-sm font-bold text-gray-700 mb-1">
+                         Vendeu Férias?
+                       </label>
+                       <select
+                         value={editVendeuFerias ? 'sim' : 'nao'}
+                         onChange={e => {
+                           setEditVendeuFerias(e.target.value === 'sim');
+                           if (e.target.value === 'nao') setEditDiasVendidos(0);
+                         }}
+                         className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                       >
+                         <option value="nao">Não</option>
+                         <option value="sim">Sim</option>
+                       </select>
+                     </div>
+                   </div>
+
+                   {/* Dias vendidos */}
+                   {editVendeuFerias && (
+                     <div className="mt-4">
+                       <label className="block text-sm font-bold text-gray-700 mb-1">
+                         Dias Vendidos (máx. 10)
+                       </label>
+                       <input
+                         type="number"
+                         min={1}
+                         max={10}
+                         value={editDiasVendidos}
+                         onChange={e => setEditDiasVendidos(Number(e.target.value))}
+                         className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                       />
+                     </div>
+                   )}
+                </div>
+
+                {/* Preview calculado */}
+                {editPreview && (
+                  <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-2">
+                    <p className="text-xs font-black text-blue-700 uppercase tracking-wider">
+                      Cálculo Automático CLT
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <PreviewItem label="Dias a Gozar" value={`${editPreview.diasAGozar} dias`} />
+                      <PreviewItem label="Fim das Férias" value={fmtDate(editPreview.endDate)} />
+                      <PreviewItem label="Data de Retorno" value={fmtDate(editPreview.returnDate)} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Botões */}
+                <div className="pt-2 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm shadow-blue-200"
+                  >
+                    Salvar
                   </button>
                 </div>
               </form>

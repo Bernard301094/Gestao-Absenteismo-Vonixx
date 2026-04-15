@@ -13,6 +13,7 @@ export interface Employee {
   name: string;
   admissionDate?: string; // ISO string YYYY-MM-DD
   role?: string;
+  shift?: string;
 }
 
 export interface Vacation {
@@ -54,7 +55,7 @@ export interface VacationStats {
   dataInicioFerias: string;
   dataFimFerias: string;
   diasGozados: number | string;
-  diasParaVencer: number | string;
+  diasParaVencer: number;
   status: VacationStatusType;
   currentVacation?: Vacation;
   diasRestantes: number | string;

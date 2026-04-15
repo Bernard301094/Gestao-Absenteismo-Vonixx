@@ -47,7 +47,15 @@ export default function EmployeeDetailModal({
                   <span className="px-2 py-0.5 bg-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">Ativo</span>
                   {selectedEmployeeDetail.admissionDate && (
                     <span className="px-2 py-0.5 bg-blue-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">
-                      Adm: {new Date(selectedEmployeeDetail.admissionDate).toLocaleDateString('pt-BR')}
+                      Adm: {(() => {
+                        if (!selectedEmployeeDetail.admissionDate) return 'N/A';
+                        const parts = selectedEmployeeDetail.admissionDate.split('-').map(Number);
+                        if (parts.length === 3) {
+                          const [y, m, d] = parts;
+                          return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+                        }
+                        return selectedEmployeeDetail.admissionDate;
+                      })()}
                     </span>
                   )}
                 </div>

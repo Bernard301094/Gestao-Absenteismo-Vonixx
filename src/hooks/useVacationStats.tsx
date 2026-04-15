@@ -5,12 +5,16 @@ import type { Employee, Vacation, VacationStats, VacationStatusType } from '../t
 
 /** Parseia uma string ISO YYYY-MM-DD sem problemas de fuso horário */
 function parseISO(dateStr: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!dateStr) return new Date(NaN);
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length !== 3) return new Date(NaN);
+  const [y, m, d] = parts.map(Number);
   return new Date(y, m - 1, d);
 }
 
 /** Converte Date para string ISO YYYY-MM-DD */
 function toISO(date: Date): string {
+  if (isNaN(date.getTime())) return '';
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
@@ -32,6 +36,7 @@ function addDays(date: Date, days: number): Date {
 
 /** Diferença em dias entre duas datas (positivo = `to` está no futuro) */
 function daysBetween(from: Date, to: Date): number {
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return 0;
   const diff = to.getTime() - from.getTime();
   return Math.round(diff / (1000 * 60 * 60 * 24));
 }
@@ -113,7 +118,19 @@ export function computeVacationStats(
     const base = {
       employeeId: emp.id,
       employeeName: emp.name,
+      cargo: emp.role || '',
       admissionDate: emp.admissionDate ?? '',
+      numeroPeriodo: '',
+      diasDireito: '',
+      vendeuFerias: '',
+      diasVendidos: '',
+      diasAGozar: '',
+      dataInicioFerias: '',
+      dataFimFerias: '',
+      diasGozados: '',
+      dataRetorno: '',
+      observacoes: '',
+      diasRestantes: '',
     };
 
     // ── Sem data de admissão ────────────────────────────────────────────────
@@ -130,34 +147,40 @@ export function computeVacationStats(
     }
 
     const admDate = parseISO(emp.admissionDate);
-    const totalMonths = monthsBetween(admDate, today);
-    const earnedCycles = Math.floor(totalMonths / 12); // ciclos com direito adquirido
-
-    // ── Ainda no 1º período aquisitivo ────────────────────────────────────
-    if (earnedCycles === 0) {
-      const p = getPeriod(admDate, 0);
+    if (isNaN(admDate.getTime())) {
       return {
         ...base,
-        inicioAquisitivo: toISO(p.inicioAquisitivo),
-        fimAquisitivo: toISO(p.fimAquisitivo),
-        fimConcessivo: toISO(p.fimConcessivo),
-        dataLimiteConcessao: toISO(p.dataLimiteConcessao),
-        diasParaVencer: daysBetween(today, p.dataLimiteConcessao),
-        status: 'em_per_aquisitivo',
+        inicioAquisitivo: '',
+        fimAquisitivo: '',
+        fimConcessivo: '',
+        dataLimiteConcessao: '',
+        diasParaVencer: 0,
+        status: 'aguardando_dados' as VacationStatusType,
       };
     }
+    const totalMonths = monthsBetween(admDate, today);
+    const earnedCycles = Math.floor(totalMonths / 12);
 
     // ── Férias do funcionário, ordenadas por início ───────────────────────
     const empVacations = vacations
       .filter(v => v.employeeId === emp.id)
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-    // ── Encontra o primeiro ciclo ganho sem férias CONCLUÍDAS ─────────────
-    // (férias agendadas = ciclo ainda "aberto")
-    let targetCycle = earnedCycles - 1; // fallback: último ciclo ganho
+    // ── Encontra o ciclo alvo (focado no presente em diante) ──────────────
+    let targetCycle = 0;
+    const currentYear = today.getFullYear();
 
-    for (let c = 0; c < earnedCycles; c++) {
+    // Percorremos os ciclos para achar o primeiro que não foi "gozado" (taken)
+    // Começamos a busca de forma que foque no "ano presente em diante"
+    for (let c = 0; c <= earnedCycles + 1; c++) {
       const p = getPeriod(admDate, c);
+      
+      // Se o período concessivo terminou antes do ano atual, pulamos para focar no presente
+      // A menos que seja o único ciclo disponível (c == earnedCycles)
+      if (p.fimConcessivo.getFullYear() < currentYear && c < earnedCycles) {
+        continue;
+      }
+
       const fimAqISO = toISO(p.fimAquisitivo);
       const fimConISO = toISO(p.fimConcessivo);
 
@@ -169,6 +192,8 @@ export function computeVacationStats(
         targetCycle = c;
         break;
       }
+      
+      targetCycle = c + 1;
     }
 
     const period = getPeriod(admDate, targetCycle);
@@ -214,6 +239,7 @@ export function computeVacationStats(
 
     return {
       ...base,
+      numeroPeriodo: (targetCycle + 1).toString(),
       inicioAquisitivo: toISO(period.inicioAquisitivo),
       fimAquisitivo: toISO(period.fimAquisitivo),
       fimConcessivo: toISO(period.fimConcessivo),
@@ -222,6 +248,13 @@ export function computeVacationStats(
       status,
       currentVacation,
       diasRestantes,
+      diasDireito: currentVacation?.diasDireito?.toString() || '30',
+      vendeuFerias: currentVacation?.vendeuFerias ? 'Sim' : 'Não',
+      diasVendidos: currentVacation?.diasVendidos?.toString() || '0',
+      diasAGozar: ((currentVacation?.diasDireito ?? 30) - (currentVacation?.diasVendidos ?? 0)).toString(),
+      dataInicioFerias: currentVacation?.startDate || '',
+      dataFimFerias: currentVacation?.endDate || '',
+      dataRetorno: currentVacation?.returnDate || '',
     };
   });
 }

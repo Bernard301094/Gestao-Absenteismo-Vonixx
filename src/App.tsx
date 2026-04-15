@@ -236,9 +236,10 @@ export default function App() {
               <Vacations
                 employees={data.employees}
                 vacations={data.vacations}
-                vacationStats={analytics.vacationStats}
                 handleAddVacation={data.handleAddVacation}
                 handleDeleteVacation={data.handleDeleteVacation}
+                handleUpdateVacation={data.handleUpdateVacation}
+                updateEmployeeData={data.updateEmployeeData}
               />
             )}
           </Suspense>
@@ -254,6 +255,8 @@ export default function App() {
             handleAddEmployee={data.handleAddEmployee}
             newEmployeeName={data.newEmployeeName}
             setNewEmployeeName={data.setNewEmployeeName}
+            newEmployeeRole={data.newEmployeeRole}
+            setNewEmployeeRole={data.setNewEmployeeRole}
             newEmployeeAdmissionDate={data.newEmployeeAdmissionDate}
             setNewEmployeeAdmissionDate={data.setNewEmployeeAdmissionDate}
           />

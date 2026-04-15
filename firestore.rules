@@ -96,11 +96,20 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidEmployee() {
-      return hasOnlyAllowedFields(['name', 'createdAt', 'shift']) &&
+      return hasOnlyAllowedFields(['name', 'createdAt', 'shift', 'admissionDate', 'role', 'dataAdmissao', 'data_admissao', 'vacationStart', 'dataInicioFerias', 'vacationEnd', 'dataFimFerias', 'returnDate', 'vacationStatus', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos']) &&
              hasRequiredFields(['name', 'createdAt', 'shift']) &&
              isValidString('name', 1, 100) &&
              request.resource.data.createdAt is timestamp &&
              request.resource.data.shift in ['A', 'B', 'C', 'D'];
+    }
+
+    function isValidVacation() {
+      return hasOnlyAllowedFields(['employeeId', 'startDate', 'endDate', 'returnDate', 'status', 'diasDireito', 'vendeuFerias', 'diasVendidos', 'updatedAt']) &&
+             hasRequiredFields(['employeeId', 'startDate', 'endDate', 'status']) &&
+             isValidString('employeeId', 1, 50) &&
+             isValidString('startDate', 1, 20) &&
+             isValidString('endDate', 1, 20) &&
+             request.resource.data.status in ['scheduled', 'taken'];
     }
 
     function isValidAttendanceRecord() {
@@ -131,6 +140,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidEmployee() && isCreatingOwnShift();
       allow update: if isAuthenticated() && isValidEmployee() && isOwnerShift() && isCreatingOwnShift() && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAuthenticated() && isOwnerShift();
+    }
+
+    match /vacations/{vacationId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidVacation();
+      allow update: if isAuthenticated() && isValidVacation();
+      allow delete: if isAuthenticated();
     }
 
     match /attendance/{recordId} {
