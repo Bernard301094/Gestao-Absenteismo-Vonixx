@@ -3,9 +3,10 @@ import {
   CalendarX, UserPlus, CheckCircle2, Search,
   Edit2, Trash2, XCircle, Palmtree, Stethoscope,
   MessageSquare, Activity, CalendarDays, Lock, Unlock,
-  ShieldCheck,
+  ShieldCheck, Camera
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
+import { generateStatsImage } from '../../utils/generateStatsImage';
 import type { Employee, Status, AttendanceRecord, NotesRecord, LockedDaysRecord } from '../../types';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -169,6 +170,22 @@ export default function AttendanceRegistry({
         : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
   }));
 
+  const handleGenerateImage = () => {
+    const faltasCount = kpiCounts.find(k => k.key === 'F')?.count || 0;
+    const afastamentosCount = kpiCounts.find(k => k.key === 'A')?.count || 0;
+    const feriasCount = kpiCounts.find(k => k.key === 'Fe')?.count || 0;
+    const totalStatus = faltasCount + afastamentosCount + feriasCount;
+    const totalEmployees = activeEmployees.length || 1;
+    const percentual = `${Math.round((totalStatus / totalEmployees) * 100)}%`;
+
+    generateStatsImage({
+      faltas: faltasCount,
+      afastamentos: afastamentosCount,
+      ferias: feriasCount,
+      percentual
+    });
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -283,6 +300,14 @@ export default function AttendanceRegistry({
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               Todos Presentes
+            </button>
+
+            <button
+              onClick={handleGenerateImage}
+              className="inline-flex items-center gap-2 bg-violet-50 hover:bg-violet-100 text-violet-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 border border-violet-200"
+            >
+              <Camera className="w-3.5 h-3.5" />
+              Exportar Resumo (Img)
             </button>
 
             {isLocked && (

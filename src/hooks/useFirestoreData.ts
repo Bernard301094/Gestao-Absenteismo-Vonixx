@@ -118,6 +118,7 @@ export function useFirestoreData({
         emps.push({ id: d.id, ...data, admissionDate } as GlobalEmployee);
       });
       setGlobalEmployees(emps);
+      setEmployees(emps.filter(emp => !emp.dismissed));
     });
 
     const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {

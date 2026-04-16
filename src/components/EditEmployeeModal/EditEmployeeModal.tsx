@@ -4,8 +4,8 @@ import { X } from 'lucide-react';
 interface EditEmployeeModalProps {
   showEditEmployeeModal: boolean;
   setShowEditEmployeeModal: (show: boolean) => void;
-  editingEmployee: { id: string; name: string; admissionDate?: string; role?: string } | null;
-  setEditingEmployee: (emp: { id: string; name: string; admissionDate?: string; role?: string } | null) => void;
+  editingEmployee: { id: string; name: string; admissionDate?: string; role?: string; dismissed?: boolean } | null;
+  setEditingEmployee: (emp: { id: string; name: string; admissionDate?: string; role?: string; dismissed?: boolean } | null) => void;
   handleUpdateEmployee: (e: React.FormEvent) => void;
 }
 
@@ -73,6 +73,17 @@ export default function EditEmployeeModal({
               onChange={(e) => setEditingEmployee({ ...editingEmployee, admissionDate: e.target.value })}
               className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
+          </div>
+          <div>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={!!editingEmployee.dismissed}
+                onChange={(e) => setEditingEmployee({ ...editingEmployee, dismissed: e.target.checked })}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Funcionário Demitido
+            </label>
           </div>
           <div className="flex items-center justify-end gap-3 pt-4">
             <button

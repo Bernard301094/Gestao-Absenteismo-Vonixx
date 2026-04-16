@@ -1,11 +1,11 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { GoogleGenAI } from "@google/genai";
 
-export type AIProvider = 'gemini' | 'openrouter' | 'groq';
+export type AIProvider = 'openrouter' | 'groq';
 
 // Global AI quota variables
-const MAX_MONTHLY_CALLS = 1000;
+// LIMITE MÁXIMO DEFINIDO PARA MANTER USO DENTRO DO PLANO GRATUITO
+const MAX_MONTHLY_CALLS = 200; 
 
 async function checkAndIncrementQuota(): Promise<void> {
   const now = new Date();
@@ -19,7 +19,7 @@ async function checkAndIncrementQuota(): Promise<void> {
   }
   
   if (count >= MAX_MONTHLY_CALLS) {
-    throw new Error('Limite mensal de inteligência artificial atingido para o sistema. Tente novamente no próximo mês.');
+    throw new Error(`LIMITE DE CUSTO ATINGIDO: Você atingiu o limite de ${MAX_MONTHLY_CALLS} chamadas este mês. A IA foi bloqueada para evitar cobranças adicionais.`);
   }
   
   await setDoc(quotaRef, { calls: count + 1 }, { merge: true });
@@ -32,7 +32,6 @@ async function fetchApiKey(provider: AIProvider): Promise<string | null> {
     const configSnap = await getDoc(doc(db, 'system', 'ai_config'));
     if (configSnap.exists()) {
       const data = configSnap.data();
-      if (provider === 'gemini' && data.geminiKey) return data.geminiKey;
       if (provider === 'openrouter' && data.openrouterKey) return data.openrouterKey;
       if (provider === 'groq' && data.groqKey) return data.groqKey;
     }
@@ -41,12 +40,6 @@ async function fetchApiKey(provider: AIProvider): Promise<string | null> {
   }
 
   // 2. Check Environment Variables (standard way)
-  if (provider === 'gemini') {
-    // Platform standard key
-    const platformKey = (process.env as any).GEMINI_API_KEY;
-    if (platformKey) return platformKey;
-    return import.meta.env.VITE_GEMINI_API_KEY || null;
-  }
   if (provider === 'openrouter') return import.meta.env.VITE_OPENROUTER_API_KEY || null;
   if (provider === 'groq') return import.meta.env.VITE_GROQ_API_KEY || null;
   
@@ -59,9 +52,21 @@ const getEndpoint = (provider: AIProvider) => {
   return '';
 };
 
+const OPENROUTER_FREE_MODELS = [
+  'google/gemma-3-27b-it:free',
+  'venice/dolphin-mistral-24b:free',
+  'nousresearch/hermes-3-llama-3.1-405b:free',
+  'google/gemma-3-4b-it:free',
+  'google/gemma-3n-4b-it:free',
+  'meta-llama/llama-guard-4-12b-it:free'
+];
+
+// Use a free tier model ID for cost 0 compliance
 const getModel = (provider: AIProvider) => {
-  if (provider === 'gemini') return 'gemini-2.0-flash-lite-preview-02-05';
-  if (provider === 'openrouter') return 'google/gemini-2.0-flash-lite-preview-02-05:free';
+  // Enforcing :free model for OpenRouter to ensure cost 0
+  if (provider === 'openrouter') {
+    return OPENROUTER_FREE_MODELS[Math.floor(Math.random() * OPENROUTER_FREE_MODELS.length)];
+  }
   if (provider === 'groq') return 'llama-3.1-8b-instant';
   return '';
 };
@@ -70,9 +75,9 @@ export async function callAI(messages: { role: string; content: string }[], prov
   let activeProvider = provider;
   let activeApiKey = await fetchApiKey(activeProvider);
   
-  // Provider rotation logic if preferred key is missing
+  // Provider rotation logic: OpenRouter (Free) -> Groq
   if (!activeApiKey) {
-    const providers: AIProvider[] = ['openrouter', 'groq', 'gemini'];
+    const providers: AIProvider[] = ['openrouter', 'groq'];
     for (const p of providers) {
       if (p === provider) continue;
       const key = await fetchApiKey(p);
@@ -85,59 +90,51 @@ export async function callAI(messages: { role: string; content: string }[], prov
   }
 
   if (!activeApiKey) {
-    throw new Error('Nenhuma chave de API configurada. Configure o Gemini, OpenRouter ou Groq nas configurações.');
+    throw new Error('Nenhuma chave de API configurada. Configure o OpenRouter ou Groq nas configurações.');
   }
 
   // Check global database quota
   await checkAndIncrementQuota();
 
-  // If using Gemini SDK directly
-  if (activeProvider === 'gemini') {
-    const ai = new GoogleGenAI({ apiKey: activeApiKey });
-    const modelName = getModel('gemini');
-    
-    // Convert messages to Gemini format (system instruction separate)
-    const systemMessage = messages.find(m => m.role === 'system');
-    const userMessages = messages.filter(m => m.role !== 'system');
-    
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: userMessages.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      })),
-      config: {
-        systemInstruction: systemMessage?.content,
-        temperature: 0.3,
-      }
-    });
-    
-    return response.text;
-  }
-
   // If using HTTP providers (OpenRouter, Groq)
   const endpoint = getEndpoint(activeProvider);
   const model = getModel(activeProvider);
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${activeApiKey}`,
-      ...(activeProvider === 'openrouter' && {
-        'HTTP-Referer': window.location.href,
-        'X-Title': 'Gestão de Absenteísmo',
-      }),
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.3,
-    }),
-  });
+  let response;
+  let retries = 0;
+  const MAX_RETRIES = 3;
 
-  if (!response.ok) {
-    const errText = await response.text();
+  while (retries < MAX_RETRIES) {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${activeApiKey}`,
+        ...(activeProvider === 'openrouter' && {
+          'HTTP-Referer': window.location.href,
+          'X-Title': 'Gestão de Absenteísmo',
+        }),
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.3,
+      }),
+    });
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const waitTime = retryAfter ? parseInt(retryAfter) : Math.pow(2, retries);
+      console.warn(`Rate limit hit on ${activeProvider}. Retrying in ${waitTime} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+      retries++;
+      continue;
+    }
+    break;
+  }
+
+  if (!response || !response.ok) {
+    const errText = await response?.text() || 'Unknown error';
     throw new Error(`Erro na API de IA (${activeProvider}): ${errText}`);
   }
 

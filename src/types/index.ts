@@ -15,6 +15,7 @@ export interface Employee {
   role?: string;
   cargo?: string;
   shift?: string;
+  dismissed?: boolean;
 }
 
 export interface Vacation {
