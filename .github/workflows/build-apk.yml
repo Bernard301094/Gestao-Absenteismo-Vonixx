@@ -72,22 +72,66 @@ jobs:
           fi
           npx cap sync android
 
-      # ── 9. Setup Android SDK ───────────────────────────────────────────────
+      # ── 9. Fix Kotlin stdlib duplicate classes ─────────────────────────────
+      # kotlin-stdlib >= 1.8 already bundles jdk7/jdk8 classes.
+      # Capacitor still pulls in the old split artifacts (1.6.x), causing
+      # duplicate class errors. We patch build.gradle to force-align all
+      # kotlin-stdlib-jdk* variants to the same version as kotlin-stdlib.
+      - name: Patch Kotlin stdlib conflict in android/build.gradle
+        run: |
+          GRADLE_FILE="android/build.gradle"
+
+          # Check if the resolution block already exists (idempotent)
+          if grep -q "kotlin-stdlib-jdk" "$GRADLE_FILE"; then
+            echo "Kotlin resolution already present, skipping."
+            exit 0
+          fi
+
+          # Detect the kotlin_version already declared in build.gradle
+          KOTLIN_VERSION=$(grep -oP "(?<=kotlin_version = ')[^']+" "$GRADLE_FILE" || echo "1.9.10")
+          echo "Detected kotlin_version: $KOTLIN_VERSION"
+
+          # Append a subprojects resolution block at the end of the file
+          cat >> "$GRADLE_FILE" << EOF
+
+          // ── Fix: force-align kotlin-stdlib-jdk7/jdk8 to kotlin-stdlib version ──
+          // Kotlin >= 1.8 ships jdk7/jdk8 classes inside kotlin-stdlib itself.
+          // Without this, Capacitor's transitive deps pull in the old split JARs
+          // and the build fails with "Duplicate class" errors.
+          subprojects {
+              configurations.all {
+                  resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+                      if (details.requested.group == 'org.jetbrains.kotlin') {
+                          if (details.requested.name in ['kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8']) {
+                              details.useVersion '$KOTLIN_VERSION'
+                              details.because 'Align jdk7/jdk8 split JARs with unified kotlin-stdlib version'
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          echo "Patched $GRADLE_FILE successfully."
+          echo "--- Tail of patched file ---"
+          tail -30 "$GRADLE_FILE"
+
+      # ── 10. Setup Android SDK ──────────────────────────────────────────────
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # ── 10. Grant execute permission to gradlew ────────────────────────────
+      # ── 11. Grant execute permission to gradlew ────────────────────────────
       - name: Grant Gradle execute permission
         run: chmod +x android/gradlew
 
-      # ── 11. Build debug APK ────────────────────────────────────────────────
+      # ── 12. Build debug APK ────────────────────────────────────────────────
       - name: Build Debug APK
         working-directory: android
         env:
           JAVA_HOME: ${{ env.JAVA_HOME_21_X64 }}
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # ── 12. Upload APK as artifact ─────────────────────────────────────────
+      # ── 13. Upload APK as artifact ─────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +139,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      # ── 13. Create GitHub Release (only on tag push) ───────────────────────
+      # ── 14. Create GitHub Release (only on tag push) ───────────────────────
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
