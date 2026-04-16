@@ -191,8 +191,18 @@ function HistoricalWarning({
 }
 
 export default function VacationManagement({
-  employees, vacations, vacationStats, handleAddVacation, handleDeleteVacation, handleUpdateVacation, updateEmployeeData,
+  employees: employeesProp,
+  vacations,
+  vacationStats: vacationStatsProp,
+  handleAddVacation,
+  handleDeleteVacation,
+  handleUpdateVacation,
+  updateEmployeeData,
 }: VacationManagementProps) {
+  // ── Guards contra undefined/null durante loading ─────────────────────────
+  const employees: Employee[] = employeesProp ?? [];
+  const vacationStats: VacationStats[] = vacationStatsProp ?? [];
+
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -257,9 +267,7 @@ export default function VacationManagement({
     const todayISO = new Date().toISOString().split('T')[0];
     const isPast = !!dates && dates.endDate < todayISO;
 
-    if (isPast && (!editHistoricalConfirmed || !editHistoricalReason)) {
-      return;
-    }
+    if (isPast && (!editHistoricalConfirmed || !editHistoricalReason)) return;
 
     if (editingStat.currentVacation) {
       const status = isPast ? 'taken' : editingStat.currentVacation.status;
@@ -308,9 +316,9 @@ export default function VacationManagement({
     [vacationStats, searchTerm],
   );
 
-  const countNow = vacationStats.filter(s => s.status === 'em_ferias_agora').length;
+  const countNow       = vacationStats.filter(s => s.status === 'em_ferias_agora').length;
   const countScheduled = vacationStats.filter(s => s.status === 'ferias_agendadas').length;
-  const countUrgent = vacationStats.filter(s =>
+  const countUrgent    = vacationStats.filter(s =>
     s.diasParaVencer < 60 && !['em_ferias_agora','em_per_aquisitivo','aguardando_dados'].includes(s.status),
   ).length;
 
@@ -324,9 +332,7 @@ export default function VacationManagement({
     const todayISO = new Date().toISOString().split('T')[0];
     const isPast = dates.endDate < todayISO;
 
-    if (isPast && (!addHistoricalConfirmed || !addHistoricalReason)) {
-      return;
-    }
+    if (isPast && (!addHistoricalConfirmed || !addHistoricalReason)) return;
 
     await handleAddVacation({
       employeeId: selectedEmployeeId,
@@ -350,6 +356,20 @@ export default function VacationManagement({
     setAddHistoricalConfirmed(false);
     setAddHistoricalReason('');
   };
+
+  // ── Loading skeleton mientras no hay datos ───────────────────────────────
+  if (!vacationStatsProp) {
+    return (
+      <div className="space-y-4 animate-pulse">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[1,2,3].map(i => (
+            <div key={i} className="h-24 rounded-3xl bg-gray-100" />
+          ))}
+        </div>
+        <div className="h-64 rounded-3xl bg-gray-100" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
