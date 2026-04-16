@@ -18,6 +18,8 @@ export interface Employee {
   dismissed?: boolean;
 }
 
+export type HistoricalVacationReason = 'taken' | 'correction' | 'import';
+
 export interface Vacation {
   id: string;
   employeeId: string;
@@ -28,6 +30,8 @@ export interface Vacation {
   diasDireito?: number;
   vendeuFerias?: boolean;
   diasVendidos?: number;
+  isHistorical?: boolean;
+  historicalReason?: HistoricalVacationReason;
 }
 
 export type VacationStatusType = 
