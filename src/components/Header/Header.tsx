@@ -52,14 +52,9 @@ interface TabButtonProps {
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-  variant?: 'default' | 'orange';
 }
 
-function TabButton({ isActive, onClick, icon, label, variant = 'default' }: TabButtonProps) {
-  const activeClass = variant === 'orange'
-    ? 'bg-orange-500 text-white shadow-lg shadow-orange-200'
-    : 'bg-blue-600 text-white shadow-lg shadow-blue-200';
-
+function TabButton({ isActive, onClick, icon, label }: TabButtonProps) {
   return (
     <button
       onClick={onClick}
@@ -73,7 +68,7 @@ function TabButton({ isActive, onClick, icon, label, variant = 'default' }: TabB
         font-black uppercase tracking-widest
         transition-all duration-200
         ${isActive
-          ? activeClass
+          ? 'bg-blue-600 text-white shadow-lg shadow-blue-200'
           : 'text-gray-400 hover:text-gray-700 hover:bg-gray-100 active:scale-95'
         }
       `}
@@ -436,8 +431,7 @@ export default function Header({
               isActive={activeTab === 'ferias_dashboard'}
               onClick={() => setActiveTab('ferias_dashboard')}
               icon={<LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-              label="Análise"
-              variant="orange"
+              label="Análise Férias"
             />
 
           </div>
