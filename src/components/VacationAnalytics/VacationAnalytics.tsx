@@ -6,12 +6,13 @@ import {
 import {
   CalendarDays, CheckCircle2, Clock, AlertTriangle, History,
   TrendingUp, AlertCircle, Calendar, BarChart3, Filter, Layers,
-  ShieldAlert, ChevronRight, Users, Wallet, Bot, Loader2
+  ShieldAlert, ChevronRight, Users, Wallet, Bot, Loader2, Sparkles
 } from 'lucide-react';
 import { VacationStats, VacationStatusType, Vacation, Employee } from '../../types';
 import { suggestVacationResolution } from '../../services/aiService';
 
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MONTH_NAMES_FULL  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 import CustomDropdown from '../CustomDropdown';
 
@@ -24,7 +25,6 @@ interface VacationAnalyticsProps {
   currentShift: string;
   allVacations: Vacation[];
   allEmployees: Employee[];
-  /** ✅ CORRECCIÓN: recibir el año activo del dashboard para sincronizar el heatmap */
   currentYear: number;
 }
 
@@ -146,13 +146,298 @@ function Badge({ children, color }: { children: React.ReactNode; color: 'blue' |
   );
 }
 
+// ─── PREMIUM: Férias por Mês / Ano ────────────────────────────────────────────
+const YEAR_PALETTE: Record<string, { bg: string; text: string; bar: string; badge: string }> = {
+  '2025': { bg: 'rgba(124,58,237,0.08)',  text: '#6d28d9', bar: '#7c3aed', badge: 'bg-violet-100 text-violet-700 border-violet-200' },
+  '2026': { bg: 'rgba(37,99,235,0.08)',   text: '#1d4ed8', bar: '#2563eb', badge: 'bg-blue-100 text-blue-700 border-blue-200'       },
+  '2027': { bg: 'rgba(8,145,178,0.08)',   text: '#0e7490', bar: '#0891b2', badge: 'bg-cyan-100 text-cyan-700 border-cyan-200'       },
+  '2028': { bg: 'rgba(5,150,105,0.08)',   text: '#047857', bar: '#059669', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+};
+const FALLBACK_PALETTE = { bg: 'rgba(100,116,139,0.08)', text: '#475569', bar: '#64748b', badge: 'bg-slate-100 text-slate-600 border-slate-200' };
+
+function getPalette(year: string) { return YEAR_PALETTE[year] ?? FALLBACK_PALETTE; }
+
+function cellIntensity(count: number, max: number): string {
+  if (count === 0 || max === 0) return 'transparent';
+  const r = count / max;
+  if (r < 0.2)  return 'rgba(37,99,235,0.12)';
+  if (r < 0.4)  return 'rgba(37,99,235,0.26)';
+  if (r < 0.6)  return 'rgba(37,99,235,0.44)';
+  if (r < 0.8)  return 'rgba(37,99,235,0.65)';
+  return 'rgba(37,99,235,0.90)';
+}
+
+function cellTextColor(count: number, max: number): string {
+  if (count === 0) return '#d1d5db';
+  const r = count / max;
+  return r >= 0.6 ? '#ffffff' : '#1d4ed8';
+}
+
+function FeriasPorMesAno({ vacationMonthlyBreakdown }: { vacationMonthlyBreakdown: Record<number, number[]> }) {
+  const [hoveredCell, setHoveredCell] = useState<{ year: string; month: number } | null>(null);
+
+  const entries = Object.entries(vacationMonthlyBreakdown).sort(([a], [b]) => Number(a) - Number(b));
+
+  const globalMax = useMemo(() => {
+    let max = 1;
+    entries.forEach(([, months]) => {
+      (months as number[]).forEach(c => { if (c > max) max = c; });
+    });
+    return max;
+  }, [entries]);
+
+  if (entries.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-gray-300">
+        <Calendar className="w-10 h-10 mb-3 opacity-40" />
+        <p className="text-sm font-bold text-gray-400">Sem dados disponíveis</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {/* ── Header premium ── */}
+      <div className="flex items-center justify-between px-5 pt-5 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+            <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Distribuição</p>
+            <p className="text-xs font-black text-gray-800 leading-tight mt-0.5">Férias por Mês · Ano</p>
+          </div>
+        </div>
+        {/* Leyenda de intensidad */}
+        <div className="hidden sm:flex items-center gap-1.5">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mr-1">Escala</span>
+          {[0.12, 0.26, 0.44, 0.65, 0.90].map((o, i) => (
+            <div
+              key={i}
+              className="w-3.5 h-3.5 rounded-[3px]"
+              style={{ background: `rgba(37,99,235,${o})`, border: '1px solid rgba(0,0,0,0.06)' }}
+            />
+          ))}
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider ml-1">Max</span>
+        </div>
+      </div>
+
+      {/* ── Desktop grid ── */}
+      <div className="hidden sm:block overflow-x-auto custom-scrollbar px-5 pb-5">
+        <div className="min-w-[460px]">
+          {/* Cabecera meses */}
+          <div className="grid mb-1" style={{ gridTemplateColumns: '52px repeat(12, 1fr) 52px' }}>
+            <div />
+            {MONTH_NAMES_SHORT.map(m => (
+              <div key={m} className="text-center text-[9px] font-black text-gray-400 uppercase tracking-wider py-1">{m}</div>
+            ))}
+            <div className="text-center text-[9px] font-black text-gray-400 uppercase tracking-wider py-1">Total</div>
+          </div>
+
+          {/* Filas por año */}
+          <div className="space-y-1.5">
+            {entries.map(([year, months]) => {
+              const palette = getPalette(year);
+              const total = (months as number[]).reduce((a, b) => a + b, 0);
+              const monthMax = Math.max(...(months as number[]), 1);
+
+              return (
+                <div
+                  key={year}
+                  className="grid items-center rounded-xl overflow-hidden transition-all duration-200 group/row"
+                  style={{
+                    gridTemplateColumns: '52px repeat(12, 1fr) 52px',
+                    background: palette.bg,
+                    border: `1px solid ${palette.bar}22`,
+                  }}
+                >
+                  {/* Año label */}
+                  <div className="flex items-center justify-center py-2.5">
+                    <span
+                      className="text-[11px] font-black tabular-nums"
+                      style={{ color: palette.text }}
+                    >
+                      {year}
+                    </span>
+                  </div>
+
+                  {/* Celdas de meses */}
+                  {(months as number[]).map((count, i) => {
+                    const isHovered = hoveredCell?.year === year && hoveredCell?.month === i;
+                    const bg = cellIntensity(count, globalMax);
+                    const textCol = cellTextColor(count, globalMax);
+
+                    return (
+                      <div
+                        key={i}
+                        className="relative flex items-center justify-center py-2 cursor-default transition-transform duration-150 hover:scale-110 hover:z-10"
+                        onMouseEnter={() => setHoveredCell({ year, month: i })}
+                        onMouseLeave={() => setHoveredCell(null)}
+                      >
+                        <div
+                          className="w-full mx-[2px] rounded-md flex items-center justify-center transition-all duration-200"
+                          style={{
+                            background: bg,
+                            border: count > 0 ? `1px solid ${palette.bar}33` : '1px solid transparent',
+                            minHeight: 28,
+                          }}
+                        >
+                          <span
+                            className="text-[11px] font-black tabular-nums select-none"
+                            style={{ color: count > 0 ? textCol : '#e5e7eb' }}
+                          >
+                            {count > 0 ? count : '·'}
+                          </span>
+                        </div>
+
+                        {/* Tooltip flotante */}
+                        {isHovered && count > 0 && (
+                          <div
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+                          >
+                            <div className="bg-gray-900 text-white rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap">
+                              <p className="text-[9px] font-black uppercase tracking-wider text-gray-400">{MONTH_NAMES_FULL[i]} {year}</p>
+                              <p className="text-sm font-black tabular-nums" style={{ color: palette.bar === '#2563eb' ? '#93c5fd' : '#a5f3fc' }}>
+                                {count} férias
+                              </p>
+                            </div>
+                            <div className="w-2 h-2 bg-gray-900 rotate-45 mx-auto -mt-1" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Total anual */}
+                  <div className="flex items-center justify-center py-2.5">
+                    <span
+                      className="text-[11px] font-black tabular-nums px-2 py-0.5 rounded-md"
+                      style={{ color: palette.text, background: `${palette.bar}18` }}
+                    >
+                      {total}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Fila de totales por mes */}
+          <div
+            className="grid items-center mt-2 rounded-xl overflow-hidden"
+            style={{ gridTemplateColumns: '52px repeat(12, 1fr) 52px', background: '#f8fafc', border: '1px solid #e2e8f0' }}
+          >
+            <div className="flex items-center justify-center py-2.5">
+              <span className="text-[9px] font-black text-gray-400 uppercase tracking-wider">Σ</span>
+            </div>
+            {MONTH_NAMES_SHORT.map((_, i) => {
+              const colTotal = entries.reduce((acc, [, months]) => acc + ((months as number[])[i] ?? 0), 0);
+              return (
+                <div key={i} className="flex items-center justify-center py-2.5">
+                  <span className={`text-[11px] font-black tabular-nums ${colTotal > 0 ? 'text-slate-600' : 'text-gray-200'}`}>
+                    {colTotal > 0 ? colTotal : '·'}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="flex items-center justify-center py-2.5">
+              <span className="text-[11px] font-black text-slate-700 tabular-nums">
+                {entries.reduce((acc, [, months]) => acc + (months as number[]).reduce((a, b) => a + b, 0), 0)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Mobile: cards por año ── */}
+      <div className="sm:hidden px-4 pb-4 space-y-3">
+        {entries.map(([year, months]) => {
+          const palette = getPalette(year);
+          const total = (months as number[]).reduce((a, b) => a + b, 0);
+          const monthMax = Math.max(...(months as number[]), 1);
+
+          return (
+            <div
+              key={year}
+              className="rounded-2xl overflow-hidden"
+              style={{ background: palette.bg, border: `1px solid ${palette.bar}22` }}
+            >
+              {/* Header del año */}
+              <div
+                className="flex items-center justify-between px-4 py-3"
+                style={{ borderBottom: `1px solid ${palette.bar}22` }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black" style={{ color: palette.text }}>{year}</span>
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${palette.badge}`}
+                  >
+                    {total} férias
+                  </span>
+                </div>
+                {/* Mini sparkline */}
+                <div className="flex items-end gap-[2px] h-5">
+                  {(months as number[]).map((c, i) => (
+                    <div
+                      key={i}
+                      className="w-[4px] rounded-sm transition-all"
+                      style={{
+                        height: `${monthMax > 0 ? Math.max(2, (c / monthMax) * 100) : 2}%`,
+                        background: c > 0 ? palette.bar : '#e5e7eb',
+                        minHeight: 2,
+                        maxHeight: 20,
+                        opacity: c > 0 ? 0.85 : 0.4,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Grid 4 col de meses */}
+              <div className="grid grid-cols-4 gap-1.5 p-3">
+                {(months as number[]).map((count, i) => (
+                  <div
+                    key={i}
+                    className="flex flex-col items-center rounded-xl py-2 px-1 transition-all"
+                    style={{
+                      background: count > 0 ? cellIntensity(count, globalMax) : 'rgba(0,0,0,0.03)',
+                      border: count > 0 ? `1px solid ${palette.bar}33` : '1px solid transparent',
+                    }}
+                  >
+                    <span className="text-[8px] font-black text-gray-400 uppercase tracking-wider">{MONTH_NAMES_SHORT[i]}</span>
+                    <span
+                      className="text-sm font-black tabular-nums mt-0.5"
+                      style={{ color: count > 0 ? cellTextColor(count, globalMax) : '#d1d5db' }}
+                    >
+                      {count > 0 ? count : '0'}
+                    </span>
+                    {count > 0 && (
+                      <div
+                        className="w-full mt-1.5 rounded-full overflow-hidden"
+                        style={{ height: 3, background: `${palette.bar}22` }}
+                      >
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${(count / monthMax) * 100}%`,
+                            background: palette.bar,
+                            opacity: 0.7,
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Responsive Heatmap ────────────────────────────────────────────────────────
-/**
- * Mapa de calor responsivo:
- * - Mobile  (<640px): 3 meses por fila, celdas de 10px
- * - Tablet  (640px+): 6 meses por fila, celdas de 11px
- * - Desktop (1024px+): 12 meses en línea, celdas de 12px
- */
 function VacationHeatmap({
   heatmapData,
   maxCount,
@@ -173,16 +458,12 @@ function VacationHeatmap({
 
   return (
     <div className="p-5">
-      {/* Grid responsivo: 3 col en mobile, 4 en sm, 6 en md, 12 en xl */}
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-12 gap-3">
         {heatmapData.map(month => (
           <div key={month.name} className="flex flex-col gap-1.5">
-            {/* Nombre del mes */}
             <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest text-center">
               {month.name}
             </span>
-
-            {/* Encabezados de días de la semana */}
             <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
               {['L','M','X','J','V','S','D'].map(d => (
                 <div
@@ -194,12 +475,7 @@ function VacationHeatmap({
                 </div>
               ))}
             </div>
-
-            {/* Celdas de días:
-                - Espaciadores vacíos para alinear el primer día de la semana
-                - Cada celda muestra el conteo de férias ese día */}
             <div className="grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
-              {/* Spacers: weekday=1 (Lun)→0 espaciadores, weekday=0 (Dom)→6 espaciadores */}
               {Array.from({ length: month.days[0]?.weekday ?? 0 }).map((_, i) => (
                 <div key={`sp-${i}`} className="aspect-square" />
               ))}
@@ -219,8 +495,6 @@ function VacationHeatmap({
           </div>
         ))}
       </div>
-
-      {/* Leyenda */}
       <div className="flex items-center gap-4 mt-5 flex-wrap">
         <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
           {currentYear}
@@ -254,7 +528,7 @@ export default function VacationAnalytics({
   currentShift,
   allVacations,
   allEmployees,
-  currentYear, // ✅ Prop recibida del padre
+  currentYear,
 }: VacationAnalyticsProps) {
   const [roleFilter, setRoleFilter] = React.useState<string>('all');
   const [expandedSection, setExpandedSection] = React.useState<string | null>('current');
@@ -285,7 +559,6 @@ export default function VacationAnalytics({
     [rawVacationStats, roleFilter],
   );
 
-  // ─── KPIs ─────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => ({
     total:         vacationStats.length,
     em_ferias:     vacationStats.filter(s => s.status === 'em_ferias_agora').length,
@@ -297,44 +570,28 @@ export default function VacationAnalytics({
     aguardando:    vacationStats.filter(s => s.status === 'aguardando_dados').length,
   }), [vacationStats]);
 
-  // ─── HEATMAP — CORRECCIÓN PRINCIPAL ───────────────────────────────────────
-  /**
-   * BUG ORIGINAL: usaba `const year = new Date().getFullYear()` siempre,
-   * ignorando el año seleccionado en el dashboard. Los días generados no
-   * coincidían con las claves del mapa calculado en useDashboardAnalytics.
-   *
-   * CORRECCIÓN: usar `currentYear` (prop) para generar las claves ISO
-   * que sí coinciden con lo calculado en vacationHeatmap.
-   */
   const heatmapData = useMemo(() => {
     return Array.from({ length: 12 }, (_, monthIndex) => {
       const days: { day: number; count: number; key: string; weekday: number }[] = [];
-      const date = new Date(currentYear, monthIndex, 1, 12, 0, 0); // hora fija evita cambios de TZ
-
+      const date = new Date(currentYear, monthIndex, 1, 12, 0, 0);
       while (date.getMonth() === monthIndex) {
-        // Clave ISO local (sin depender de toISOString que puede cambiar el día por TZ)
         const mm = String(monthIndex + 1).padStart(2, '0');
         const dd = String(date.getDate()).padStart(2, '0');
         const key = `${currentYear}-${mm}-${dd}`;
-
-        // Día de la semana: 0=Dom → ajustamos a 0=Lun para la cuadrícula
-        const rawWeekday = date.getDay(); // 0=Dom, 1=Lun...
-        const weekday = rawWeekday === 0 ? 6 : rawWeekday - 1; // 0=Lun, 6=Dom
-
+        const rawWeekday = date.getDay();
+        const weekday = rawWeekday === 0 ? 6 : rawWeekday - 1;
         days.push({ day: date.getDate(), count: vacationHeatmap[key] ?? 0, key, weekday });
         date.setDate(date.getDate() + 1);
       }
-
       return { name: MONTH_NAMES_SHORT[monthIndex], days };
     });
-  }, [vacationHeatmap, currentYear]); // ✅ currentYear en dependencias
+  }, [vacationHeatmap, currentYear]);
 
   const maxHeatmapCount = useMemo(
     () => Math.max(1, ...heatmapData.flatMap(m => m.days.map(d => d.count))),
     [heatmapData],
   );
 
-  // ─── Chart Data ───────────────────────────────────────────────────────────
   const chartData = useMemo(() =>
     MONTH_NAMES_SHORT.map((month, i) => {
       const entry: any = { name: month };
@@ -344,7 +601,6 @@ export default function VacationAnalytics({
     [vacationMonthlyBreakdown],
   );
 
-  // ─── Tables ───────────────────────────────────────────────────────────────
   const emFeriasAgora = useMemo(
     () => vacationStats.filter(s => s.status === 'em_ferias_agora'),
     [vacationStats],
@@ -470,7 +726,6 @@ export default function VacationAnalytics({
               {vacationOverlapAlerts.map((a, i) => (
                 <div key={i} className="bg-white/60 rounded-xl p-3 border border-red-100">
                   <p className="text-xs text-red-700 font-medium">· {a}</p>
-                  
                   <div className="mt-3">
                     {!aiResolutions[i] && (
                       <button
@@ -482,7 +737,6 @@ export default function VacationAnalytics({
                         Sugerir Resolução com IA
                       </button>
                     )}
-                    
                     {aiResolutions[i] && (
                       <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-center gap-1.5 text-blue-800 mb-1.5">
@@ -535,8 +789,6 @@ export default function VacationAnalytics({
             </tbody>
           </DataTable>
         </div>
-
-        {/* Mobile View: Cards */}
         <div className="sm:hidden p-4 space-y-3 bg-red-50/10">
           {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
             <div key={s.employeeId} className="bg-white border border-red-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
@@ -574,7 +826,7 @@ export default function VacationAnalytics({
         </div>
       </Section>
 
-      {/* ── Heatmap — Responsivo ──────────────────────────────────────────── */}
+      {/* ── Heatmap ───────────────────────────────────────────────────────── */}
       <Section
         id="heatmap" expanded={expandedSection} onToggle={toggle}
         title={`Mapa de Calor · Ocupação Diária ${currentYear}`}
@@ -606,7 +858,6 @@ export default function VacationAnalytics({
                 const remaining = Number(s.diasRestantes);
                 const passed = totalDays - remaining;
                 const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
-                
                 return (
                   <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
                     <Td muted mono>{i + 1}</Td>
@@ -621,10 +872,7 @@ export default function VacationAnalytics({
                           <span className="text-gray-400">{passed}/{totalDays}d gozados</span>
                         </div>
                         <div className="h-2 w-full bg-orange-100 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-orange-500 rounded-full transition-all"
-                            style={{ width: `${percentage}%` }}
-                          />
+                          <div className="h-full bg-orange-500 rounded-full transition-all" style={{ width: `${percentage}%` }} />
                         </div>
                       </div>
                     </Td>
@@ -640,15 +888,12 @@ export default function VacationAnalytics({
             </tbody>
           </DataTable>
         </div>
-
-        {/* Mobile View: Cards */}
         <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
           {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
             const totalDays = s.dataInicioFerias && s.dataFimFerias ? Math.round((new Date(s.dataFimFerias).getTime() - new Date(s.dataInicioFerias).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0;
             const remaining = Number(s.diasRestantes);
             const passed = totalDays - remaining;
             const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
-
             return (
               <div key={s.employeeId} className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
@@ -659,7 +904,6 @@ export default function VacationAnalytics({
                   </div>
                   <Badge color="orange">{s.cargo}</Badge>
                 </div>
-                
                 <div className="grid grid-cols-2 gap-3 text-[11px] mb-4">
                   <div>
                     <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
@@ -670,17 +914,13 @@ export default function VacationAnalytics({
                     <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias)}</p>
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <div className="flex justify-between items-end text-[10px] font-black uppercase tracking-wider">
                     <span className="text-orange-700">{remaining} dias restantes</span>
                     <span className="text-gray-400">{passed}/{totalDays} dias gozados</span>
                   </div>
                   <div className="h-2 w-full bg-orange-50 rounded-full overflow-hidden border border-orange-100/30">
-                    <div 
-                      className="h-full bg-orange-500 rounded-full transition-all duration-700"
-                      style={{ width: `${percentage}%` }}
-                    />
+                    <div className="h-full bg-orange-500 rounded-full transition-all duration-700" style={{ width: `${percentage}%` }} />
                   </div>
                 </div>
               </div>
@@ -726,8 +966,6 @@ export default function VacationAnalytics({
             </tbody>
           </DataTable>
         </div>
-
-        {/* Mobile View: Cards */}
         <div className="sm:hidden p-4 space-y-3 bg-blue-50/10">
           {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
             <div key={s.employeeId} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
@@ -738,7 +976,6 @@ export default function VacationAnalytics({
                 </div>
                 <Badge color="blue">{s.cargo}</Badge>
               </div>
-              
               <div className="grid grid-cols-2 gap-3 text-[11px]">
                 <div>
                   <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
@@ -766,8 +1003,9 @@ export default function VacationAnalytics({
         </div>
       </Section>
 
-      {/* ── Charts (Distribuição e Tabela) ── */}
+      {/* ── Charts ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
+        {/* Gráfico de barras */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
             <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -791,63 +1029,18 @@ export default function VacationAnalytics({
           </div>
         </div>
 
+        {/* ── PREMIUM: Férias por Mês / Ano ── */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
-            <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center">
-              <Calendar className="w-4 h-4 text-blue-600" />
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm shadow-blue-200">
+              <Calendar className="w-4 h-4 text-white" />
             </div>
-            <span className="text-sm font-black text-gray-900">Férias por Mês / Ano</span>
+            <div className="flex-1">
+              <span className="text-sm font-black text-gray-900">Férias por Mês / Ano</span>
+              <p className="text-[10px] text-gray-400 font-medium mt-0.5 leading-none">Intensidade por volume · hover para detalhes</p>
+            </div>
           </div>
-          <div className="hidden sm:block overflow-x-auto custom-scrollbar">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-3 py-2.5 text-[9px] font-black text-gray-400 uppercase tracking-widest text-left">Ano</th>
-                  {MONTH_NAMES_SHORT.map(m => (
-                    <th key={m} className="px-1 py-2.5 text-[9px] font-black text-gray-400 uppercase tracking-widest text-center w-8">{m}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(vacationMonthlyBreakdown).map(([year, months]) => (
-                  <tr key={year} className="hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0">
-                    <td className="px-3 py-2 text-[10px] font-black text-blue-700">{year}</td>
-                    {(months as number[]).map((count, i) => (
-                      <td key={i} className="px-1 py-2 text-center">
-                        <span className={`text-[11px] font-mono ${count > 0 ? 'font-black text-blue-600' : 'text-gray-200'}`}>
-                          {count > 0 ? count : '·'}
-                        </span>
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile View: Year Cards */}
-          <div className="sm:hidden p-4 space-y-4 bg-gray-50/10">
-            {Object.entries(vacationMonthlyBreakdown).map(([year, months]) => (
-              <div key={year} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
-                <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-50">
-                  <span className="text-xs font-black text-blue-700">Ano {year}</span>
-                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    {(months as number[]).reduce((a, b) => a + b, 0)} Férias
-                  </span>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {(months as number[]).map((count, i) => (
-                    <div key={i} className={`flex flex-col items-center p-1.5 rounded-lg border ${count > 0 ? 'bg-blue-50 border-blue-100' : 'bg-gray-50/50 border-gray-50'}`}>
-                      <span className="text-[8px] font-black text-gray-400 uppercase">{MONTH_NAMES_SHORT[i]}</span>
-                      <span className={`text-[11px] font-black ${count > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-                        {count > 0 ? count : '0'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <FeriasPorMesAno vacationMonthlyBreakdown={vacationMonthlyBreakdown} />
         </div>
       </div>
 
@@ -883,8 +1076,6 @@ export default function VacationAnalytics({
             </tbody>
           </DataTable>
         </div>
-
-        {/* Mobile View: Cards */}
         <div className="sm:hidden p-4 space-y-3 bg-emerald-50/10">
           {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
             <div key={s.id} className="bg-white border border-emerald-100 rounded-xl p-4 shadow-sm">
@@ -895,7 +1086,6 @@ export default function VacationAnalytics({
                 </div>
                 <Badge color="green">{s.cargo}</Badge>
               </div>
-              
               <div className="grid grid-cols-2 gap-3 text-[11px]">
                 <div>
                   <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
