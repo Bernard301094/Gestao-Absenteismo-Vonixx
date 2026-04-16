@@ -436,7 +436,8 @@ export default function Header({
               isActive={activeTab === 'ferias_dashboard'}
               onClick={() => setActiveTab('ferias_dashboard')}
               icon={<LayoutDashboard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
-              label="Análise Férias"
+              label="Análise"
+              variant="orange"
             />
 
           </div>
