@@ -1,15 +1,28 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { User, onAuthStateChanged } from 'firebase/auth';
 import { auth, loginWithEmail, logout as firebaseLogout } from '../firebase';
 import type { ShiftType, LoginShiftType } from '../types';
 
+// ─── Contraseñas desde variables de entorno ────────────────────────────────
+// Definir en .env local: VITE_PWD_TURNO_A, VITE_PWD_SUPERVISAO, VITE_PWD_TURNOS_BCD
+// NUNCA commitear el archivo .env al repositorio
+const PWD_TURNO_A      = import.meta.env.VITE_PWD_TURNO_A      ?? 'TurnoA@Vonixx2026';
+const PWD_SUPERVISAO   = import.meta.env.VITE_PWD_SUPERVISAO   ?? 'Supervisao@Vonixx2026';
+const PWD_TURNOS_BCD   = import.meta.env.VITE_PWD_TURNOS_BCD   ?? 'vonixx2026';
+
+// ─── Tipos propios (sin any) ───────────────────────────────────────────────
+type DeferredInstallPrompt = Event & {
+  prompt: () => void;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+};
+
 export function useAuth() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [selectedShiftLogin, setSelectedShiftLogin] = useState<LoginShiftType>('A');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<DeferredInstallPrompt | null>(null);
 
   // ─── Derived Auth State ─────────────────────────────────────────────────────
   const currentShift = useMemo<ShiftType | null>(() => {
@@ -29,7 +42,7 @@ export function useAuth() {
   const isStandalone = useMemo(() => {
     return (
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true
     );
   }, []);
 
@@ -56,7 +69,7 @@ export function useAuth() {
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
-      setDeferredPrompt(e);
+      setDeferredPrompt(e as DeferredInstallPrompt);
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
@@ -75,26 +88,27 @@ export function useAuth() {
     let passwordToUse = loginPassword;
 
     if (selectedShiftLogin === 'A') {
-      if (loginPassword !== 'TurnoA@Vonixx2026') {
+      if (loginPassword !== PWD_TURNO_A) {
         setLoginError('Senha incorreta para o Turno A.');
         return;
       }
     } else if (selectedShiftLogin === 'SUPERVISAO') {
-      if (loginPassword !== 'Supervisao@Vonixx2026') {
+      if (loginPassword !== PWD_SUPERVISAO) {
         setLoginError('Senha incorreta para Supervisão.');
         return;
       }
     } else {
-      passwordToUse = 'vonixx2026';
+      passwordToUse = PWD_TURNOS_BCD;
     }
 
     try {
       await loginWithEmail(email, passwordToUse);
-    } catch (error: any) {
-      if (error.code === 'auth/invalid-credential') {
+    } catch (error: unknown) {
+      const firebaseError = error as { code?: string; message?: string };
+      if (firebaseError.code === 'auth/invalid-credential') {
         setLoginError('Contraseña incorrecta.');
       } else {
-        setLoginError('Erro: ' + error.message);
+        setLoginError('Erro: ' + (firebaseError.message ?? 'desconhecido'));
       }
     }
   };
