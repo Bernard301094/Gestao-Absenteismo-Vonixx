@@ -1,291 +1,112 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Calendar, Clock, AlertTriangle, CheckCircle2, Plus, Trash2,
-  Edit2, Search, User, Info, ChevronDown, ChevronUp, CalendarDays,
-  X, TrendingDown, UserCheck, CalendarCheck,
+  CalendarDays,
+  Clock3,
+  AlertTriangle,
+  Umbrella,
+  Pencil,
+  Trash2,
+  Plus,
+  CheckCircle2,
+  XCircle,
+  CalendarClock,
+  Briefcase,
+  Sparkles,
+  History,
 } from 'lucide-react';
-import type { Employee, Vacation, VacationStats } from '../../types';
-import { useVacationStats, calcVacationDates } from '../../hooks/useVacationStats';
-
+import type { Employee, Vacation, VacationStats, HistoricalVacationReason } from '../../types';
+import { calcVacationDates } from '../../hooks/useVacationStats';
 import CustomDropdown from '../CustomDropdown';
-
-// ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface VacationManagementProps {
   employees: Employee[];
   vacations: Vacation[];
+  vacationStats: VacationStats[];
   handleAddVacation: (vacation: Omit<Vacation, 'id'>) => Promise<void>;
   handleDeleteVacation: (id: string) => Promise<void>;
   handleUpdateVacation: (id: string, vacation: Partial<Vacation>) => Promise<void>;
-  updateEmployeeData: (id: string, data: any) => Promise<void>;
+  updateEmployeeData: (id: string, data: Partial<Employee>) => Promise<void>;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-function fmtDate(iso: string): string {
-  if (!iso || iso.length < 10) return '—';
+function fmtDate(iso?: string) {
+  if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
 
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ stat }: { stat: VacationStats }) {
-  const base = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide whitespace-nowrap';
-  switch (stat.status) {
-    case 'em_ferias_agora':
-      return (
-        <div className="flex flex-col gap-1">
-          <span className={`${base} bg-orange-100 text-orange-700 border border-orange-200`}>
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
-            Em Férias Agora
-          </span>
-          {stat.diasRestantes !== undefined && stat.diasRestantes !== '' && (
-            <span className="text-[10px] text-orange-500 font-medium">
-              {stat.diasRestantes}d restantes
-            </span>
-          )}
-        </div>
-      );
-    case 'ferias_agendadas':
-      return <span className={`${base} bg-blue-100 text-blue-700 border border-blue-200`}><CalendarDays className="w-3 h-3" /> Agendado</span>;
-    case 'critico_vencido':
-      return <span className={`${base} bg-red-100 text-red-700 border border-red-200`}><AlertTriangle className="w-3 h-3" /> Crítico / Vencido</span>;
-    case 'agendar_em_breve':
-      return <span className={`${base} bg-amber-100 text-amber-700 border border-amber-200`}><Clock className="w-3 h-3" /> Agendar em Breve</span>;
-    case 'em_per_aquisitivo':
-      return <span className={`${base} bg-cyan-100 text-cyan-700 border border-cyan-200`}><CalendarDays className="w-3 h-3" /> Per. Aquisitivo</span>;
-    case 'ferias_concluidas':
-      return <span className={`${base} bg-emerald-100 text-emerald-700 border border-emerald-200`}><CheckCircle2 className="w-3 h-3" /> Concluído</span>;
-    case 'agendado_sem_admissao':
-      return <span className={`${base} bg-blue-50 text-blue-500 border border-blue-100`}><CalendarDays className="w-3 h-3" /> Agendado</span>;
-    case 'a_vencer':
-      return <span className={`${base} bg-green-100 text-green-700 border border-green-200`}><CheckCircle2 className="w-3 h-3" /> A Vencer</span>;
-    default:
-      return <span className={`${base} bg-gray-100 text-gray-400 border border-gray-200`}>Aguardando</span>;
-  }
+function StatusChip({ status }: { status: VacationStats['status'] }) {
+  const config = {
+    em_ferias_agora: ['🏖️ Em Férias', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+    ferias_agendadas: ['🗓️ Agendadas', 'bg-blue-50 text-blue-700 border-blue-200'],
+    ferias_concluidas: ['✅ Concluídas', 'bg-slate-50 text-slate-700 border-slate-200'],
+    critico_vencido: ['🚨 Crítico', 'bg-red-50 text-red-700 border-red-200'],
+    agendar_em_breve: ['⏳ Em breve', 'bg-amber-50 text-amber-700 border-amber-200'],
+    em_per_aquisitivo: ['📆 Aquisitivo', 'bg-violet-50 text-violet-700 border-violet-200'],
+    aguardando_dados: ['⚠️ Dados', 'bg-orange-50 text-orange-700 border-orange-200'],
+    agendado_sem_admissao: ['📌 Sem admissão', 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'],
+    a_vencer: ['🟢 A vencer', 'bg-green-50 text-green-700 border-green-200'],
+  } as const;
+  const [label, cls] = config[status] || ['Status', 'bg-gray-50 text-gray-700 border-gray-200'];
+  return <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black border ${cls}`}>{label}</span>;
 }
 
-// ─── Desktop Table Row ────────────────────────────────────────────────────────
-
-function DesktopRow({
-  stat, onDelete, onEdit,
-}: { stat: VacationStats; onDelete: (id: string) => void; onEdit: (s: VacationStats) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const urgencyColor =
-    stat.diasParaVencer < 0   ? 'text-red-600 font-black' :
-    stat.diasParaVencer < 30  ? 'text-red-500 font-bold'  :
-    stat.diasParaVencer < 60  ? 'text-amber-600 font-bold' : 'text-gray-700';
-
+function HistoricalBadge({ vacation }: { vacation?: Vacation }) {
+  if (!vacation?.isHistorical) return null;
+  const reasonLabel: Record<HistoricalVacationReason, string> = {
+    taken: 'Férias já gozadas',
+    correction: 'Correção de registro',
+    import: 'Importação histórica',
+  };
   return (
-    <>
-      <motion.tr
-        layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="hover:bg-blue-50/30 transition-colors group cursor-pointer"
-        onClick={() => setExpanded(v => !v)}
-      >
-        <td className="px-5 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center text-gray-400 group-hover:text-blue-600 transition-colors shrink-0">
-              <User className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-sm font-bold text-gray-900 uppercase tracking-tight block leading-tight">{stat.employeeName}</span>
-              <span className="text-[10px] text-gray-400 font-medium">Admissão: {fmtDate(stat.admissionDate)}</span>
-            </div>
-          </div>
-        </td>
-        <td className="px-5 py-3.5 hidden md:table-cell">
-          {stat.inicioAquisitivo ? (
-            <div className="text-xs">
-              <span className="font-semibold text-gray-700">{fmtDate(stat.inicioAquisitivo)}</span>
-              <span className="text-gray-300 mx-1">→</span>
-              <span className="font-semibold text-gray-700">{fmtDate(stat.fimAquisitivo)}</span>
-            </div>
-          ) : <span className="text-xs text-gray-300">—</span>}
-        </td>
-        <td className="px-5 py-3.5">
-          {stat.dataLimiteConcessao ? (
-            <div>
-              <span className={`text-xs ${urgencyColor}`}>{fmtDate(stat.dataLimiteConcessao)}</span>
-              <span className="block text-[10px] text-gray-400 mt-0.5">
-                {stat.diasParaVencer < 0
-                  ? `Vencido há ${Math.abs(stat.diasParaVencer)}d`
-                  : stat.status === 'em_per_aquisitivo'
-                  ? 'Período aquisitivo'
-                  : `Faltam ${stat.diasParaVencer}d`}
-              </span>
-            </div>
-          ) : <span className="text-xs text-gray-300">—</span>}
-        </td>
-        <td className="px-5 py-3.5"><StatusBadge stat={stat} /></td>
-        <td className="px-5 py-3.5">
-          <div className="flex items-center gap-0.5">
-            <button onClick={e => { e.stopPropagation(); onEdit(stat); }}
-              className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Editar">
-              <Edit2 className="w-4 h-4" />
-            </button>
-            {stat.currentVacation && (
-              <button onClick={e => { e.stopPropagation(); onDelete(stat.currentVacation!.id); }}
-                className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Cancelar">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-            <button onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}
-              className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
-          </div>
-        </td>
-      </motion.tr>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.tr key="detail" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <td colSpan={5} className="px-5 pb-4 pt-0 bg-blue-50/30">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
-                <DetailCell label="Início Aquisitivo"  value={fmtDate(stat.inicioAquisitivo)} />
-                <DetailCell label="Fim Aquisitivo"     value={fmtDate(stat.fimAquisitivo)} />
-                <DetailCell label="Fim Concessivo"     value={fmtDate(stat.fimConcessivo)} />
-                <DetailCell label="Limite p/ Iniciar"  value={fmtDate(stat.dataLimiteConcessao)} highlight={stat.diasParaVencer < 60} />
-                {stat.currentVacation && (
-                  <>
-                    <DetailCell label="Início Férias"  value={fmtDate(stat.currentVacation.startDate)} />
-                    <DetailCell label="Fim Férias"     value={fmtDate(stat.currentVacation.endDate)} />
-                    <DetailCell label="Retorno"        value={fmtDate(stat.currentVacation.returnDate ?? '')} />
-                    <DetailCell label="Dias a Gozar"   value={String((stat.currentVacation.diasDireito ?? 30) - (stat.currentVacation.diasVendidos ?? 0))} />
-                    {stat.currentVacation.vendeuFerias && (
-                      <DetailCell label="Dias Vendidos" value={String(stat.currentVacation.diasVendidos ?? 0)} />
-                    )}
-                  </>
-                )}
-              </div>
-            </td>
-          </motion.tr>
-        )}
-      </AnimatePresence>
-    </>
+    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-black border bg-amber-50 text-amber-700 border-amber-200">
+      <History className="w-3.5 h-3.5" />
+      Histórico{vacation.historicalReason ? ` · ${reasonLabel[vacation.historicalReason]}` : ''}
+    </span>
   );
 }
 
-function DetailCell({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+function Modal({ title, subtitle, children, onClose }: { title: string; subtitle?: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className={`rounded-lg px-3 py-2 border ${highlight ? 'bg-amber-50 border-amber-200' : 'bg-white border-gray-100'}`}>
-      <p className="text-[9px] uppercase tracking-widest font-black text-gray-400">{label}</p>
-      <p className={`text-xs font-bold mt-0.5 ${highlight ? 'text-amber-700' : 'text-gray-700'}`}>{value || '—'}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 12 }} transition={{ duration: 0.18 }} className="relative w-full max-w-2xl rounded-3xl bg-white border border-gray-200 shadow-2xl overflow-hidden">
+        <div className="px-5 sm:px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-white to-gray-50">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg sm:text-xl font-black text-gray-900">{title}</h3>
+              {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+            </div>
+            <button type="button" onClick={onClose} className="w-10 h-10 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">
+              <XCircle className="w-5 h-5 mx-auto" />
+            </button>
+          </div>
+        </div>
+        {children}
+      </motion.div>
     </div>
   );
 }
-
-// ─── Mobile Employee Card ─────────────────────────────────────────────────────
-
-function MobileCard({
-  stat, onDelete, onEdit,
-}: { stat: VacationStats; onDelete: (id: string) => void; onEdit: (s: VacationStats) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const urgencyBorder =
-    stat.diasParaVencer < 0  ? 'border-l-red-500'   :
-    stat.diasParaVencer < 30 ? 'border-l-red-400'   :
-    stat.diasParaVencer < 60 ? 'border-l-amber-500' : 'border-l-gray-200';
-
-  return (
-    <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${urgencyBorder} shadow-sm overflow-hidden`}>
-      <div className="p-4 flex items-start gap-3">
-        <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 shrink-0 mt-0.5">
-          <User className="w-4 h-4" />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <span className="text-[13px] font-black text-gray-900 uppercase tracking-tight block truncate">
-                {stat.employeeName}
-              </span>
-              <span className="text-[10px] text-gray-400 font-medium">
-                Admissão: {fmtDate(stat.admissionDate)}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => onEdit(stat)}
-                className="p-1.5 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all">
-                <Edit2 className="w-3.5 h-3.5" />
-              </button>
-              {stat.currentVacation && (
-                <button onClick={() => onDelete(stat.currentVacation!.id)}
-                  className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-2.5 flex items-center justify-between gap-2">
-            <StatusBadge stat={stat} />
-            {stat.dataLimiteConcessao && (
-              <div className="text-right shrink-0">
-                <span className={`text-[10px] font-bold block ${stat.diasParaVencer < 0 ? 'text-red-600' : stat.diasParaVencer < 60 ? 'text-amber-600' : 'text-gray-600'}`}>
-                  {fmtDate(stat.dataLimiteConcessao)}
-                </span>
-                <span className="text-[9px] text-gray-400">Limite concessão</span>
-              </div>
-            )}
-          </div>
-
-          {/* Expand toggle */}
-          <button
-            onClick={() => setExpanded(v => !v)}
-            className="mt-2 flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:text-blue-700 transition-colors"
-          >
-            {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            {expanded ? 'Ocultar' : 'Ver detalhes CLT'}
-          </button>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-4 pt-0 grid grid-cols-2 gap-2 border-t border-gray-50">
-              <DetailCell label="Início Aquisitivo"  value={fmtDate(stat.inicioAquisitivo)} />
-              <DetailCell label="Fim Aquisitivo"     value={fmtDate(stat.fimAquisitivo)} />
-              <DetailCell label="Fim Concessivo"     value={fmtDate(stat.fimConcessivo)} />
-              <DetailCell label="Limite Concessão"   value={fmtDate(stat.dataLimiteConcessao)} highlight={stat.diasParaVencer < 60} />
-              {stat.currentVacation && (
-                <>
-                  <DetailCell label="Início Férias"  value={fmtDate(stat.currentVacation.startDate)} />
-                  <DetailCell label="Fim Férias"     value={fmtDate(stat.currentVacation.endDate)} />
-                  <DetailCell label="Retorno"        value={fmtDate(stat.currentVacation.returnDate ?? '')} />
-                  <DetailCell label="Dias a Gozar"   value={String((stat.currentVacation.diasDireito ?? 30) - (stat.currentVacation.diasVendidos ?? 0))} />
-                </>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-// ─── Shared Form Field ────────────────────────────────────────────────────────
 
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-black text-gray-600 uppercase tracking-wider">{label}</label>
+      <label className="block text-[11px] font-black uppercase tracking-wider text-gray-500">{label}</label>
       {children}
     </div>
   );
 }
 
-const inputCls = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 outline-none text-sm font-medium text-gray-800 bg-white transition-all';
-
-// ─── Preview Block ────────────────────────────────────────────────────────────
+function DetailCell({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+      <p className="text-[10px] font-black uppercase tracking-wider text-gray-400">{label}</p>
+      <p className="text-sm font-bold text-gray-900 mt-0.5">{value}</p>
+    </div>
+  );
+}
 
 function PreviewBlock({ preview, vendeuFerias, diasVendidos }: {
   preview: { diasAGozar: number; endDate: string; returnDate: string } | null;
@@ -294,82 +115,105 @@ function PreviewBlock({ preview, vendeuFerias, diasVendidos }: {
 }) {
   if (!preview) return null;
   return (
-    <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <CalendarCheck className="w-4 h-4 text-blue-600" />
-        <p className="text-xs font-black text-blue-700 uppercase tracking-wider">Cálculo Automático CLT</p>
+    <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Sparkles className="w-4 h-4 text-blue-600" />
+        <h4 className="text-sm font-black text-blue-900">Pré-visualização automática</h4>
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: 'Dias a Gozar',    value: `${preview.diasAGozar}d` },
-          { label: 'Fim das Férias',  value: fmtDate(preview.endDate) },
-          { label: 'Data de Retorno', value: fmtDate(preview.returnDate) },
-          ...(vendeuFerias ? [{ label: 'Dias Vendidos', value: `${diasVendidos}d` }] : []),
-        ].map(({ label, value }) => (
-          <div key={label} className="bg-white rounded-lg px-3 py-2 border border-blue-100">
-            <p className="text-[9px] text-blue-400 font-black uppercase tracking-wider">{label}</p>
-            <p className="text-sm font-black text-blue-800 mt-0.5">{value}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <DetailCell label="Dias a gozar" value={preview.diasAGozar} />
+        <DetailCell label="Fim das Férias" value={fmtDate(preview.endDate)} />
+        <DetailCell label="Retorno" value={fmtDate(preview.returnDate)} />
+        <DetailCell label="Abono" value={vendeuFerias ? `${diasVendidos} dias` : 'Não'} />
       </div>
     </div>
   );
 }
 
-// ─── Modal Wrapper ────────────────────────────────────────────────────────────
-
-function Modal({ title, subtitle, onClose, children }: {
-  title: string; subtitle?: string; onClose: () => void; children: React.ReactNode;
+function HistoricalWarning({
+  preview,
+  enabled,
+  reason,
+  onEnable,
+  onReasonChange,
+}: {
+  preview: { endDate: string } | null;
+  enabled: boolean;
+  reason: HistoricalVacationReason | '';
+  onEnable: (v: boolean) => void;
+  onReasonChange: (v: HistoricalVacationReason | '') => void;
 }) {
+  if (!preview) return null;
+  const todayISO = new Date().toISOString().split('T')[0];
+  const isPast = preview.endDate < todayISO;
+  if (!isPast) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 40 }}
-        className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md overflow-hidden max-h-[95dvh] flex flex-col"
-      >
-        <div className="flex items-center justify-between p-5 sm:p-6 border-b border-gray-100 shrink-0">
-          <div>
-            <h3 className="text-base font-black text-gray-900">{title}</h3>
-            {subtitle && <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-0.5">{subtitle}</p>}
-          </div>
-          <button onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-all">
-            <X className="w-4 h-4" />
-          </button>
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 shrink-0 rounded-2xl bg-amber-100 flex items-center justify-center">
+          <AlertTriangle className="w-5 h-5 text-amber-700" />
         </div>
-        <div className="overflow-y-auto flex-1">{children}</div>
-      </motion.div>
+        <div>
+          <h4 className="text-sm font-black text-amber-900">Esta data já passou</h4>
+          <p className="text-sm text-amber-800 mt-1">
+            Pelos cálculos atuais, essas férias terminariam em <span className="font-black">{fmtDate(preview.endDate)}</span>. Confirme se você está registrando férias históricas ou corrija a data antes de salvar.
+          </p>
+        </div>
+      </div>
+
+      <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-white/80 px-3 py-3 cursor-pointer">
+        <input type="checkbox" checked={enabled} onChange={e => onEnable(e.target.checked)} className="mt-1 rounded border-amber-300 text-amber-600 focus:ring-amber-500" />
+        <div>
+          <p className="text-sm font-black text-amber-900">Confirmar como registro histórico</p>
+          <p className="text-xs text-amber-700 mt-0.5">Use isso apenas quando as férias realmente já aconteceram e você precisa registrar o histórico no sistema.</p>
+        </div>
+      </label>
+
+      {enabled && (
+        <FormField label="Motivo do registro histórico">
+          <CustomDropdown
+            variant="light"
+            value={reason}
+            onChange={(val) => onReasonChange(val as HistoricalVacationReason | '')}
+            options={[
+              { value: '', label: 'Selecione o motivo...' },
+              { value: 'taken', label: 'Férias já gozadas' },
+              { value: 'correction', label: 'Correção de registro' },
+              { value: 'import', label: 'Importação histórica' },
+            ]}
+            label="Selecione o motivo..."
+          />
+        </FormField>
+      )}
     </div>
   );
 }
-
-// ─── Main Component ────────────────────────────────────────────────────────────
 
 export default function VacationManagement({
-  employees, vacations, handleAddVacation, handleDeleteVacation, handleUpdateVacation, updateEmployeeData,
+  employees, vacations, vacationStats, handleAddVacation, handleDeleteVacation, handleUpdateVacation, updateEmployeeData,
 }: VacationManagementProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-
-  // Add form
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [startDate, setStartDate]       = useState('');
-  const [diasDireito, setDiasDireito]   = useState(30);
+  const [startDate, setStartDate] = useState('');
+  const [diasDireito, setDiasDireito] = useState(30);
   const [vendeuFerias, setVendeuFerias] = useState(false);
   const [diasVendidos, setDiasVendidos] = useState(0);
+  const [addHistoricalConfirmed, setAddHistoricalConfirmed] = useState(false);
+  const [addHistoricalReason, setAddHistoricalReason] = useState<HistoricalVacationReason | ''>('');
 
-  // Edit form
-  const [editingStat, setEditingStat]         = useState<VacationStats | null>(null);
-  const [showEditModal, setShowEditModal]     = useState(false);
+  const [editingStat, setEditingStat] = useState<VacationStats | null>(null);
   const [editAdmissionDate, setEditAdmissionDate] = useState('');
-  const [editStartDate, setEditStartDate]     = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
   const [editDiasDireito, setEditDiasDireito] = useState(30);
   const [editVendeuFerias, setEditVendeuFerias] = useState(false);
   const [editDiasVendidos, setEditDiasVendidos] = useState(0);
+  const [editHistoricalConfirmed, setEditHistoricalConfirmed] = useState(false);
+  const [editHistoricalReason, setEditHistoricalReason] = useState<HistoricalVacationReason | ''>('');
 
-  const vacationStats = useVacationStats(employees, vacations);
+  const inputCls = 'w-full rounded-xl border border-gray-200 bg-white px-3.5 py-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100';
 
   const preview = useMemo(
     () => startDate ? calcVacationDates(startDate, diasDireito, vendeuFerias ? diasVendidos : 0) : null,
@@ -389,8 +233,15 @@ export default function VacationManagement({
       setEditDiasDireito(stat.currentVacation.diasDireito ?? 30);
       setEditVendeuFerias(stat.currentVacation.vendeuFerias ?? false);
       setEditDiasVendidos(stat.currentVacation.diasVendidos ?? 0);
+      setEditHistoricalConfirmed(stat.currentVacation.isHistorical ?? false);
+      setEditHistoricalReason(stat.currentVacation.historicalReason ?? '');
     } else {
-      setEditStartDate(''); setEditDiasDireito(30); setEditVendeuFerias(false); setEditDiasVendidos(0);
+      setEditStartDate('');
+      setEditDiasDireito(30);
+      setEditVendeuFerias(false);
+      setEditDiasVendidos(0);
+      setEditHistoricalConfirmed(false);
+      setEditHistoricalReason('');
     }
     setShowEditModal(true);
   };
@@ -401,26 +252,44 @@ export default function VacationManagement({
     if (editAdmissionDate !== editingStat.admissionDate) {
       await updateEmployeeData(editingStat.employeeId, { admissionDate: editAdmissionDate });
     }
-    const sold  = editVendeuFerias ? editDiasVendidos : 0;
+    const sold = editVendeuFerias ? editDiasVendidos : 0;
     const dates = editStartDate ? calcVacationDates(editStartDate, editDiasDireito, sold) : null;
     const todayISO = new Date().toISOString().split('T')[0];
+    const isPast = !!dates && dates.endDate < todayISO;
+
+    if (isPast && (!editHistoricalConfirmed || !editHistoricalReason)) {
+      return;
+    }
+
     if (editingStat.currentVacation) {
-      const status = (dates && dates.endDate < todayISO) ? 'taken' : editingStat.currentVacation.status;
+      const status = isPast ? 'taken' : editingStat.currentVacation.status;
       await handleUpdateVacation(editingStat.currentVacation.id, {
         startDate: dates?.startDate || editingStat.currentVacation.startDate,
         endDate: dates?.endDate || editingStat.currentVacation.endDate,
         returnDate: dates?.returnDate || editingStat.currentVacation.returnDate,
-        diasDireito: editDiasDireito, vendeuFerias: editVendeuFerias, diasVendidos: sold, status,
+        diasDireito: editDiasDireito,
+        vendeuFerias: editVendeuFerias,
+        diasVendidos: sold,
+        status,
+        isHistorical: isPast ? editHistoricalConfirmed : false,
+        historicalReason: isPast ? editHistoricalReason : undefined,
       });
     } else if (dates) {
       await handleAddVacation({
         employeeId: editingStat.employeeId,
-        startDate: dates.startDate, endDate: dates.endDate, returnDate: dates.returnDate,
-        status: dates.endDate < todayISO ? 'taken' : 'scheduled',
-        diasDireito: editDiasDireito, vendeuFerias: editVendeuFerias, diasVendidos: sold,
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        returnDate: dates.returnDate,
+        status: isPast ? 'taken' : 'scheduled',
+        diasDireito: editDiasDireito,
+        vendeuFerias: editVendeuFerias,
+        diasVendidos: sold,
+        isHistorical: isPast ? editHistoricalConfirmed : false,
+        historicalReason: isPast ? editHistoricalReason : undefined,
       });
     }
-    setShowEditModal(false); setEditingStat(null);
+    setShowEditModal(false);
+    setEditingStat(null);
   };
 
   const priorityOrder: Record<string, number> = {
@@ -439,9 +308,9 @@ export default function VacationManagement({
     [vacationStats, searchTerm],
   );
 
-  const countNow       = vacationStats.filter(s => s.status === 'em_ferias_agora').length;
+  const countNow = vacationStats.filter(s => s.status === 'em_ferias_agora').length;
   const countScheduled = vacationStats.filter(s => s.status === 'ferias_agendadas').length;
-  const countUrgent    = vacationStats.filter(s =>
+  const countUrgent = vacationStats.filter(s =>
     s.diasParaVencer < 60 && !['em_ferias_agora','em_per_aquisitivo','aguardando_dados'].includes(s.status),
   ).length;
 
@@ -450,154 +319,124 @@ export default function VacationManagement({
   const onAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEmployeeId || !startDate) return;
-    const sold  = vendeuFerias ? diasVendidos : 0;
+    const sold = vendeuFerias ? diasVendidos : 0;
     const dates = calcVacationDates(startDate, diasDireito, sold);
     const todayISO = new Date().toISOString().split('T')[0];
+    const isPast = dates.endDate < todayISO;
+
+    if (isPast && (!addHistoricalConfirmed || !addHistoricalReason)) {
+      return;
+    }
+
     await handleAddVacation({
       employeeId: selectedEmployeeId,
-      startDate: dates.startDate, endDate: dates.endDate, returnDate: dates.returnDate,
-      status: dates.endDate < todayISO ? 'taken' : 'scheduled',
-      diasDireito, vendeuFerias, diasVendidos: sold,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
+      returnDate: dates.returnDate,
+      status: isPast ? 'taken' : 'scheduled',
+      diasDireito,
+      vendeuFerias,
+      diasVendidos: sold,
+      isHistorical: isPast ? addHistoricalConfirmed : false,
+      historicalReason: isPast ? addHistoricalReason : undefined,
     });
+
     setShowAddModal(false);
-    setSelectedEmployeeId(''); setStartDate(''); setDiasDireito(30); setVendeuFerias(false); setDiasVendidos(0);
+    setSelectedEmployeeId('');
+    setStartDate('');
+    setDiasDireito(30);
+    setVendeuFerias(false);
+    setDiasVendidos(0);
+    setAddHistoricalConfirmed(false);
+    setAddHistoricalReason('');
   };
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      {/* ── Missing Admission Warning ─────────────────────────────────────── */}
       {employeesMissingAdmission.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, x: -16 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3"
-        >
-          <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 flex items-start gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-orange-100 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-orange-700" />
           </div>
-          <div className="text-sm text-amber-800">
-            <span className="font-black">{employeesMissingAdmission.length} colaborador(es)</span>{' '}
-            com data de admissão incompleta. Atualize o cadastro na aba{' '}
-            <strong>Registro</strong> para que sejam exibidos.
+          <div>
+            <p className="text-sm font-black text-orange-900">Colaboradores sem data de admissão</p>
+            <p className="text-sm text-orange-800 mt-1">{employeesMissingAdmission.length} colaborador(es) precisam de data de admissão para cálculo correto dos períodos aquisitivo e concessivo.</p>
           </div>
-        </motion.div>
+        </div>
       )}
 
-      {/* ── Summary Cards ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {[
-          { icon: <UserCheck className="w-5 h-5" />, label: 'Em Férias Agora',  value: countNow,       color: 'blue'   },
-          { icon: <CalendarDays className="w-5 h-5" />, label: 'Agendadas',     value: countScheduled, color: 'emerald' },
-          { icon: <TrendingDown className="w-5 h-5" />, label: 'Prazos Próximos', value: countUrgent,  color: 'amber'  },
-        ].map(({ icon, label, value, color }) => {
-          const colorMap: Record<string, string> = {
-            blue:    'bg-blue-700 shadow-blue-700/20',
-            emerald: 'bg-emerald-600 shadow-emerald-600/20',
-            amber:   'bg-amber-500 shadow-amber-500/20',
-          };
-          const bgMap: Record<string, string> = {
-            blue: 'from-blue-50 to-white border-blue-100',
-            emerald: 'from-emerald-50 to-white border-emerald-100',
-            amber: 'from-amber-50 to-white border-amber-100',
-          };
-          return (
-            <motion.div
-              key={label}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`bg-gradient-to-br ${bgMap[color]} border rounded-2xl p-5 flex items-center gap-4 shadow-sm`}
-            >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg ${colorMap[color]} shrink-0`}>
-                {icon}
-              </div>
-              <div>
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</p>
-                <p className="text-3xl font-black text-gray-900 leading-none mt-0.5">{value}</p>
-              </div>
-            </motion.div>
-          );
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center"><Umbrella className="w-5 h-5 text-emerald-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-emerald-600">Em férias agora</p><p className="text-3xl font-black text-emerald-900">{countNow}</p></div></div>
+        </div>
+        <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-blue-100 flex items-center justify-center"><CalendarClock className="w-5 h-5 text-blue-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-blue-600">Agendadas</p><p className="text-3xl font-black text-blue-900">{countScheduled}</p></div></div>
+        </div>
+        <div className="rounded-3xl border border-red-100 bg-red-50 p-4 shadow-sm">
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-red-100 flex items-center justify-center"><Clock3 className="w-5 h-5 text-red-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-red-600">Prioridade</p><p className="text-3xl font-black text-red-900">{countUrgent}</p></div></div>
+        </div>
       </div>
 
-      {/* ── Table / Card Panel ────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-
-        {/* Toolbar */}
-        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-3">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar colaborador..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-all text-sm font-medium"
-            />
+      <div className="rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+          <div>
+            <h2 className="text-lg sm:text-xl font-black text-gray-900">Gestão de Férias</h2>
+            <p className="text-sm text-gray-500 mt-0.5">Cadastre, edite e acompanhe o status das férias com validação histórica.</p>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-700 text-white rounded-xl text-sm font-black hover:bg-blue-600 transition-all shadow-md shadow-blue-700/20 active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            Agendar Férias
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar colaborador..." className={`${inputCls} sm:w-72`} />
+            <button type="button" onClick={() => setShowAddModal(true)} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-700 text-white px-4 py-3 text-sm font-black shadow-md shadow-blue-700/20 hover:bg-blue-600 transition-colors">
+              <Plus className="w-4 h-4" />
+              Nova Férias
+            </button>
+          </div>
         </div>
 
-        {/* Hint */}
-        <div className="px-5 py-2 bg-slate-50 border-b border-gray-100 flex items-center gap-2 text-[11px] text-gray-400">
-          <Info className="w-3 h-3 shrink-0" />
-          Clique em uma linha para ver os detalhes do período CLT
-        </div>
+        <div className="divide-y divide-gray-100">
+          <AnimatePresence>
+            {filteredStats.length > 0 ? filteredStats.map(stat => (
+              <motion.div key={stat.employeeId} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="p-4 sm:p-5">
+                <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base sm:text-lg font-black text-gray-900 truncate">{stat.employeeName}</h3>
+                      <StatusChip status={stat.status} />
+                      <HistoricalBadge vacation={stat.currentVacation} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-gray-500">
+                      <span className="inline-flex items-center gap-1.5"><Briefcase className="w-4 h-4" />{stat.cargo || 'Sem cargo'}</span>
+                      <span className="inline-flex items-center gap-1.5"><CalendarDays className="w-4 h-4" />Admissão: {fmtDate(stat.admissionDate)}</span>
+                      <span className="inline-flex items-center gap-1.5"><Clock3 className="w-4 h-4" />Período: {stat.numeroPeriodo || '—'}</span>
+                    </div>
+                  </div>
 
-        {/* ── Desktop Table ── */}
-        <div className="hidden sm:block overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50/60 border-b border-gray-100">
-                {['Colaborador','Período Aquisitivo','Limite Concessão','Status','Ações'].map(h => (
-                  <th key={h} className="px-5 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest whitespace-nowrap last:w-[120px]">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              <AnimatePresence mode="popLayout">
-                {filteredStats.map(stat => (
-                  <DesktopRow key={stat.employeeId} stat={stat} onDelete={handleDeleteVacation} onEdit={handleEditClick} />
-                ))}
-                {filteredStats.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center text-sm text-gray-400">
-                      Nenhum colaborador encontrado.
-                    </td>
-                  </tr>
-                )}
-              </AnimatePresence>
-            </tbody>
-          </table>
-        </div>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => handleEditClick(stat)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-black text-gray-700 hover:bg-gray-50 transition-colors"><Pencil className="w-4 h-4" />Editar</button>
+                    {stat.currentVacation && (
+                      <button type="button" onClick={() => handleDeleteVacation(stat.currentVacation!.id)} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-700 hover:bg-red-100 transition-colors"><Trash2 className="w-4 h-4" />Excluir</button>
+                    )}
+                  </div>
+                </div>
 
-        {/* ── Mobile Cards ── */}
-        <div className="sm:hidden p-3 space-y-2">
-          <AnimatePresence mode="popLayout">
-            {filteredStats.map(stat => (
-              <MobileCard key={stat.employeeId} stat={stat} onDelete={handleDeleteVacation} onEdit={handleEditClick} />
-            ))}
-            {filteredStats.length === 0 && (
-              <div className="py-10 text-center text-sm text-gray-400">
-                Nenhum colaborador encontrado.
-              </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 mt-4">
+                  <DetailCell label="Início Férias" value={fmtDate(stat.currentVacation?.startDate)} />
+                  <DetailCell label="Fim Férias" value={fmtDate(stat.currentVacation?.endDate)} />
+                  <DetailCell label="Retorno" value={fmtDate(stat.currentVacation?.returnDate)} />
+                  <DetailCell label="Dias Direito" value={stat.currentVacation?.diasDireito ?? '30'} />
+                  <DetailCell label="Dias Vendidos" value={stat.currentVacation?.diasVendidos ?? '0'} />
+                  <DetailCell label="Dias p/ vencer" value={stat.diasParaVencer} />
+                </div>
+              </motion.div>
+            )) : (
+              <div className="p-8 text-center text-sm text-gray-500">Nenhum colaborador encontrado.</div>
             )}
           </AnimatePresence>
         </div>
       </div>
 
-      {/* ── Modal: Agendar Férias ─────────────────────────────────────────── */}
       <AnimatePresence>
         {showAddModal && (
-          <Modal title="Agendar Férias" onClose={() => setShowAddModal(false)}>
+          <Modal title="Agendar Férias" onClose={() => { setShowAddModal(false); setAddHistoricalConfirmed(false); setAddHistoricalReason(''); }}>
             <form onSubmit={onAddSubmit} className="p-5 sm:p-6 space-y-4">
               <FormField label="Colaborador">
                 <CustomDropdown
@@ -618,8 +457,7 @@ export default function VacationManagement({
 
               <div className="grid grid-cols-2 gap-3">
                 <FormField label="Dias de Direito">
-                  <input type="number" required min={1} max={30} value={diasDireito}
-                    onChange={e => setDiasDireito(Number(e.target.value))} className={inputCls} />
+                  <input type="number" required min={1} max={30} value={diasDireito} onChange={e => setDiasDireito(Number(e.target.value))} className={inputCls} />
                 </FormField>
                 <FormField label="Vendeu Férias?">
                   <CustomDropdown
@@ -629,39 +467,38 @@ export default function VacationManagement({
                       setVendeuFerias(val === 'sim');
                       if (val === 'nao') setDiasVendidos(0);
                     }}
-                    options={[
-                      { value: 'nao', label: 'Não' },
-                      { value: 'sim', label: 'Sim' }
-                    ]}
+                    options={[{ value: 'nao', label: 'Não' }, { value: 'sim', label: 'Sim' }]}
                   />
                 </FormField>
               </div>
 
               {vendeuFerias && (
                 <FormField label="Dias Vendidos (máx. 10)">
-                  <input type="number" required min={1} max={10} value={diasVendidos}
-                    onChange={e => setDiasVendidos(Number(e.target.value))} className={inputCls} />
+                  <input type="number" required min={1} max={10} value={diasVendidos} onChange={e => setDiasVendidos(Number(e.target.value))} className={inputCls} />
                 </FormField>
               )}
 
               <PreviewBlock preview={preview} vendeuFerias={vendeuFerias} diasVendidos={diasVendidos} />
+              <HistoricalWarning
+                preview={preview}
+                enabled={addHistoricalConfirmed}
+                reason={addHistoricalReason}
+                onEnable={(v) => {
+                  setAddHistoricalConfirmed(v);
+                  if (!v) setAddHistoricalReason('');
+                }}
+                onReasonChange={setAddHistoricalReason}
+              />
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => setShowAddModal(false)}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit"
-                  className="flex-1 py-3 rounded-xl bg-blue-700 text-white text-sm font-black hover:bg-blue-600 transition-colors shadow-md shadow-blue-700/20">
-                  Agendar
-                </button>
+                <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 rounded-xl bg-blue-700 text-white text-sm font-black hover:bg-blue-600 transition-colors shadow-md shadow-blue-700/20">Salvar</button>
               </div>
             </form>
           </Modal>
         )}
       </AnimatePresence>
 
-      {/* ── Modal: Editar ─────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showEditModal && editingStat && (
           <Modal title="Editar Informações" subtitle={editingStat.employeeName} onClose={() => { setShowEditModal(false); setEditingStat(null); }}>
@@ -670,55 +507,48 @@ export default function VacationManagement({
                 <input type="date" required value={editAdmissionDate} onChange={e => setEditAdmissionDate(e.target.value)} className={inputCls} />
               </FormField>
 
-              <div className="border-t border-gray-100 pt-4">
-                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-3">Dados de Férias</p>
+              <FormField label="Início das Férias">
+                <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className={inputCls} />
+              </FormField>
 
-                <FormField label="Início das Férias">
-                  <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className={inputCls} />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Dias de Direito">
+                  <input type="number" required min={1} max={30} value={editDiasDireito} onChange={e => setEditDiasDireito(Number(e.target.value))} className={inputCls} />
                 </FormField>
-
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <FormField label="Dias de Direito">
-                    <input type="number" min={1} max={30} value={editDiasDireito}
-                      onChange={e => setEditDiasDireito(Number(e.target.value))} className={inputCls} />
-                  </FormField>
-                  <FormField label="Vendeu Férias?">
-                    <CustomDropdown
-                      variant="light"
-                      value={editVendeuFerias ? 'sim' : 'nao'}
-                      onChange={(val) => {
-                        setEditVendeuFerias(val === 'sim');
-                        if (val === 'nao') setEditDiasVendidos(0);
-                      }}
-                      options={[
-                        { value: 'nao', label: 'Não' },
-                        { value: 'sim', label: 'Sim' }
-                      ]}
-                    />
-                  </FormField>
-                </div>
-
-                {editVendeuFerias && (
-                  <div className="mt-3">
-                    <FormField label="Dias Vendidos (máx. 10)">
-                      <input type="number" min={1} max={10} value={editDiasVendidos}
-                        onChange={e => setEditDiasVendidos(Number(e.target.value))} className={inputCls} />
-                    </FormField>
-                  </div>
-                )}
+                <FormField label="Vendeu Férias?">
+                  <CustomDropdown
+                    variant="light"
+                    value={editVendeuFerias ? 'sim' : 'nao'}
+                    onChange={(val) => {
+                      setEditVendeuFerias(val === 'sim');
+                      if (val === 'nao') setEditDiasVendidos(0);
+                    }}
+                    options={[{ value: 'nao', label: 'Não' }, { value: 'sim', label: 'Sim' }]}
+                  />
+                </FormField>
               </div>
 
+              {editVendeuFerias && (
+                <FormField label="Dias Vendidos (máx. 10)">
+                  <input type="number" required min={1} max={10} value={editDiasVendidos} onChange={e => setEditDiasVendidos(Number(e.target.value))} className={inputCls} />
+                </FormField>
+              )}
+
               <PreviewBlock preview={editPreview} vendeuFerias={editVendeuFerias} diasVendidos={editDiasVendidos} />
+              <HistoricalWarning
+                preview={editPreview}
+                enabled={editHistoricalConfirmed}
+                reason={editHistoricalReason}
+                onEnable={(v) => {
+                  setEditHistoricalConfirmed(v);
+                  if (!v) setEditHistoricalReason('');
+                }}
+                onReasonChange={setEditHistoricalReason}
+              />
 
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={() => { setShowEditModal(false); setEditingStat(null); }}
-                  className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit"
-                  className="flex-1 py-3 rounded-xl bg-blue-700 text-white text-sm font-black hover:bg-blue-600 transition-colors shadow-md shadow-blue-700/20">
-                  Salvar
-                </button>
+                <button type="button" onClick={() => { setShowEditModal(false); setEditingStat(null); }} className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-black text-gray-600 hover:bg-gray-50 transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 rounded-xl bg-blue-700 text-white text-sm font-black hover:bg-blue-600 transition-colors shadow-md shadow-blue-700/20">Salvar Alterações</button>
               </div>
             </form>
           </Modal>
