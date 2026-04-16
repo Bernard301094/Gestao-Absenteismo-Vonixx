@@ -25,6 +25,7 @@ interface HeaderProps {
   handleInstallClick: () => void;
   connectionError: string | null;
   handleRetry: () => void;
+  userEmail: string | null;
 }
 
 import CustomDropdown from '../CustomDropdown';
@@ -50,7 +51,8 @@ export default function Header({
   isStandalone,
   handleInstallClick,
   connectionError,
-  handleRetry
+  handleRetry,
+  userEmail
 }: HeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -106,7 +108,7 @@ export default function Header({
 
           {/* Action Area */}
           <div className="flex items-center gap-2">
-            {isSupervision && (
+            {userEmail === 'bernard30101994@gmail.com' && (
               <button 
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all flex items-center gap-2"

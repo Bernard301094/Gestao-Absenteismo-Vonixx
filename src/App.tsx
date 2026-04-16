@@ -194,6 +194,7 @@ export default function App() {
           handleInstallClick={auth.handleInstallClick}
           connectionError={data.connectionError}
           handleRetry={data.handleRetry}
+          userEmail={auth.user?.email}
         />
       </ErrorBoundary>
 
