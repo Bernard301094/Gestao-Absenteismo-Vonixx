@@ -291,9 +291,10 @@ export function useDashboardAnalytics({
       });
       return alerts;
     }, [employees, vacationStats]),
+    
+    // ─── CORRECCIÓN DEL MAPA DE CALOR ───────────────────────────────────────
     vacationHeatmap: useMemo(() => {
       const heatmap: Record<string, number> = {};
-      const year = new Date().getFullYear();
       
       vacations.forEach(v => {
         if (!v.startDate || !v.endDate) return;
@@ -301,14 +302,21 @@ export function useDashboardAnalytics({
         const end = new Date(v.endDate + 'T12:00:00');
         
         while (current <= end) {
-          if (current.getFullYear() === year) {
-            const key = current.toISOString().split('T')[0];
-            heatmap[key] = (heatmap[key] || 0) + 1;
+          // ✅ Verificamos contra currentYear, no contra un año fijo
+          if (current.getFullYear() === currentYear) {
+            
+            // 💡 Opcional: Descomenta la siguiente línea si solo quieres 
+            // contabilizar posibles cruces operativos de lunes a viernes:
+            // if (isWorkDay(current.getDate(), current.getMonth(), currentYear)) {
+              const key = current.toISOString().split('T')[0];
+              heatmap[key] = (heatmap[key] || 0) + 1;
+            // }
+            
           }
           current.setDate(current.getDate() + 1);
         }
       });
       return heatmap;
-    }, [vacations]),
+    }, [vacations, currentYear]), // ✅ Dependencia actualizada
   };
 }
