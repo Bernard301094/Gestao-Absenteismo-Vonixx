@@ -171,17 +171,18 @@ export default function AttendanceRegistry({
   }));
 
   const handleGenerateImage = () => {
-    const faltasCount = kpiCounts.find(k => k.key === 'F')?.count || 0;
-    const afastamentosCount = kpiCounts.find(k => k.key === 'A')?.count || 0;
-    const feriasCount = kpiCounts.find(k => k.key === 'Fe')?.count || 0;
-    const totalStatus = faltasCount + afastamentosCount + feriasCount;
+    const listF = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'F').map(e => e.name);
+    const listA = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'A').map(e => e.name);
+    const listFe = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'Fe').map(e => e.name);
+    
+    const totalStatus = listF.length + listA.length + listFe.length;
     const totalEmployees = activeEmployees.length || 1;
     const percentual = `${Math.round((totalStatus / totalEmployees) * 100)}%`;
 
     generateStatsImage({
-      faltas: faltasCount,
-      afastamentos: afastamentosCount,
-      ferias: feriasCount,
+      faltas: listF,
+      afastamentos: listA,
+      ferias: listFe,
       percentual
     });
   };
