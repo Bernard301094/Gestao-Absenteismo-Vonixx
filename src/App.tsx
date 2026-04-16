@@ -116,6 +116,8 @@ export default function App() {
   });
 
   // ─── Access Control ────────────────────────────────────────────────────────
+  // Supervisión: solo puede ver 'dashboard' y 'ferias_dashboard'
+  // Turnos A/B/C/D: pueden ver todo excepto no tienen restricción extra
   useEffect(() => {
     if (auth.isSupervision && (activeTab === 'registro' || activeTab === 'ferias')) {
       setActiveTab('dashboard');
@@ -194,7 +196,7 @@ export default function App() {
           handleInstallClick={auth.handleInstallClick}
           connectionError={data.connectionError}
           handleRetry={data.handleRetry}
-          userEmail={auth.user?.email}
+          userEmail={auth.user?.email ?? null}
         />
       </ErrorBoundary>
 
@@ -236,7 +238,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'registro' && (
+              {activeTab === 'registro' && !auth.isSupervision && (
                 <AttendanceRegistry
                   selectedDay={selectedDay}
                   currentDayOfMonth={currentDayOfMonth}
@@ -266,7 +268,7 @@ export default function App() {
                 />
               )}
 
-              {activeTab === 'ferias' && (
+              {activeTab === 'ferias' && !auth.isSupervision && (
                 <VacationManagement
                   employees={data.employees}
                   vacations={data.vacations}
