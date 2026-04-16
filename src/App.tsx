@@ -116,8 +116,6 @@ export default function App() {
   });
 
   // ─── Access Control ────────────────────────────────────────────────────────
-  // Supervisión: solo puede ver 'dashboard' y 'ferias_dashboard'
-  // Turnos A/B/C/D: pueden ver todo excepto no tienen restricción extra
   useEffect(() => {
     if (auth.isSupervision && (activeTab === 'registro' || activeTab === 'ferias')) {
       setActiveTab('dashboard');
@@ -268,10 +266,12 @@ export default function App() {
                 />
               )}
 
+              {/* ─── FÉRIAS: agora recebe vacationStats de analytics ─── */}
               {activeTab === 'ferias' && !auth.isSupervision && (
                 <VacationManagement
                   employees={data.employees}
                   vacations={data.vacations}
+                  vacationStats={analytics.vacationStats ?? []}
                   handleAddVacation={data.handleAddVacation}
                   handleDeleteVacation={data.handleDeleteVacation}
                   handleUpdateVacation={data.handleUpdateVacation}

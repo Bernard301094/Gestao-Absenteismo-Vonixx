@@ -1,17 +1,16 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.vonixx.frequencia',
+  appId: 'com.vonixx.gestaoabsenteismo',
   appName: 'Vonixx Frequência',
   webDir: 'dist',
   server: {
     androidScheme: 'https',
   },
   android: {
-    buildOptions: {
-      keystorePath: undefined,
-      keystoreAlias: undefined,
-    },
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: false,
   },
 };
 

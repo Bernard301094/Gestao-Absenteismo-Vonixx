@@ -41,9 +41,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 5. Instalar dependencias Node
+      # 5. Instalar dependencias Node (incluye @capacitor/cli, core, android)
       - name: Instalar dependencias
-        run: npm ci
+        run: npm install
 
       # 6. Crear .env con secrets de Firebase
       - name: Criar arquivo .env
@@ -62,21 +62,30 @@ jobs:
       - name: Build Vite
         run: npm run build
 
-      # 8. Capacitor: sincronizar Android
+      # 8. Agregar plataforma Android (crea carpeta android/ si no existe)
+      - name: Capacitor add Android
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          else
+            echo "Carpeta android/ ya existe, omitiendo cap add"
+          fi
+
+      # 9. Capacitor sync (copia dist/ a android/app/src/main/assets/public)
       - name: Capacitor sync Android
         run: npx cap sync android
 
-      # 9. Dar permisos de ejecución a gradlew
+      # 10. Dar permisos de ejecución a gradlew
       - name: Permissões Gradle
         run: chmod +x android/gradlew
 
-      # 10. Compilar APK debug
+      # 11. Compilar APK debug
       - name: Compilar APK (debug)
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon
 
-      # 11. Renombrar APK con timestamp
+      # 12. Renombrar APK con timestamp
       - name: Renomear APK
         run: |
           TIMESTAMP=$(date +'%Y%m%d_%H%M')
@@ -84,7 +93,7 @@ jobs:
              android/app/build/outputs/apk/debug/vonixx-frequencia-${TIMESTAMP}.apk
           echo "APK_NAME=vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
 
-      # 12. Subir APK como artifact (disponible 30 días)
+      # 13. Subir APK como artifact (disponible 30 días)
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -92,7 +101,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/${{ env.APK_NAME }}
           retention-days: 30
 
-      # 13. Crear Release en GitHub (solo si es un tag v*)
+      # 14. Crear Release en GitHub (solo si es un tag v*)
       - name: Crear GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -107,7 +116,7 @@ jobs:
             2. No Android, vá em **Configurações → Segurança → Fontes desconhecidas** e habilite
             3. Abra o arquivo `.apk` para instalar
 
-            > Build gerado automaticamente pelo GitHub Actions em ${{ github.event.head_commit.timestamp }}
+            > Build gerado automaticamente pelo GitHub Actions
           draft: false
           prerelease: false
         env:
