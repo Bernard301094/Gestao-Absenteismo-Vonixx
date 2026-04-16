@@ -1,7 +1,8 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { GoogleGenAI } from "@google/genai";
 
-export type AIProvider = 'openrouter' | 'groq';
+export type AIProvider = 'gemini' | 'openrouter' | 'groq';
 
 // Global AI quota variables
 const MAX_MONTHLY_CALLS = 1000;
@@ -24,11 +25,33 @@ async function checkAndIncrementQuota(): Promise<void> {
   await setDoc(quotaRef, { calls: count + 1 }, { merge: true });
 }
 
-const getApiKey = (provider: AIProvider) => {
-  if (provider === 'openrouter') return import.meta.env.VITE_OPENROUTER_API_KEY;
-  if (provider === 'groq') return import.meta.env.VITE_GROQ_API_KEY;
+// Function to get API keys from different sources (Firestore or Env)
+async function fetchApiKey(provider: AIProvider): Promise<string | null> {
+  // 1. Check Firestore first (for persistence outside Google AI Studio)
+  try {
+    const configSnap = await getDoc(doc(db, 'system', 'ai_config'));
+    if (configSnap.exists()) {
+      const data = configSnap.data();
+      if (provider === 'gemini' && data.geminiKey) return data.geminiKey;
+      if (provider === 'openrouter' && data.openrouterKey) return data.openrouterKey;
+      if (provider === 'groq' && data.groqKey) return data.groqKey;
+    }
+  } catch (e) {
+    console.warn("Firestore config check failed:", e);
+  }
+
+  // 2. Check Environment Variables (standard way)
+  if (provider === 'gemini') {
+    // Platform standard key
+    const platformKey = (process.env as any).GEMINI_API_KEY;
+    if (platformKey) return platformKey;
+    return import.meta.env.VITE_GEMINI_API_KEY || null;
+  }
+  if (provider === 'openrouter') return import.meta.env.VITE_OPENROUTER_API_KEY || null;
+  if (provider === 'groq') return import.meta.env.VITE_GROQ_API_KEY || null;
+  
   return null;
-};
+}
 
 const getEndpoint = (provider: AIProvider) => {
   if (provider === 'openrouter') return 'https://openrouter.ai/api/v1/chat/completions';
@@ -37,30 +60,62 @@ const getEndpoint = (provider: AIProvider) => {
 };
 
 const getModel = (provider: AIProvider) => {
-  if (provider === 'openrouter') return 'meta-llama/llama-3-8b-instruct:free';
+  if (provider === 'gemini') return 'gemini-2.0-flash-lite-preview-02-05';
+  if (provider === 'openrouter') return 'google/gemini-2.0-flash-lite-preview-02-05:free';
   if (provider === 'groq') return 'llama-3.1-8b-instant';
   return '';
 };
 
 export async function callAI(messages: { role: string; content: string }[], provider: AIProvider = 'openrouter') {
-  const apiKey = getApiKey(provider);
-  
-  // Fallback to the other provider if the preferred one is missing
   let activeProvider = provider;
-  let activeApiKey = apiKey;
+  let activeApiKey = await fetchApiKey(activeProvider);
   
+  // Provider rotation logic if preferred key is missing
   if (!activeApiKey) {
-    activeProvider = provider === 'openrouter' ? 'groq' : 'openrouter';
-    activeApiKey = getApiKey(activeProvider);
-    
-    if (!activeApiKey) {
-      throw new Error('Nenhuma chave de API configurada (OpenRouter ou Groq). Adicione no arquivo .env.local');
+    const providers: AIProvider[] = ['openrouter', 'groq', 'gemini'];
+    for (const p of providers) {
+      if (p === provider) continue;
+      const key = await fetchApiKey(p);
+      if (key) {
+        activeProvider = p;
+        activeApiKey = key;
+        break;
+      }
     }
+  }
+
+  if (!activeApiKey) {
+    throw new Error('Nenhuma chave de API configurada. Configure o Gemini, OpenRouter ou Groq nas configurações.');
   }
 
   // Check global database quota
   await checkAndIncrementQuota();
 
+  // If using Gemini SDK directly
+  if (activeProvider === 'gemini') {
+    const ai = new GoogleGenAI({ apiKey: activeApiKey });
+    const modelName = getModel('gemini');
+    
+    // Convert messages to Gemini format (system instruction separate)
+    const systemMessage = messages.find(m => m.role === 'system');
+    const userMessages = messages.filter(m => m.role !== 'system');
+    
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: userMessages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      })),
+      config: {
+        systemInstruction: systemMessage?.content,
+        temperature: 0.3,
+      }
+    });
+    
+    return response.text;
+  }
+
+  // If using HTTP providers (OpenRouter, Groq)
   const endpoint = getEndpoint(activeProvider);
   const model = getModel(activeProvider);
 
@@ -87,7 +142,7 @@ export async function callAI(messages: { role: string; content: string }[], prov
   }
 
   const data = await response.json();
-  return data.choices[0].message.content;
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // 1. Generación de Resúmenes de Turno (Handover)

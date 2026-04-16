@@ -140,6 +140,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     
+    match /system/ai_config {
+      allow read, write: if isAdmin();
+    }
+
     match /system/{systemId} {
       allow read, write: if isAuthenticated();
     }

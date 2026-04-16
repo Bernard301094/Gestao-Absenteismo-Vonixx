@@ -104,7 +104,7 @@ export default function Dashboard({
       setShiftSummary(summary);
     } catch (error) {
       console.error(error);
-      setShiftSummary('Erro ao gerar resumo. Verifique suas chaves de API no .env.local.');
+      setShiftSummary('Erro ao gerar resumo. Verifique se as chaves de API do OpenRouter ou Groq estão configuradas nas configurações do projeto.');
     } finally {
       setIsGeneratingSummary(false);
     }
@@ -125,7 +125,7 @@ export default function Dashboard({
       setAiInsights(insights);
     } catch (error) {
       console.error(error);
-      setAiInsights('Erro ao gerar insights. Verifique suas chaves de API.');
+      setAiInsights('Erro ao gerar insights. Verifique se as chaves de API estão configuradas nas configurações do projeto.');
     } finally {
       setIsAnalyzingPatterns(false);
     }

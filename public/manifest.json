@@ -1,0 +1,22 @@
+{
+  "name": "Vonixx Gestão Frequência",
+  "short_name": "Vonixx",
+  "description": "Sistema de gestão de frequência da Vonixx",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3589/3589030.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3589/3589030.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "orientation": "portrait"
+}

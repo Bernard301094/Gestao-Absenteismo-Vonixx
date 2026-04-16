@@ -147,7 +147,7 @@ export default function EmployeeDetailModal({
         setInsight(response);
       }
     } catch (err: any) {
-      setInsightError(err.message || 'Erro ao gerar insight');
+      setInsightError('Erro ao gerar insight. Verifique se as chaves de API estão configuradas nas configurações do projeto.');
     } finally {
       setLoadingInsight(false);
     }
