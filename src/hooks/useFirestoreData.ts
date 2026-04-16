@@ -252,14 +252,25 @@ export function useFirestoreData({
               });
 
               const vacStart = data.vacationStart || data.dataInicioFerias;
+              const vacEnd = data.vacationEnd || data.dataFimFerias || '';
+              const todayISO = new Date().toISOString().split('T')[0];
+
               if (vacStart) {
+                let status: 'scheduled' | 'taken' = 'taken';
+                if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') {
+                  status = 'scheduled';
+                } else if (vacEnd && vacEnd >= todayISO) {
+                  // Se não tem status explícito mas a data ainda não passou, assume agendada
+                  status = 'scheduled';
+                }
+
                 embeddedVacs.push({
                   id: `vac_${d.id}`,
                   employeeId: d.id,
                   startDate: normalizeDate(vacStart),
-                  endDate: normalizeDate(data.vacationEnd || data.dataFimFerias || ''),
+                  endDate: normalizeDate(vacEnd),
                   returnDate: normalizeDate(data.returnDate || ''),
-                  status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
+                  status,
                   diasDireito: data.diasDireito ?? 30,
                   vendeuFerias: data.vendeuFerias ?? false,
                   diasVendidos: data.diasVendidos ?? 0,
@@ -290,13 +301,24 @@ export function useFirestoreData({
             const collVacs: Vacation[] = [];
             snapshot.forEach(d => {
               const data = d.data();
+              const vacStart = data.vacationStart || data.dataInicioFerias || data.startDate || '';
+              const vacEnd = data.vacationEnd || data.endDate || '';
+              const todayISO = new Date().toISOString().split('T')[0];
+
+              let status: 'scheduled' | 'taken' = 'taken';
+              if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') {
+                status = 'scheduled';
+              } else if (vacEnd && vacEnd >= todayISO) {
+                status = 'scheduled';
+              }
+
               collVacs.push({
                 id: d.id,
                 employeeId: data.employeeId || d.id,
-                startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
-                endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
+                startDate: normalizeDate(vacStart),
+                endDate: normalizeDate(vacEnd),
                 returnDate: normalizeDate(data.returnDate || ''),
-                status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
+                status,
                 diasDireito: data.diasDireito ?? 30,
                 vendeuFerias: data.vendeuFerias ?? false,
                 diasVendidos: data.diasVendidos ?? 0,
@@ -456,6 +478,8 @@ export function useFirestoreData({
           diasDireito: vacation.diasDireito,
           vendeuFerias: vacation.vendeuFerias,
           diasVendidos: vacation.diasVendidos,
+          status: vacation.status,
+          vacationStatus: vacation.status === 'taken' ? 'Concluída' : 'Agendada',
         });
       } else {
         // Otherwise update the vacations collection

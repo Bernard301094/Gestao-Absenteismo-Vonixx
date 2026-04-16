@@ -410,8 +410,10 @@ export default function Vacations({
     // 2. Atualizar ou Criar férias
     const sold = editVendeuFerias ? editDiasVendidos : 0;
     const dates = editStartDate ? calcVacationDates(editStartDate, editDiasDireito, sold) : null;
+    const todayISO = new Date().toISOString().split('T')[0];
 
     if (editingStat.currentVacation) {
+      const status = (dates && dates.endDate < todayISO) ? 'taken' : editingStat.currentVacation.status;
       // Atualizar existente
       await handleUpdateVacation(editingStat.currentVacation.id, {
         startDate: dates?.startDate || editingStat.currentVacation.startDate,
@@ -420,15 +422,17 @@ export default function Vacations({
         diasDireito: editDiasDireito,
         vendeuFerias: editVendeuFerias,
         diasVendidos: sold,
+        status,
       });
     } else if (dates) {
+      const status = dates.endDate < todayISO ? 'taken' : 'scheduled';
       // Criar nova se não existia mas foi preenchido data
       await handleAddVacation({
         employeeId: editingStat.employeeId,
         startDate: dates.startDate,
         endDate: dates.endDate,
         returnDate: dates.returnDate,
-        status: 'scheduled',
+        status,
         diasDireito: editDiasDireito,
         vendeuFerias: editVendeuFerias,
         diasVendidos: sold,
@@ -484,13 +488,15 @@ export default function Vacations({
 
     const sold = vendeuFerias ? diasVendidos : 0;
     const dates = calcVacationDates(startDate, diasDireito, sold);
+    const todayISO = new Date().toISOString().split('T')[0];
+    const status = dates.endDate < todayISO ? 'taken' : 'scheduled';
 
     await handleAddVacation({
       employeeId: selectedEmployeeId,
       startDate: dates.startDate,
       endDate: dates.endDate,
       returnDate: dates.returnDate,
-      status: 'scheduled',
+      status,
       diasDireito,
       vendeuFerias,
       diasVendidos: sold,

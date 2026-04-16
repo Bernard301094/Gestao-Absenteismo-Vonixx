@@ -8,7 +8,7 @@ import {
   History, TrendingUp, AlertCircle, Calendar, BarChart3,
   Filter, Layers, ShieldAlert, ChevronRight, Zap
 } from 'lucide-react';
-import { VacationStats, VacationStatusType } from '../../types';
+import { VacationStats, VacationStatusType, Vacation, Employee } from '../../types';
 
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -19,6 +19,8 @@ interface VacationDashboardProps {
   vacationOverlapAlerts: string[];
   vacationHeatmap: Record<string, number>;
   currentShift: string;
+  allVacations: Vacation[];
+  allEmployees: Employee[];
 }
 
 // ─── Custom Tooltip ────────────────────────────────────────────────────────────
@@ -26,15 +28,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      background: 'rgba(15,22,41,0.95)',
-      border: '1px solid rgba(245,158,11,0.3)',
+      background: 'rgba(255,255,255,0.95)',
+      border: '1px solid #e2e8f0',
       borderRadius: 12,
       padding: '10px 16px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
     }}>
-      <p style={{ color: '#f59e0b', fontWeight: 700, marginBottom: 4, fontSize: 12 }}>{label}</p>
+      <p style={{ color: '#0f172a', fontWeight: 700, marginBottom: 4, fontSize: 12 }}>{label}</p>
       {payload.map((p: any) => (
-        <p key={p.dataKey} style={{ color: '#e2e8f0', fontSize: 12 }}>
+        <p key={p.dataKey} style={{ color: '#334155', fontSize: 12 }}>
           {p.dataKey}: <span style={{ color: p.fill, fontWeight: 700 }}>{p.value}</span>
         </p>
       ))}
@@ -48,7 +50,9 @@ export default function VacationDashboard({
   vacationLiability,
   vacationOverlapAlerts,
   vacationHeatmap,
-  currentShift
+  currentShift,
+  allVacations,
+  allEmployees
 }: VacationDashboardProps) {
   const [roleFilter, setRoleFilter] = React.useState<string>('all');
   const [expandedSection, setExpandedSection] = React.useState<string | null>('current');
@@ -105,7 +109,42 @@ export default function VacationDashboard({
 
   // ─── Filtered Tables ──────────────────────────────────────────────────────
   const emFeriasAgora   = useMemo(() => vacationStats.filter(s => s.status === 'em_ferias_agora'), [vacationStats]);
-  const historicoConcluido = useMemo(() => vacationStats.filter(s => s.status === 'ferias_concluidas'), [vacationStats]);
+  
+  const historicoConcluido = useMemo(() => {
+    const todayISO = new Date().toISOString().split('T')[0];
+    
+    // Filtramos apenas as que já terminaram
+    const taken = allVacations.filter(v => {
+      const isPast = v.endDate && v.endDate < todayISO;
+      // Se tiver status 'taken' ou se a data já passou (para garantir dados antigos)
+      return (v.status === 'taken' || isPast) && isPast;
+    });
+
+    // Removemos duplicatas (mesmo funcionário na mesma data de início)
+    const uniqueMap = new Map<string, any>();
+    
+    taken.forEach(v => {
+      const emp = allEmployees.find(e => e.id === v.employeeId);
+      const key = `${v.employeeId}_${v.startDate}`;
+      
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, {
+          id: v.id,
+          employeeId: v.employeeId,
+          employeeName: emp?.name || 'Desconhecido',
+          cargo: emp?.role || '—',
+          dataInicioFerias: v.startDate,
+          dataFimFerias: v.endDate,
+          numeroPeriodo: emp?.admissionDate ? Math.floor((new Date(v.startDate + 'T12:00:00').getTime() - new Date(emp.admissionDate + 'T12:00:00').getTime()) / (1000*60*60*24*365.25)) + 1 : '?',
+          inicioAquisitivo: emp?.admissionDate || '', // Para manter compatibilidade se necessário
+        });
+      }
+    });
+
+    return Array.from(uniqueMap.values())
+      .sort((a, b) => b.dataInicioFerias.localeCompare(a.dataInicioFerias));
+  }, [allVacations, allEmployees]);
+
   const previsaoProximas = useMemo(() =>
     vacationStats
       .filter(s => s.status === 'ferias_agendadas' || s.status === 'agendado_sem_admissao')
@@ -137,12 +176,12 @@ export default function VacationDashboard({
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
-        .vd-root { background: #080f1e; min-height: 100vh; color: #e2e8f0; }
+        .vd-root { background: #f8fafc; min-height: 100vh; color: #1e293b; }
 
         /* Header */
         .vd-header {
-          background: linear-gradient(135deg, #0f1a33 0%, #0a1628 100%);
-          border-bottom: 1px solid rgba(245,158,11,0.2);
+          background: #ffffff;
+          border-bottom: 1px solid #e2e8f0;
           padding: 20px 24px;
           display: flex; flex-wrap: wrap; gap: 16px;
           align-items: center; justify-content: space-between;
@@ -154,16 +193,16 @@ export default function VacationDashboard({
           width: 44px; height: 44px; border-radius: 12px;
           background: linear-gradient(135deg, #f59e0b, #d97706);
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 0 20px rgba(245,158,11,0.35);
+          box-shadow: 0 4px 12px rgba(245,158,11,0.2);
           flex-shrink: 0;
         }
-        .vd-title { font-size: 15px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.3px; }
-        .vd-subtitle { font-size: 11px; color: rgba(245,158,11,0.7); font-weight: 500; margin-top: 2px; }
+        .vd-title { font-size: 15px; font-weight: 700; color: #0f172a; letter-spacing: 0.3px; }
+        .vd-subtitle { font-size: 11px; color: #64748b; font-weight: 500; margin-top: 2px; }
         .vd-badge {
           display: inline-flex; align-items: center; gap: 5px;
-          background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.25);
+          background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2);
           border-radius: 20px; padding: 4px 10px;
-          font-size: 11px; font-weight: 600; color: #f59e0b;
+          font-size: 11px; font-weight: 600; color: #d97706;
         }
         .vd-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block; animation: pulse-dot 2s infinite; }
         @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -171,15 +210,16 @@ export default function VacationDashboard({
         /* Filter */
         .vd-filter {
           display: flex; align-items: center; gap: 8px;
-          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+          background: #ffffff; border: 1px solid #e2e8f0;
           border-radius: 10px; padding: 8px 14px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         .vd-filter select {
           background: transparent; border: none; outline: none;
-          color: #e2e8f0; font-size: 12px; font-weight: 600;
+          color: #1e293b; font-size: 12px; font-weight: 600;
           font-family: inherit; cursor: pointer;
         }
-        .vd-filter select option { background: #1a2744; color: #e2e8f0; }
+        .vd-filter select option { background: #ffffff; color: #1e293b; }
 
         /* KPI Grid */
         .vd-kpi-grid {
@@ -192,101 +232,103 @@ export default function VacationDashboard({
         @media(min-width:1200px){ .vd-kpi-grid { grid-template-columns: repeat(9,1fr); gap:10px; } }
 
         .vd-kpi {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
           border-radius: 16px; padding: 16px;
           display: flex; flex-direction: column; gap: 8px;
           position: relative; overflow: hidden;
-          transition: transform 0.2s, border-color 0.2s;
+          transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
           cursor: default;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .vd-kpi:hover { transform: translateY(-2px); border-color: rgba(245,158,11,0.25); }
+        .vd-kpi:hover { transform: translateY(-2px); border-color: #f59e0b; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .vd-kpi::before {
           content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-          background: var(--kpi-accent, rgba(245,158,11,0.6));
+          background: var(--kpi-accent, #f59e0b);
         }
-        .vd-kpi-label { font-size: 10px; font-weight: 600; color: rgba(226,232,240,0.5); text-transform: uppercase; letter-spacing: 0.6px; }
-        .vd-kpi-value { font-size: 28px; font-weight: 700; color: #f1f5f9; line-height: 1; }
-        .vd-kpi-sub { font-size: 10px; color: rgba(226,232,240,0.35); }
+        .vd-kpi-label { font-size: 10px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; }
+        .vd-kpi-value { font-size: 28px; font-weight: 700; color: #0f172a; line-height: 1; }
+        .vd-kpi-sub { font-size: 10px; color: #94a3b8; }
 
         /* Sections */
         .vd-section {
           margin: 0 20px 16px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
           border-radius: 20px; overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .vd-section-header {
           display: flex; align-items: center; justify-content: space-between;
           padding: 16px 20px; cursor: pointer;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          border-bottom: 1px solid #f1f5f9;
           transition: background 0.2s;
           user-select: none;
         }
-        .vd-section-header:hover { background: rgba(255,255,255,0.03); }
-        .vd-section-title { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #f1f5f9; letter-spacing: 0.2px; }
+        .vd-section-header:hover { background: #f8fafc; }
+        .vd-section-title { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; color: #0f172a; letter-spacing: 0.2px; }
         .vd-section-icon {
           width: 30px; height: 30px; border-radius: 8px;
           display: flex; align-items: center; justify-content: center;
-          background: var(--icon-bg, rgba(245,158,11,0.15));
+          background: var(--icon-bg, rgba(245,158,11,0.1));
         }
         .vd-section-count {
           font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
-          background: rgba(255,255,255,0.07); color: rgba(226,232,240,0.6);
+          background: #f1f5f9; color: #64748b;
         }
-        .vd-chevron { transition: transform 0.25s; color: rgba(226,232,240,0.4); }
+        .vd-chevron { transition: transform 0.25s; color: #94a3b8; }
         .vd-chevron.open { transform: rotate(90deg); }
         .vd-section-body { overflow: hidden; transition: max-height 0.3s ease; }
 
         /* Tables */
         .vd-table { width: 100%; border-collapse: collapse; }
         .vd-table thead tr {
-          background: rgba(255,255,255,0.04);
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          background: #f8fafc;
+          border-bottom: 1px solid #e2e8f0;
         }
         .vd-table th {
           padding: 10px 16px; text-align: left;
           font-size: 10px; font-weight: 700; letter-spacing: 0.8px;
-          color: rgba(226,232,240,0.4); text-transform: uppercase; white-space: nowrap;
+          color: #64748b; text-transform: uppercase; white-space: nowrap;
         }
         .vd-table td {
-          padding: 12px 16px; font-size: 12px; color: #cbd5e1;
-          border-bottom: 1px solid rgba(255,255,255,0.04);
+          padding: 12px 16px; font-size: 12px; color: #334155;
+          border-bottom: 1px solid #f1f5f9;
         }
         .vd-table tbody tr { transition: background 0.15s; }
-        .vd-table tbody tr:hover { background: rgba(245,158,11,0.04); }
+        .vd-table tbody tr:hover { background: #f8fafc; }
         .vd-table tbody tr:last-child td { border-bottom: none; }
-        .vd-table .emp-name { font-weight: 600; color: #f1f5f9; }
+        .vd-table .emp-name { font-weight: 600; color: #0f172a; }
         .vd-table .mono { font-family: 'DM Mono', monospace; font-size: 11px; }
-        .vd-table .num-col { text-align: center; font-family: 'DM Mono', monospace; font-size: 11px; color: rgba(226,232,240,0.3); }
-        .vd-empty { text-align: center; padding: 40px 16px; color: rgba(226,232,240,0.3); font-size: 13px; font-style: italic; }
+        .vd-table .num-col { text-align: center; font-family: 'DM Mono', monospace; font-size: 11px; color: #94a3b8; }
+        .vd-empty { text-align: center; padding: 40px 16px; color: #94a3b8; font-size: 13px; font-style: italic; }
 
         /* Badges */
         .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: 600; }
-        .badge-green  { background: rgba(16,185,129,0.12); color: #10b981; border: 1px solid rgba(16,185,129,0.2); }
-        .badge-amber  { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
-        .badge-blue   { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
-        .badge-red    { background: rgba(239,68,68,0.12);  color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
-        .badge-orange { background: rgba(249,115,22,0.12); color: #fb923c; border: 1px solid rgba(249,115,22,0.2); }
+        .badge-green  { background: #ecfdf5; color: #059669; border: 1px solid #d1fae5; }
+        .badge-amber  { background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; }
+        .badge-blue   { background: #eff6ff; color: #2563eb; border: 1px solid #dbeafe; }
+        .badge-red    { background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; }
+        .badge-orange { background: #fff7ed; color: #ea580c; border: 1px solid #ffedd5; }
 
         /* Overlap Alert */
         .vd-alert {
           margin: 0 20px 16px;
-          background: rgba(239,68,68,0.07);
-          border: 1px solid rgba(239,68,68,0.2);
+          background: #fef2f2;
+          border: 1px solid #fee2e2;
           border-left: 3px solid #ef4444;
           border-radius: 16px; padding: 16px 20px;
           display: flex; gap: 14px; align-items: flex-start;
         }
-        .vd-alert-icon { width: 36px; height: 36px; border-radius: 10px; background: rgba(239,68,68,0.15); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .vd-alert-title { font-size: 12px; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.5px; }
-        .vd-alert-item { font-size: 12px; color: rgba(252,165,165,0.7); margin-top: 4px; }
+        .vd-alert-icon { width: 36px; height: 36px; border-radius: 10px; background: #fee2e2; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .vd-alert-title { font-size: 12px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px; }
+        .vd-alert-item { font-size: 12px; color: #b91c1c; margin-top: 4px; }
 
         /* Heatmap */
         .vd-heatmap-wrap { padding: 20px; overflow-x: auto; }
         .vd-heatmap-inner { display: flex; gap: 12px; min-width: max-content; }
         .vd-heatmap-month { display: flex; flex-direction: column; gap: 4px; }
-        .vd-heatmap-label { font-size: 9px; font-weight: 700; color: rgba(226,232,240,0.35); text-transform: uppercase; letter-spacing: 0.5px; text-align: center; margin-bottom: 2px; }
+        .vd-heatmap-label { font-size: 9px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; text-align: center; margin-bottom: 2px; }
         .vd-heatmap-days { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
         .vd-heatmap-cell {
           width: 12px; height: 12px; border-radius: 3px;
@@ -295,7 +337,7 @@ export default function VacationDashboard({
         }
         .vd-heatmap-cell:hover { transform: scale(1.4); opacity: 1 !important; z-index: 10; }
         .vd-heatmap-legend { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
-        .vd-heatmap-legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: rgba(226,232,240,0.4); font-weight: 500; }
+        .vd-heatmap-legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #64748b; font-weight: 500; }
         .vd-heatmap-legend-dot { width: 10px; height: 10px; border-radius: 2px; }
 
         /* Chart Area */
@@ -306,19 +348,20 @@ export default function VacationDashboard({
         @media(min-width:1024px) { .vd-chart-grid { grid-template-columns: 2fr 1fr; } }
 
         .vd-chart-box {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.07);
+          background: #ffffff;
+          border: 1px solid #e2e8f0;
           border-radius: 20px; overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .vd-chart-header {
           padding: 16px 20px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          border-bottom: 1px solid #f1f5f9;
           display: flex; align-items: center; gap: 10px;
-          font-size: 13px; font-weight: 700; color: #f1f5f9;
+          font-size: 13px; font-weight: 700; color: #0f172a;
         }
         .vd-chart-icon {
           width: 30px; height: 30px; border-radius: 8px;
-          background: rgba(245,158,11,0.15);
+          background: rgba(245,158,11,0.1);
           display: flex; align-items: center; justify-content: center;
         }
         .vd-chart-body { padding: 20px; }
@@ -327,27 +370,27 @@ export default function VacationDashboard({
         .vd-breakdown-table { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; }
         .vd-breakdown-table th {
           font-size: 9px; text-align: center; padding: 6px 4px;
-          color: rgba(226,232,240,0.3); font-weight: 500; text-transform: uppercase;
-          border-bottom: 1px solid rgba(255,255,255,0.06);
+          color: #94a3b8; font-weight: 500; text-transform: uppercase;
+          border-bottom: 1px solid #f1f5f9;
         }
         .vd-breakdown-table td {
           font-size: 11px; text-align: center; padding: 6px 4px;
-          border-bottom: 1px solid rgba(255,255,255,0.04);
+          border-bottom: 1px solid #f8fafc;
         }
         .vd-breakdown-table .year-cell {
-          font-weight: 700; color: rgba(245,158,11,0.8); font-size: 10px;
-          border-right: 1px solid rgba(255,255,255,0.07); text-align: left; padding-left: 8px;
+          font-weight: 700; color: #d97706; font-size: 10px;
+          border-right: 1px solid #f1f5f9; text-align: left; padding-left: 8px;
         }
-        .vd-breakdown-table .count-cell { color: rgba(226,232,240,0.3); }
-        .vd-breakdown-table .count-cell.has-data { color: #60a5fa; font-weight: 600; }
-        .vd-breakdown-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+        .vd-breakdown-table .count-cell { color: #cbd5e1; }
+        .vd-breakdown-table .count-cell.has-data { color: #2563eb; font-weight: 600; }
+        .vd-breakdown-table tbody tr:hover { background: #f8fafc; }
         .vd-breakdown-table tbody tr:last-child td { border-bottom: none; }
 
         /* Scrollable table wrapper */
         .vd-table-wrap { overflow-x: auto; }
         .vd-table-scroll { max-height: 380px; overflow-y: auto; }
         .vd-table-scroll thead { position: sticky; top: 0; z-index: 5; }
-        .vd-table-scroll thead tr { background: #0f1a33; }
+        .vd-table-scroll thead tr { background: #ffffff; }
 
         /* Scrollbar */
         .vd-table-wrap::-webkit-scrollbar,
@@ -355,13 +398,13 @@ export default function VacationDashboard({
         .vd-heatmap-wrap::-webkit-scrollbar { height: 4px; width: 4px; }
         .vd-table-wrap::-webkit-scrollbar-track,
         .vd-table-scroll::-webkit-scrollbar-track,
-        .vd-heatmap-wrap::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); }
+        .vd-heatmap-wrap::-webkit-scrollbar-track { background: #f1f5f9; }
         .vd-table-wrap::-webkit-scrollbar-thumb,
         .vd-table-scroll::-webkit-scrollbar-thumb,
-        .vd-heatmap-wrap::-webkit-scrollbar-thumb { background: rgba(245,158,11,0.3); border-radius: 4px; }
+        .vd-heatmap-wrap::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
         /* Row index */
-        .row-idx { width: 36px; color: rgba(226,232,240,0.2); font-family: 'DM Mono', monospace; font-size: 10px; text-align: center; }
+        .row-idx { width: 36px; color: #cbd5e1; font-family: 'DM Mono', monospace; font-size: 10px; text-align: center; }
 
         /* Bottom padding */
         .vd-spacer { height: 32px; }
@@ -381,7 +424,6 @@ export default function VacationDashboard({
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-            <div className="vd-badge">Sistema ao vivo</div>
             <div className="vd-filter">
               <Filter size={13} color="#f59e0b" />
               <span style={{ fontSize:10, fontWeight:600, color:'rgba(245,158,11,0.7)', textTransform:'uppercase', letterSpacing:'0.5px' }}>Cargo</span>
@@ -539,17 +581,16 @@ export default function VacationDashboard({
               </thead>
               <tbody>
                 {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
-                  <tr key={s.employeeId}>
+                  <tr key={s.id}>
                     <td className="row-idx">{i + 1}</td>
                     <td className="emp-name">{s.employeeName}</td>
                     <td><span className="badge badge-green">{s.cargo}</span></td>
                     <td className="mono">{fmtDate(s.dataInicioFerias)}</td>
-                    <td className="mono">{fmtDate(s.dataFimFerias)}</td>
+                    <td className="mono">{fmtDate(s.dataFimFerias || '')}</td>
                     <td style={{textAlign:'center'}}><span className="badge badge-blue">#{s.numeroPeriodo}</span></td>
-                    <td className="mono" style={{color:'#60a5fa'}}>{fmtDate(s.inicioAquisitivo)}</td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={7} className="vd-empty">Nenhum histórico encontrado</td></tr>
+                  <tr><td colSpan={6} className="vd-empty">Nenhum histórico encontrado</td></tr>
                 )}
               </tbody>
             </table>
@@ -657,11 +698,11 @@ export default function VacationDashboard({
               <div style={{ height: 280 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData} barCategoryGap="30%">
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis dataKey="name" fontSize={10} tick={{ fill:'rgba(226,232,240,0.4)', fontFamily:'DM Sans' }} axisLine={false} tickLine={false} />
-                    <YAxis fontSize={10} tick={{ fill:'rgba(226,232,240,0.4)', fontFamily:'DM Sans' }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<CustomTooltip />} cursor={{ fill:'rgba(255,255,255,0.03)' }} />
-                    <Legend wrapperStyle={{ fontSize:11, color:'rgba(226,232,240,0.5)', paddingTop:12 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" fontSize={10} tick={{ fill:'#64748b', fontFamily:'DM Sans' }} axisLine={false} tickLine={false} />
+                    <YAxis fontSize={10} tick={{ fill:'#64748b', fontFamily:'DM Sans' }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill:'#f8fafc' }} />
+                    <Legend wrapperStyle={{ fontSize:11, color:'#64748b', paddingTop:12 }} />
                     <Bar dataKey="2026" fill="#f59e0b" radius={[4,4,0,0]} maxBarSize={24} />
                     <Bar dataKey="2027" fill="#3b82f6" radius={[4,4,0,0]} maxBarSize={24} />
                     <Bar dataKey="2028" fill="#8b5cf6" radius={[4,4,0,0]} maxBarSize={24} />

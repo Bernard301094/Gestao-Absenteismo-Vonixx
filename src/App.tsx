@@ -269,6 +269,8 @@ export default function App() {
                 vacationOverlapAlerts={analytics.vacationOverlapAlerts}
                 vacationHeatmap={analytics.vacationHeatmap}
                 currentShift={auth.currentShift || 'A'}
+                allVacations={data.vacations}
+                allEmployees={data.employees}
               />
             )}
           </Suspense>
