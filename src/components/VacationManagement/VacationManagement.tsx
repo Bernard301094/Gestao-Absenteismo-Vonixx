@@ -8,6 +8,8 @@ import {
 import type { Employee, Vacation, VacationStats } from '../../types';
 import { useVacationStats, calcVacationDates } from '../../hooks/useVacationStats';
 
+import CustomDropdown from '../CustomDropdown';
+
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface VacationManagementProps {
@@ -598,10 +600,16 @@ export default function VacationManagement({
           <Modal title="Agendar Férias" onClose={() => setShowAddModal(false)}>
             <form onSubmit={onAddSubmit} className="p-5 sm:p-6 space-y-4">
               <FormField label="Colaborador">
-                <select required value={selectedEmployeeId} onChange={e => setSelectedEmployeeId(e.target.value)} className={inputCls}>
-                  <option value="">Selecione...</option>
-                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-                </select>
+                <CustomDropdown
+                  variant="light"
+                  value={selectedEmployeeId}
+                  onChange={(val) => setSelectedEmployeeId(val)}
+                  options={[
+                    { value: '', label: 'Selecione...' },
+                    ...employees.map(emp => ({ value: emp.id, label: emp.name }))
+                  ]}
+                  label="Selecione..."
+                />
               </FormField>
 
               <FormField label="Início das Férias">
@@ -614,12 +622,18 @@ export default function VacationManagement({
                     onChange={e => setDiasDireito(Number(e.target.value))} className={inputCls} />
                 </FormField>
                 <FormField label="Vendeu Férias?">
-                  <select value={vendeuFerias ? 'sim' : 'nao'}
-                    onChange={e => { setVendeuFerias(e.target.value === 'sim'); if (e.target.value === 'nao') setDiasVendidos(0); }}
-                    className={inputCls}>
-                    <option value="nao">Não</option>
-                    <option value="sim">Sim</option>
-                  </select>
+                  <CustomDropdown
+                    variant="light"
+                    value={vendeuFerias ? 'sim' : 'nao'}
+                    onChange={(val) => {
+                      setVendeuFerias(val === 'sim');
+                      if (val === 'nao') setDiasVendidos(0);
+                    }}
+                    options={[
+                      { value: 'nao', label: 'Não' },
+                      { value: 'sim', label: 'Sim' }
+                    ]}
+                  />
                 </FormField>
               </div>
 
@@ -669,12 +683,18 @@ export default function VacationManagement({
                       onChange={e => setEditDiasDireito(Number(e.target.value))} className={inputCls} />
                   </FormField>
                   <FormField label="Vendeu Férias?">
-                    <select value={editVendeuFerias ? 'sim' : 'nao'}
-                      onChange={e => { setEditVendeuFerias(e.target.value === 'sim'); if (e.target.value === 'nao') setEditDiasVendidos(0); }}
-                      className={inputCls}>
-                      <option value="nao">Não</option>
-                      <option value="sim">Sim</option>
-                    </select>
+                    <CustomDropdown
+                      variant="light"
+                      value={editVendeuFerias ? 'sim' : 'nao'}
+                      onChange={(val) => {
+                        setEditVendeuFerias(val === 'sim');
+                        if (val === 'nao') setEditDiasVendidos(0);
+                      }}
+                      options={[
+                        { value: 'nao', label: 'Não' },
+                        { value: 'sim', label: 'Sim' }
+                      ]}
+                    />
                   </FormField>
                 </div>
 

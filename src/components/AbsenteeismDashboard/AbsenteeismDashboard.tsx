@@ -1,5 +1,5 @@
-import React from 'react';
-import { Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Bot, Sparkles, Loader2, Copy, CheckCircle2 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import type {
   Employee, AttendanceRecord, NotesRecord,
@@ -13,6 +13,7 @@ import DailyEvolutionChart from '../Charts/DailyEvolutionChart';
 import DistributionChart from '../Charts/DistributionChart';
 import EmployeeTable from '../Charts/EmployeeTable';
 import DailyTable from '../Charts/DailyTable';
+import { generateShiftSummary, analyzePatterns } from '../../services/aiService';
 
 interface DashboardProps {
   handleExportExcel: () => void;
@@ -71,20 +72,149 @@ export default function Dashboard({
   setSelectedEmployeeDetail,
   getInitials,
 }: DashboardProps) {
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [shiftSummary, setShiftSummary] = useState<string | null>(null);
+  const [copiedSummary, setCopiedSummary] = useState(false);
+
+  const [isAnalyzingPatterns, setIsAnalyzingPatterns] = useState(false);
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+
+  const handleGenerateSummary = async () => {
+    setIsGeneratingSummary(true);
+    setShiftSummary(null);
+    try {
+      const absentEmployees = employees
+        .filter(emp => selectedDay !== 'all' && getStatusForDay(emp.id, selectedDay as number) === 'F')
+        .map(emp => ({ name: emp.name, role: emp.role }));
+      
+      const criticalEmployees = topEmployees
+        .filter(emp => emp.faltas >= 3)
+        .map(emp => ({ name: emp.name, faltas: emp.faltas }));
+      
+      const todaysNotes = selectedDay !== 'all' 
+        ? employees.map(emp => ({ name: emp.name, note: notes[emp.id]?.[selectedDay as number] })).filter(n => n.note)
+        : [];
+
+      const summary = await generateShiftSummary(
+        isSupervision ? 'Supervisão' : 'Turno Atual',
+        absentEmployees,
+        criticalEmployees,
+        todaysNotes
+      );
+      setShiftSummary(summary);
+    } catch (error) {
+      console.error(error);
+      setShiftSummary('Erro ao gerar resumo. Verifique suas chaves de API no .env.local.');
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  };
+
+  const handleCopySummary = () => {
+    if (shiftSummary) {
+      navigator.clipboard.writeText(shiftSummary);
+      setCopiedSummary(true);
+      setTimeout(() => setCopiedSummary(false), 2000);
+    }
+  };
+
+  const handleAnalyzePatterns = async () => {
+    setIsAnalyzingPatterns(true);
+    try {
+      const insights = await analyzePatterns(weekdayData);
+      setAiInsights(insights);
+    } catch (error) {
+      console.error(error);
+      setAiInsights('Erro ao gerar insights. Verifique suas chaves de API.');
+    } finally {
+      setIsAnalyzingPatterns(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
-        <button
-          onClick={handleExportExcel}
-          className="self-start xs:self-auto flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
-        >
-          <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          Exportar Excel
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
+          {selectedDay !== 'all' && (
+            <button
+              onClick={handleGenerateSummary}
+              disabled={isGeneratingSummary}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
+            >
+              {isGeneratingSummary ? <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" /> : <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              Resumo do Turno (IA)
+            </button>
+          )}
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
+          >
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            Exportar Excel
+          </button>
+        </div>
       </div>
+
+      {/* ── AI Shift Summary Result ────────────────────────────────────────── */}
+      {shiftSummary && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 sm:p-5 shadow-sm animate-in slide-in-from-top duration-500">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-blue-800">
+              <Bot className="w-5 h-5" />
+              <h3 className="font-black uppercase tracking-wider text-sm">Resumo de Turno (Handover)</h3>
+            </div>
+            <button
+              onClick={handleCopySummary}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors"
+            >
+              {copiedSummary ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copiedSummary ? 'Copiado!' : 'Copiar'}
+            </button>
+          </div>
+          <div className="bg-white rounded-xl p-4 border border-blue-100 text-sm text-gray-700 whitespace-pre-wrap font-medium">
+            {shiftSummary}
+          </div>
+        </div>
+      )}
+
+      {/* ── AI Insights Card (Pattern Detection) ─────────────────────────── */}
+      {selectedDay === 'all' && (
+        <div className="bg-gradient-to-br from-blue-900 to-blue-800 rounded-2xl p-5 sm:p-6 shadow-lg relative overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-blue-400/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-800/50 border border-blue-700/50 flex items-center justify-center shrink-0 shadow-inner">
+                <Sparkles className="w-5 h-5 text-blue-300" />
+              </div>
+              <div>
+                <h3 className="text-white font-black text-base sm:text-lg tracking-tight">Insights de IA</h3>
+                <p className="text-blue-200/70 text-xs sm:text-sm font-medium mt-0.5">
+                  Detecte padrões de comportamento e tendências de absenteísmo no mês.
+                </p>
+              </div>
+            </div>
+            {!aiInsights && (
+              <button
+                onClick={handleAnalyzePatterns}
+                disabled={isAnalyzingPatterns}
+                className="shrink-0 flex items-center gap-2 bg-white text-blue-900 hover:bg-blue-50 disabled:bg-white/80 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider transition-all shadow-md active:scale-95"
+              >
+                {isAnalyzingPatterns ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                Analisar Padrões
+              </button>
+            )}
+          </div>
+          
+          {aiInsights && (
+            <div className="mt-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 text-white text-sm font-medium leading-relaxed whitespace-pre-wrap">
+              {aiInsights}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Alerts ─────────────────────────────────────────────────────────── */}
       {isSupervision && alerts.length > 0 && (

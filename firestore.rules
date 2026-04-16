@@ -133,5 +133,15 @@ service cloud.firestore {
                     request.resource.data.completedAt is timestamp &&
                     request.resource.data.completedBy == request.auth.token.email;
     }
+
+    match /ai_insights/{insightId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+    
+    match /system/{systemId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }

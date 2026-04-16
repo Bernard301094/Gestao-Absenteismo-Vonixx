@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -6,11 +6,14 @@ import {
 import {
   CalendarDays, CheckCircle2, Clock, AlertTriangle, History,
   TrendingUp, AlertCircle, Calendar, BarChart3, Filter, Layers,
-  ShieldAlert, ChevronRight, Users, Wallet,
+  ShieldAlert, ChevronRight, Users, Wallet, Bot, Loader2
 } from 'lucide-react';
 import { VacationStats, VacationStatusType, Vacation, Employee } from '../../types';
+import { suggestVacationResolution } from '../../services/aiService';
 
 const MONTH_NAMES_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+import CustomDropdown from '../CustomDropdown';
 
 interface VacationAnalyticsProps {
   vacationStats: VacationStats[];
@@ -97,7 +100,7 @@ function Section({
 // ─── Table Wrapper ─────────────────────────────────────────────────────────────
 function DataTable({ children, maxHeight }: { children: React.ReactNode; maxHeight?: boolean }) {
   return (
-    <div className={`overflow-x-auto ${maxHeight ? 'max-h-[360px] overflow-y-auto' : ''}`}>
+    <div className={`overflow-x-auto custom-scrollbar ${maxHeight ? 'max-h-[360px] overflow-y-auto' : ''}`}>
       <table className="w-full text-left border-collapse">{children}</table>
     </div>
   );
@@ -256,6 +259,22 @@ export default function VacationAnalytics({
   const [roleFilter, setRoleFilter] = React.useState<string>('all');
   const [expandedSection, setExpandedSection] = React.useState<string | null>('current');
 
+  const [aiResolutions, setAiResolutions] = useState<Record<number, string>>({});
+  const [isResolving, setIsResolving] = useState<Record<number, boolean>>({});
+
+  const handleSuggestResolution = async (index: number, conflictText: string) => {
+    setIsResolving(prev => ({ ...prev, [index]: true }));
+    try {
+      const resolution = await suggestVacationResolution(conflictText);
+      setAiResolutions(prev => ({ ...prev, [index]: resolution }));
+    } catch (error) {
+      console.error(error);
+      setAiResolutions(prev => ({ ...prev, [index]: 'Erro ao gerar sugestão. Verifique suas chaves de API.' }));
+    } finally {
+      setIsResolving(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
   const roles = useMemo(
     () => Array.from(new Set(rawVacationStats.map(s => s.cargo).filter(Boolean))).sort(),
     [rawVacationStats],
@@ -379,7 +398,7 @@ export default function VacationAnalytics({
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
       {/* ── Page Header ─────────────────────────────────────────────────── */}
-      <div className="relative bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 rounded-2xl overflow-hidden shadow-xl shadow-blue-900/30 px-5 sm:px-7 py-5">
+      <div className="relative bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 rounded-2xl shadow-xl shadow-blue-900/30 px-5 sm:px-7 py-5">
         <div
           className="absolute inset-0 pointer-events-none opacity-[0.05]"
           style={{
@@ -405,24 +424,24 @@ export default function VacationAnalytics({
             </div>
           </div>
           {roles.length > 0 && (
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-xl px-3 py-2 self-start sm:self-auto">
-              <Filter className="w-3.5 h-3.5 text-blue-200/60" />
-              <span className="text-[9px] font-black text-blue-200/50 uppercase tracking-widest">Cargo</span>
-              <select
+            <div className="flex items-center gap-2 self-start sm:self-auto min-w-[140px]">
+              <CustomDropdown
                 value={roleFilter}
-                onChange={e => setRoleFilter(e.target.value)}
-                className="bg-transparent border-none outline-none text-white text-xs font-semibold cursor-pointer [&>option]:bg-blue-900 [&>option]:text-white"
-              >
-                <option value="all">Todos</option>
-                {roles.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
+                onChange={(val) => setRoleFilter(val)}
+                options={[
+                  { value: 'all', label: 'Todos os Cargos' },
+                  ...roles.map(r => ({ value: r, label: r }))
+                ]}
+                compact
+                variant="header"
+              />
             </div>
           )}
         </div>
       </div>
 
       {/* ── KPI Grid ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-9 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
         {[
           { label: 'Total',          value: kpis.total,         sub: 'colaboradores', acc: 'bg-gray-400'   },
           { label: 'Em Férias',      value: kpis.em_ferias,     sub: 'agora',         acc: 'bg-orange-500' },
@@ -432,28 +451,128 @@ export default function VacationAnalytics({
           { label: 'Críticos',       value: kpis.criticos,      sub: 'vencidos',      acc: 'bg-red-600'    },
           { label: 'Aquisitivo',     value: kpis.em_aquisitivo, sub: 'período',       acc: 'bg-cyan-500'   },
           { label: 'Aguardando',     value: kpis.aguardando,    sub: 'dados',         acc: 'bg-slate-400'  },
-          { label: 'Passivo (dias)', value: vacationLiability,  sub: 'acumulados',    acc: 'bg-purple-600' },
         ].map(({ label, value, sub, acc }) => (
           <KpiCard key={label} label={label} value={value} sub={sub} accentClass={acc} />
         ))}
       </div>
 
-      {/* ── Overlap Alerts ────────────────────────────────────────────────── */}
+      {/* ── Alertas Críticos (Banner) ─────────────────────────────────────── */}
       {vacationOverlapAlerts.length > 0 && (
         <div className="bg-red-50 border border-red-200 border-l-4 border-l-red-500 rounded-2xl p-4 flex gap-3 items-start">
           <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
             <ShieldAlert className="w-5 h-5 text-red-500" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-xs font-black text-red-800 uppercase tracking-wider mb-1.5">
               ⚠ Alerta de Cobertura Crítica
             </p>
-            {vacationOverlapAlerts.map((a, i) => (
-              <p key={i} className="text-xs text-red-700 mt-1">· {a}</p>
-            ))}
+            <div className="space-y-3 mt-2">
+              {vacationOverlapAlerts.map((a, i) => (
+                <div key={i} className="bg-white/60 rounded-xl p-3 border border-red-100">
+                  <p className="text-xs text-red-700 font-medium">· {a}</p>
+                  
+                  <div className="mt-3">
+                    {!aiResolutions[i] && (
+                      <button
+                        onClick={() => handleSuggestResolution(i, a)}
+                        disabled={isResolving[i]}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95"
+                      >
+                        {isResolving[i] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                        Sugerir Resolução com IA
+                      </button>
+                    )}
+                    
+                    {aiResolutions[i] && (
+                      <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-center gap-1.5 text-blue-800 mb-1.5">
+                          <Bot className="w-4 h-4" />
+                          <span className="text-[10px] font-black uppercase tracking-wider">Sugestão da IA</span>
+                        </div>
+                        <p className="text-xs text-blue-900 font-medium leading-relaxed whitespace-pre-wrap">
+                          {aiResolutions[i]}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
+
+      {/* ── Alertas Críticos — Listagem ─────────────────────────────────── */}
+      <Section
+        id="critical" expanded={expandedSection} onToggle={toggle}
+        title="Alertas Críticos — Agendar Imediatamente"
+        icon={<AlertCircle className="w-4 h-4 text-red-500" />}
+        iconBg="bg-red-100" count={alertasCriticos.length} accentClass="bg-red-100 text-red-700"
+      >
+        <div className="hidden sm:block">
+          <DataTable>
+            <thead>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Fim Concessivo</Th><Th>Limite</Th><Th>Dias</Th><Th>Status</Th></tr>
+            </thead>
+            <tbody>
+              {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
+                <tr key={s.employeeId} className="bg-red-50/30 hover:bg-red-50/60 transition-colors">
+                  <Td muted mono>{i + 1}</Td>
+                  <Td><span className="font-black text-red-700 uppercase text-[12px]">{s.employeeName}</span></Td>
+                  <Td><Badge color="red">{s.cargo}</Badge></Td>
+                  <Td mono><span className="text-red-500">{fmtDate(s.fimConcessivo)}</span></Td>
+                  <Td mono><span className="font-black text-red-600">{fmtDate(s.dataLimiteConcessao)}</span></Td>
+                  <Td><Badge color="red">{s.diasParaVencer}d</Badge></Td>
+                  <Td><Badge color="red">🔴 Crítico</Badge></Td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-sm text-emerald-500 italic">
+                    ✓ Nenhum alerta crítico no momento
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="sm:hidden p-4 space-y-3 bg-red-50/10">
+          {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
+            <div key={s.employeeId} className="bg-white border border-red-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">#{i + 1}</span>
+                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                </div>
+                <Badge color="red">{s.cargo}</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-[11px]">
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim Concessivo</p>
+                  <p className="text-gray-700 font-mono">{fmtDate(s.fimConcessivo)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Data Limite</p>
+                  <p className="text-red-600 font-black font-mono">{fmtDate(s.dataLimiteConcessao)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Dias p/ Vencer</p>
+                  <p className="text-red-700 font-black">{s.diasParaVencer}d</p>
+                </div>
+                <div className="flex items-end">
+                  <Badge color="red">🔴 Crítico</Badge>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <p className="py-6 text-center text-xs text-emerald-500 italic bg-white rounded-xl border border-emerald-100">
+              ✓ Nenhum alerta crítico no momento
+            </p>
+          )}
+        </div>
+      </Section>
 
       {/* ── Heatmap — Responsivo ──────────────────────────────────────────── */}
       <Section
@@ -476,61 +595,102 @@ export default function VacationAnalytics({
         icon={<TrendingUp className="w-4 h-4 text-orange-500" />}
         iconBg="bg-orange-100" count={emFeriasAgora.length} accentClass="bg-orange-100 text-orange-700"
       >
-        <DataTable>
-          <thead>
-            <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th center>Dias Rest.</Th></tr>
-          </thead>
-          <tbody>
-            {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => (
-              <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
-                <Td muted mono>{i + 1}</Td>
-                <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
-                <Td><Badge color="orange">{s.cargo}</Badge></Td>
-                <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
-                <Td mono>{fmtDate(s.dataFimFerias)}</Td>
-                <Td center><Badge color="amber">{s.diasRestantes}d</Badge></Td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">
-                  Ninguém em férias no momento
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </DataTable>
-      </Section>
+        <div className="hidden sm:block">
+          <DataTable>
+            <thead>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th>Progresso & Dias Restantes</Th></tr>
+            </thead>
+            <tbody>
+              {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
+                const totalDays = s.dataInicioFerias && s.dataFimFerias ? Math.round((new Date(s.dataFimFerias).getTime() - new Date(s.dataInicioFerias).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0;
+                const remaining = Number(s.diasRestantes);
+                const passed = totalDays - remaining;
+                const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
+                
+                return (
+                  <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
+                    <Td muted mono>{i + 1}</Td>
+                    <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
+                    <Td><Badge color="orange">{s.cargo}</Badge></Td>
+                    <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
+                    <Td mono>{fmtDate(s.dataFimFerias)}</Td>
+                    <Td>
+                      <div className="flex flex-col gap-1.5 w-48">
+                        <div className="flex justify-between items-center text-[10px] font-bold">
+                          <span className="text-orange-700">{remaining}d restantes</span>
+                          <span className="text-gray-400">{passed}/{totalDays}d gozados</span>
+                        </div>
+                        <div className="h-2 w-full bg-orange-100 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-orange-500 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">
+                    Ninguém em férias no momento
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
+        </div>
 
-      {/* ── Histórico ─────────────────────────────────────────────────────── */}
-      <Section
-        id="history" expanded={expandedSection} onToggle={toggle}
-        title="Histórico — Ciclos Concluídos"
-        icon={<History className="w-4 h-4 text-emerald-600" />}
-        iconBg="bg-emerald-100" count={historicoConcluido.length} accentClass="bg-emerald-100 text-emerald-700"
-      >
-        <DataTable maxHeight>
-          <thead>
-            <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início Férias</Th><Th>Fim Férias</Th><Th center>Período</Th></tr>
-          </thead>
-          <tbody>
-            {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
-              <tr key={s.id} className="hover:bg-gray-50 transition-colors">
-                <Td muted mono>{i + 1}</Td>
-                <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
-                <Td><Badge color="green">{s.cargo}</Badge></Td>
-                <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
-                <Td mono>{fmtDate(s.dataFimFerias || '')}</Td>
-                <Td center><Badge color="blue">#{s.numeroPeriodo}</Badge></Td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">
-                  Nenhum histórico encontrado
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </DataTable>
+        {/* Mobile View: Cards */}
+        <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
+          {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
+            const totalDays = s.dataInicioFerias && s.dataFimFerias ? Math.round((new Date(s.dataFimFerias).getTime() - new Date(s.dataInicioFerias).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0;
+            const remaining = Number(s.diasRestantes);
+            const passed = totalDays - remaining;
+            const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
+
+            return (
+              <div key={s.employeeId} className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-1">#{i + 1}</span>
+                    <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                  </div>
+                  <Badge color="orange">{s.cargo}</Badge>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-3 text-[11px] mb-4">
+                  <div>
+                    <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
+                    <p className="text-gray-700 font-mono">{fmtDate(s.dataInicioFerias)}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p>
+                    <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias)}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end text-[10px] font-black uppercase tracking-wider">
+                    <span className="text-orange-700">{remaining} dias restantes</span>
+                    <span className="text-gray-400">{passed}/{totalDays} dias gozados</span>
+                  </div>
+                  <div className="h-2 w-full bg-orange-50 rounded-full overflow-hidden border border-orange-100/30">
+                    <div 
+                      className="h-full bg-orange-500 rounded-full transition-all duration-700"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          }) : (
+            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">
+              Ninguém em férias no momento
+            </p>
+          )}
+        </div>
       </Section>
 
       {/* ── Previsão ──────────────────────────────────────────────────────── */}
@@ -540,66 +700,73 @@ export default function VacationAnalytics({
         icon={<CalendarDays className="w-4 h-4 text-blue-600" />}
         iconBg="bg-blue-100" count={previsaoProximas.length} accentClass="bg-blue-100 text-blue-700"
       >
-        <DataTable maxHeight>
-          <thead>
-            <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th center>Dias</Th><Th>Vence em</Th></tr>
-          </thead>
-          <tbody>
-            {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
-              <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
-                <Td muted mono>{i + 1}</Td>
-                <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
-                <Td><Badge color="blue">{s.cargo}</Badge></Td>
-                <Td><span className="font-black text-blue-700 font-mono text-xs">{fmtDate(s.dataInicioFerias)}</span></Td>
-                <Td mono>{fmtDate(s.dataFimFerias)}</Td>
-                <Td center><span className="font-black text-gray-700 font-mono text-xs">{s.diasAGozar}</span></Td>
-                <Td muted mono>{s.diasParaVencer}d</Td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={7} className="py-10 text-center text-sm text-gray-400 italic">
-                  Nenhuma previsão de férias
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </DataTable>
+        <div className="hidden sm:block">
+          <DataTable maxHeight>
+            <thead>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th center>Dias</Th><Th>Vence em</Th></tr>
+            </thead>
+            <tbody>
+              {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
+                <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
+                  <Td muted mono>{i + 1}</Td>
+                  <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
+                  <Td><Badge color="blue">{s.cargo}</Badge></Td>
+                  <Td><span className="font-black text-blue-700 font-mono text-xs">{fmtDate(s.dataInicioFerias)}</span></Td>
+                  <Td mono>{fmtDate(s.dataFimFerias)}</Td>
+                  <Td center><span className="font-black text-gray-700 font-mono text-xs">{s.diasAGozar}</span></Td>
+                  <Td muted mono>{s.diasParaVencer}d</Td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-sm text-gray-400 italic">
+                    Nenhuma previsão de férias
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="sm:hidden p-4 space-y-3 bg-blue-50/10">
+          {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
+            <div key={s.employeeId} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">#{i + 1}</span>
+                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                </div>
+                <Badge color="blue">{s.cargo}</Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 text-[11px]">
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
+                  <p className="text-blue-700 font-black font-mono">{fmtDate(s.dataInicioFerias)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p>
+                  <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Dias a Gozar</p>
+                  <p className="text-gray-900 font-black">{s.diasAGozar} dias</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Vence em</p>
+                  <p className="text-gray-500 font-bold">{s.diasParaVencer}d</p>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">
+              Nenhuma previsão de férias
+            </p>
+          )}
+        </div>
       </Section>
 
-      {/* ── Alertas Críticos ──────────────────────────────────────────────── */}
-      <Section
-        id="critical" expanded={expandedSection} onToggle={toggle}
-        title="Alertas Críticos — Agendar Imediatamente"
-        icon={<AlertCircle className="w-4 h-4 text-red-500" />}
-        iconBg="bg-red-100" count={alertasCriticos.length} accentClass="bg-red-100 text-red-700"
-      >
-        <DataTable>
-          <thead>
-            <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Fim Concessivo</Th><Th>Limite</Th><Th>Dias</Th><Th>Status</Th></tr>
-          </thead>
-          <tbody>
-            {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
-              <tr key={s.employeeId} className="bg-red-50/30 hover:bg-red-50/60 transition-colors">
-                <Td muted mono>{i + 1}</Td>
-                <Td><span className="font-black text-red-700 uppercase text-[12px]">{s.employeeName}</span></Td>
-                <Td><Badge color="red">{s.cargo}</Badge></Td>
-                <Td mono><span className="text-red-500">{fmtDate(s.fimConcessivo)}</span></Td>
-                <Td mono><span className="font-black text-red-600">{fmtDate(s.dataLimiteConcessao)}</span></Td>
-                <Td><Badge color="red">{s.diasParaVencer}d</Badge></Td>
-                <Td><Badge color="red">🔴 Crítico</Badge></Td>
-              </tr>
-            )) : (
-              <tr>
-                <td colSpan={7} className="py-10 text-center text-sm text-emerald-500 italic">
-                  ✓ Nenhum alerta crítico no momento
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </DataTable>
-      </Section>
-
-      {/* ── Charts ────────────────────────────────────────────────────────── */}
+      {/* ── Charts (Distribuição e Tabela) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100">
@@ -631,7 +798,7 @@ export default function VacationAnalytics({
             </div>
             <span className="text-sm font-black text-gray-900">Férias por Mês / Ano</span>
           </div>
-          <div className="overflow-x-auto">
+          <div className="hidden sm:block overflow-x-auto custom-scrollbar">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
@@ -657,8 +824,102 @@ export default function VacationAnalytics({
               </tbody>
             </table>
           </div>
+
+          {/* Mobile View: Year Cards */}
+          <div className="sm:hidden p-4 space-y-4 bg-gray-50/10">
+            {Object.entries(vacationMonthlyBreakdown).map(([year, months]) => (
+              <div key={year} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
+                <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-50">
+                  <span className="text-xs font-black text-blue-700">Ano {year}</span>
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    {(months as number[]).reduce((a, b) => a + b, 0)} Férias
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {(months as number[]).map((count, i) => (
+                    <div key={i} className={`flex flex-col items-center p-1.5 rounded-lg border ${count > 0 ? 'bg-blue-50 border-blue-100' : 'bg-gray-50/50 border-gray-50'}`}>
+                      <span className="text-[8px] font-black text-gray-400 uppercase">{MONTH_NAMES_SHORT[i]}</span>
+                      <span className={`text-[11px] font-black ${count > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
+                        {count > 0 ? count : '0'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      {/* ── Histórico ─────────────────────────────────────────────────────── */}
+      <Section
+        id="history" expanded={expandedSection} onToggle={toggle}
+        title="Histórico — Ciclos Concluídos"
+        icon={<History className="w-4 h-4 text-emerald-600" />}
+        iconBg="bg-emerald-100" count={historicoConcluido.length} accentClass="bg-emerald-100 text-emerald-700"
+      >
+        <div className="hidden sm:block">
+          <DataTable maxHeight>
+            <thead>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início Férias</Th><Th>Fim Férias</Th><Th center>Período</Th></tr>
+            </thead>
+            <tbody>
+              {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
+                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                  <Td muted mono>{i + 1}</Td>
+                  <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
+                  <Td><Badge color="green">{s.cargo}</Badge></Td>
+                  <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
+                  <Td mono>{fmtDate(s.dataFimFerias || '')}</Td>
+                  <Td center><Badge color="blue">#{s.numeroPeriodo}</Badge></Td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">
+                    Nenhum histórico encontrado
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </DataTable>
+        </div>
+
+        {/* Mobile View: Cards */}
+        <div className="sm:hidden p-4 space-y-3 bg-emerald-50/10">
+          {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
+            <div key={s.id} className="bg-white border border-emerald-100 rounded-xl p-4 shadow-sm">
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">#{i + 1}</span>
+                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                </div>
+                <Badge color="green">{s.cargo}</Badge>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 text-[11px]">
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
+                  <p className="text-gray-700 font-mono">{fmtDate(s.dataInicioFerias)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p>
+                  <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias || '')}</p>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2">
+                    <p className="text-gray-400 font-bold uppercase text-[9px]">Período Aquisitivo:</p>
+                    <Badge color="blue">#{s.numeroPeriodo}</Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )) : (
+            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">
+              Nenhum histórico encontrado
+            </p>
+          )}
+        </div>
+      </Section>
 
       <div className="h-4" />
     </div>

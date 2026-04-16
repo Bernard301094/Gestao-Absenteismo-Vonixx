@@ -286,6 +286,7 @@ export default function App() {
                   currentShift={auth.currentShift || 'A'}
                   allVacations={data.vacations}
                   allEmployees={data.employees}
+                  currentYear={currentYear}
                 />
               )}
 
@@ -337,6 +338,9 @@ export default function App() {
             currentYear={currentYear}
             isWorkDay={isWorkDay}
             getWeekdayName={getWeekdayName}
+            supervisionShiftFilter={supervisionShiftFilter}
+            isSupervision={auth.isSupervision}
+            currentShift={auth.currentShift}
           />
         </Suspense>
       </ErrorBoundary>

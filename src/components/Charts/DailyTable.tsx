@@ -39,7 +39,7 @@ export default function DailyTable({ data, currentMonth, maxFaltas }: DailyTable
       </div>
 
       {/* Rows */}
-      <div className="overflow-y-auto flex-1 divide-y divide-gray-50">
+      <div className="overflow-y-auto flex-1 divide-y divide-gray-50 custom-scrollbar">
         {data.map((d, idx) => {
           const colors = getSeverityColor(d.faltas, max);
           const barWidth = max > 0 ? Math.round((d.faltas / max) * 100) : 0;

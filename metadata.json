@@ -1,6 +1,6 @@
 {
-  "name": "Dashboard de Absenteísmo Vonixx",
-  "description": "Sistema de controle de frequência e absenteísmo por turnos com integração Firebase.",
+  "name": "Vonixx Gestão Frequência",
+  "description": "Gestão inteligente de frequência, absenteísmo e férias com inteligência artificial.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

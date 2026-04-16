@@ -397,8 +397,15 @@ export function useFirestoreData({
 
     setupListeners();
 
+    const handleOnline = () => {
+      setConnectionError(null);
+      setRetryCount(prev => prev + 1);
+    };
+    window.addEventListener('online', handleOnline);
+
     return () => {
       active = false;
+      window.removeEventListener('online', handleOnline);
       if (unsubEmployees) unsubEmployees();
       if (unsubAttendance) unsubAttendance();
       if (unsubCompletions) unsubCompletions();

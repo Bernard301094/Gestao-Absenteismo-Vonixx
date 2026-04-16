@@ -16,18 +16,60 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Hide scrollbar for Chrome, Safari and Opera */
-  ::-webkit-scrollbar {
-    display: none;
+  /* Custom industrial scrollbar for webkit (Chrome, Safari, Edge) */
+  @media (min-width: 640px) {
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f8fafc; /* slate-50 */
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: #1e3a8a; /* Vonixx Blue (blue-900) */
+      border-radius: 20px;
+      border: 2px solid #f8fafc;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: #1d4ed8; /* blue-700 */
+    }
   }
 
-  /* Hide scrollbar for IE, Edge and Firefox */
-  * {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+  /* Hide main scrollbar on mobile while keeping functionality */
+  @media (max-width: 639px) {
+    html, body {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    body::-webkit-scrollbar {
+      display: none;
+    }
   }
 
-  *::-webkit-scrollbar {
-    display: none;
+  /* Dashboard and specific containers SHOULD have scrollbars even on mobile */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+    display: block !important;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #94a3b8; /* slate-400 */
+    border-radius: 10px;
+    border: none;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b; /* slate-500 */
+  }
+
+  /* Firefox - Conditional */
+  @media (min-width: 640px) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #1e3a8a #f8fafc;
+    }
   }
 }

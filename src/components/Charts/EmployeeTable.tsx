@@ -1,9 +1,10 @@
 import React from 'react';
 import {
   Search, Filter, ArrowUpDown, ArrowDown,
-  TrendingUp, TrendingDown, Minus, MessageSquare, Activity
+  TrendingUp, TrendingDown, Minus, MessageSquare, Activity, MoveHorizontal, BrainCircuit, ChevronRight
 } from 'lucide-react';
 import type { EmployeeWithStats, AttendanceRecord, NotesRecord } from '../../types';
+import CustomDropdown from '../CustomDropdown';
 
 const STATUS_LABELS: Record<string, string> = {
   P: 'Presente',
@@ -52,15 +53,10 @@ export default function EmployeeTable({
   setSelectedEmployeeDetail,
   getInitials,
 }: EmployeeTableProps) {
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+
   return (
     <>
-      <style>{`
-        .premium-table-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
-        .premium-table-scroll::-webkit-scrollbar-track { background: transparent; }
-        .premium-table-scroll::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
-        .premium-table-scroll::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
-      `}</style>
-
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col max-h-[500px] sm:max-h-[600px] lg:max-h-[700px] transition-all duration-300">
         
         {/* ── Header / Filters ── */}
@@ -96,24 +92,25 @@ export default function EmployeeTable({
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-900 placeholder:text-gray-400 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </div>
-            <div className="relative">
-              <Filter className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <select
+            <div className="flex items-center gap-2">
+              <CustomDropdown
+                variant="light"
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="w-full sm:w-auto pl-10 pr-8 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-700 outline-none appearance-none cursor-pointer transition-all hover:bg-gray-50 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
-              >
-                <option value="all">Todos os Status</option>
-                <option value="regular">Regular (0)</option>
-                <option value="atencao">Atenção (1-3)</option>
-                <option value="critico">Crítico (4+)</option>
-              </select>
+                onChange={(val) => setStatusFilter(val)}
+                options={[
+                  { value: 'all', label: 'Todos os Status' },
+                  { value: 'regular', label: 'Regular (0)' },
+                  { value: 'atencao', label: 'Atenção (1-3)' },
+                  { value: 'critico', label: 'Crítico (4+)' }
+                ]}
+                className="w-full sm:w-[180px]"
+              />
             </div>
           </div>
         </div>
 
-        {/* ── Table ── */}
-        <div className="overflow-x-auto overflow-y-auto flex-1 premium-table-scroll">
+        {/* ── Desktop Table View ── */}
+        <div className="hidden sm:block overflow-x-auto overflow-y-auto flex-1 custom-scrollbar relative">
           <table className="w-full text-left border-collapse min-w-[800px]">
             <thead className="bg-white/90 backdrop-blur-md sticky top-0 z-20">
               <tr>
@@ -273,36 +270,45 @@ export default function EmployeeTable({
                     {/* Tendência */}
                     {selectedDay === 'all' && (
                       <td className="py-3.5 px-6 text-center">
-                        <div className="flex justify-center">
-                          {emp.trend === 'up' ? (
-                            <div
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100 text-red-600 cursor-help transition-transform hover:scale-105"
-                              title="Piorando: Faltas aumentaram na 2ª quinzena"
-                            >
-                              <TrendingUp className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wide">
-                                Piorando
-                              </span>
-                            </div>
-                          ) : emp.trend === 'down' ? (
-                            <div
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 cursor-help transition-transform hover:scale-105"
-                              title="Melhorando: Faltas reduziram na 2ª quinzena"
-                            >
-                              <TrendingDown className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wide">
-                                Melhor
-                              </span>
-                            </div>
-                          ) : (
-                            <div
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 cursor-help transition-transform hover:scale-105"
-                              title="Estável: Sem aumento de faltas"
-                            >
-                              <Minus className="w-3.5 h-3.5" />
-                              <span className="text-[10px] font-bold uppercase tracking-wide">
-                                Estável
-                              </span>
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="flex justify-center">
+                            {emp.trend === 'up' ? (
+                              <div
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100 text-red-600 cursor-help transition-transform hover:scale-105"
+                                title="Piorando: Faltas aumentaram na 2ª quinzena"
+                              >
+                                <TrendingUp className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide">
+                                  Piorando
+                                </span>
+                              </div>
+                            ) : emp.trend === 'down' ? (
+                              <div
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 cursor-help transition-transform hover:scale-105"
+                                title="Melhorando: Faltas reduziram na 2ª quinzena"
+                              >
+                                <TrendingDown className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide">
+                                  Melhor
+                                </span>
+                              </div>
+                            ) : (
+                              <div
+                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 cursor-help transition-transform hover:scale-105"
+                                title="Estável: Sem aumento de faltas"
+                              >
+                                <Minus className="w-3.5 h-3.5" />
+                                <span className="text-[10px] font-bold uppercase tracking-wide">
+                                  Estável
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {isSupervision && (
+                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 animate-pulse transition-opacity">
+                              <BrainCircuit className="w-3 h-3" />
+                              <span className="text-[9px] font-black uppercase tracking-widest">IA Disponível</span>
                             </div>
                           )}
                         </div>
@@ -325,6 +331,128 @@ export default function EmployeeTable({
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* ── Mobile Accordion View ── */}
+        <div className="sm:hidden overflow-y-auto flex-1 custom-scrollbar bg-gray-50/50 p-3 space-y-2">
+          {filteredEmployees.map((emp, idx) => {
+            const status =
+              selectedDay !== 'all'
+                ? getStatusForDay(emp.id, selectedDay as number)
+                : null;
+            const isExpanded = expandedId === emp.id;
+
+            return (
+              <div
+                key={emp.id}
+                className={`bg-white border rounded-2xl shadow-sm transition-all duration-200 overflow-hidden ${
+                  isExpanded ? 'border-blue-200 ring-2 ring-blue-500/5' : 'border-gray-100'
+                }`}
+              >
+                {/* Accordion Header - Essential Info */}
+                <div 
+                  onClick={() => setExpandedId(isExpanded ? null : emp.id)}
+                  className="flex items-center justify-between p-3 cursor-pointer active:bg-gray-50"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${AVATAR_COLORS[idx % 4]}`}>
+                      {getInitials(emp.name)}
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-black text-gray-900 leading-tight uppercase truncate max-w-[140px]">
+                        {emp.name}
+                      </span>
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">
+                        {emp.role || 'Equipe'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 shrink-0">
+                    {/* Summary Metric */}
+                    <div className="flex flex-col items-end">
+                      {selectedDay === 'all' ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-sm font-black font-mono ${
+                            emp.faltas > 3 ? 'text-red-600' : emp.faltas > 0 ? 'text-orange-500' : 'text-emerald-500'
+                          }`}>
+                            {emp.faltas}f
+                          </span>
+                        </div>
+                      ) : (
+                        <div className={`w-2 h-2 rounded-full ${
+                          status === 'P' ? 'bg-emerald-500' : status === 'F' ? 'bg-red-500' : status === 'Fe' ? 'bg-blue-500' : 'bg-amber-500'
+                        }`} />
+                      )}
+                    </div>
+                    <ChevronRight className={`w-4 h-4 text-gray-300 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                  </div>
+                </div>
+
+                {/* Accordion Content - Detailed Info */}
+                {isExpanded && (
+                  <div className="px-4 pb-4 pt-1 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-2 gap-4 py-3 border-t border-gray-50">
+                      {/* ID info */}
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Identificador</span>
+                        <span className="text-[10px] text-gray-600 font-mono font-bold">#{emp.id.padStart(3, '0')}</span>
+                      </div>
+
+                      {/* Detail Metric (Trend or Progress) */}
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">
+                          {selectedDay === 'all' ? 'Tendência' : 'Status Completo'}
+                        </span>
+                        {selectedDay === 'all' ? (
+                          <div className="flex items-center gap-1">
+                            {emp.trend === 'up' ? <TrendingUp className="w-3 h-3 text-red-500" /> : emp.trend === 'down' ? <TrendingDown className="w-3 h-3 text-emerald-500" /> : <Minus className="w-3 h-3 text-gray-400" />}
+                            <span className={`text-[10px] font-black uppercase ${
+                              emp.trend === 'up' ? 'text-red-600' : emp.trend === 'down' ? 'text-emerald-600' : 'text-gray-500'
+                            }`}>
+                              {emp.trend === 'up' ? 'Piorando' : emp.trend === 'down' ? 'Melhor' : 'Estável'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-black text-gray-700 uppercase">
+                            {status ? STATUS_LABELS[status] || status : '—'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Observations */}
+                      <div className="col-span-2 flex flex-col gap-1">
+                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Observações do Dia</span>
+                        <div className="flex items-center gap-1.5 text-gray-500 italic text-[10px] bg-gray-50 p-2 rounded-lg border border-gray-100/50">
+                          <MessageSquare className="w-3 h-3 shrink-0" />
+                          <span className="leading-tight">
+                            {notes[emp.id]?.[selectedDay as number] || 'Sem observações registradas.'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Footer */}
+                    {isSupervision && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedEmployeeDetail(emp);
+                        }}
+                        className="w-full flex items-center justify-between p-3 mt-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md active:scale-[0.97]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <BrainCircuit className="w-4 h-4" />
+                          <span className="text-[11px] font-black uppercase tracking-wider">Ver Detalhes & IA</span>
+                        </div>
+                        <ChevronRight className="w-4 h-4 opacity-50" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ── Footer ── */}
