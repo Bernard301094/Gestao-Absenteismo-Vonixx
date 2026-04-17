@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   CalendarDays, History,
   TrendingUp, AlertCircle,
@@ -135,6 +135,16 @@ export default function VacationAnalytics({
   allEmployees,
   currentYear,
 }: VacationAnalyticsProps) {
+  
+  // ─── Estado "Ao Vivo" para cálculo em tempo real ───────────────────────────
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    // Atualiza a cada 1 minuto
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const [roleFilter, setRoleFilter] = React.useState<string>('all');
   const [expandedSection, setExpandedSection] = React.useState<string | null>('current');
 
@@ -414,10 +424,19 @@ export default function VacationAnalytics({
             </thead>
             <tbody>
               {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
-                const totalDays = s.dataInicioFerias && s.dataFimFerias ? Math.round((new Date(s.dataFimFerias).getTime() - new Date(s.dataInicioFerias).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0;
-                const remaining = Number(s.diasRestantes);
-                const passed = totalDays - remaining;
-                const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
+                const start = new Date(`${s.dataInicioFerias}T00:00:00`);
+                const end = new Date(`${s.dataFimFerias}T23:59:59`);
+                
+                const totalMs = end.getTime() - start.getTime();
+                const passedMs = Math.max(0, now.getTime() - start.getTime());
+                const remainingMs = Math.max(0, end.getTime() - now.getTime());
+                
+                const totalDays = Math.round(totalMs / (1000 * 60 * 60 * 24));
+                const remaining = Math.ceil(remainingMs / (1000 * 60 * 60 * 24)); 
+                const passed = Math.max(0, totalDays - remaining);
+                
+                const percentage = totalMs > 0 ? Math.min(Math.max((passedMs / totalMs) * 100, 0), 100) : 0;
+                
                 return (
                   <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
                     <Td muted mono>{i + 1}</Td>
@@ -450,10 +469,19 @@ export default function VacationAnalytics({
         </div>
         <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
           {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
-            const totalDays = s.dataInicioFerias && s.dataFimFerias ? Math.round((new Date(s.dataFimFerias).getTime() - new Date(s.dataInicioFerias).getTime()) / (1000 * 60 * 60 * 24)) + 1 : 0;
-            const remaining = Number(s.diasRestantes);
-            const passed = totalDays - remaining;
-            const percentage = totalDays > 0 ? Math.min(Math.max((passed / totalDays) * 100, 0), 100) : 0;
+            const start = new Date(`${s.dataInicioFerias}T00:00:00`);
+            const end = new Date(`${s.dataFimFerias}T23:59:59`);
+            
+            const totalMs = end.getTime() - start.getTime();
+            const passedMs = Math.max(0, now.getTime() - start.getTime());
+            const remainingMs = Math.max(0, end.getTime() - now.getTime());
+            
+            const totalDays = Math.round(totalMs / (1000 * 60 * 60 * 24));
+            const remaining = Math.ceil(remainingMs / (1000 * 60 * 60 * 24)); 
+            const passed = Math.max(0, totalDays - remaining);
+            
+            const percentage = totalMs > 0 ? Math.min(Math.max((passedMs / totalMs) * 100, 0), 100) : 0;
+            
             return (
               <div key={s.employeeId} className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
