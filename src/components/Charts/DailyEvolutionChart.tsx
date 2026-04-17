@@ -17,7 +17,7 @@ export default function DailyEvolutionChart({ data, currentMonth }: DailyEvoluti
         Evolução Diária de Faltas
       </h3>
       <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
             <XAxis
