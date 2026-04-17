@@ -75,23 +75,25 @@ export default function App() {
     [currentMonth, currentYear]
   );
 
+  // Mapear sortOrder local para o formato esperado pelo hook
+  const mappedSortOrder: 'desc_faltas' | 'asc_name' | 'desc_name' =
+    sortOrder === 'alpha' ? 'asc_name' : 'desc_faltas';
+
   const analytics = useDashboardAnalytics({
     employees: data.employees,
     attendance: data.attendance,
+    globalEmployees: data.globalEmployees ?? [],
+    globalAttendance: data.globalAttendance ?? {},
+    globalCompletions: data.globalCompletions ?? [],
     vacations: data.vacations,
-    notes: data.notes,
-    currentMonth,
-    currentYear,
-    daysInMonth,
     selectedDay,
-    supervisionShiftFilter,
-    activeShift: auth.currentShift || 'A',
+    currentMonth,
     currentYear,
     VALID_WORK_DAYS,
     isSupervision: auth.isSupervision,
     searchTerm,
     statusFilter,
-    sortOrder,
+    sortOrder: mappedSortOrder,
     registroSearchTerm,
     isValidDay,
   });
