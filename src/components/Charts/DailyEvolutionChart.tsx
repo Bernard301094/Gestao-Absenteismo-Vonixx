@@ -14,7 +14,8 @@ export default function DailyEvolutionChart({ data, currentMonth }: DailyEvoluti
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
@@ -22,7 +23,7 @@ export default function DailyEvolutionChart({ data, currentMonth }: DailyEvoluti
       <h3 className="text-sm 2xl:text-base font-semibold text-gray-900 mb-6 text-center">
         Evolução Diária de Faltas
       </h3>
-      <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto">
+      <div className="h-[300px] sm:h-[350px] 2xl:h-[450px] w-full mt-auto" style={{ minWidth: 0 }}>
         {mounted && (
           <ResponsiveContainer width="99%" height="100%">
             <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
