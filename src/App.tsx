@@ -30,6 +30,12 @@ function SectionLoader() {
   );
 }
 
+// ─── Constantes de data de início do app ─────────────────────────────────────
+// O app começou a registrar dados a partir do dia 3 de Abril de 2026.
+const APP_START_YEAR  = 2026;
+const APP_START_MONTH = 3;   // 0-indexed → Abril
+const APP_START_DAY   = 3;
+
 export default function App() {
   const auth = useAuth();
 
@@ -56,9 +62,28 @@ export default function App() {
     return daysInMonth;
   }, [currentMonth, currentYear, daysInMonth]);
 
+  // ─── VALID_WORK_DAYS com limites de início e data atual ──────────────────
   const VALID_WORK_DAYS = useMemo(() => {
+    const now = new Date();
+    const todayYear  = now.getFullYear();
+    const todayMonth = now.getMonth();
+    const todayDay   = now.getDate();
+
+    // Dia mínimo: se estamos no mês/ano de início do app, começar do APP_START_DAY
+    const minDay =
+      currentYear === APP_START_YEAR && currentMonth === APP_START_MONTH
+        ? APP_START_DAY
+        : 1;
+
+    // Dia máximo: se estamos no mês/ano atual, limitar ao dia de hoje;
+    // caso contrário, ir até o final do mês.
+    const maxDay =
+      currentYear === todayYear && currentMonth === todayMonth
+        ? todayDay
+        : daysInMonth;
+
     const days: number[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
+    for (let d = minDay; d <= maxDay; d++) {
       if (isWorkDay(d, currentMonth, currentYear)) days.push(d);
     }
     return days;
@@ -107,7 +132,7 @@ export default function App() {
     }
   }, [auth.isSupervision, activeTab]);
 
-  // ─── Day Navigation ────────────────────────────────────────────────────────
+  // ─── Day Navigation: reajusta selectedDay se sair dos limites ─────────────
   useEffect(() => {
     if (
       selectedDay !== 'all' &&
