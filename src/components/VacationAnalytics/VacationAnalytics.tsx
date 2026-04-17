@@ -140,7 +140,6 @@ export default function VacationAnalytics({
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    // Atualiza a cada 1 minuto
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
@@ -424,18 +423,33 @@ export default function VacationAnalytics({
             </thead>
             <tbody>
               {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
-                const start = new Date(`${s.dataInicioFerias}T00:00:00`);
-                const end = new Date(`${s.dataFimFerias}T23:59:59`);
                 
-                const totalMs = end.getTime() - start.getTime();
-                const passedMs = Math.max(0, now.getTime() - start.getTime());
-                const remainingMs = Math.max(0, end.getTime() - now.getTime());
+                // 1. Extração segura para contagem rígida no calendário UTC (evita bugs de fuso horário e horas)
+                const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
+                const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
                 
-                const totalDays = Math.round(totalMs / (1000 * 60 * 60 * 24));
-                const remaining = Math.ceil(remainingMs / (1000 * 60 * 60 * 24)); 
-                const passed = Math.max(0, totalDays - remaining);
+                const startUTC = Date.UTC(yS, mS - 1, dS);
+                const endUTC = Date.UTC(yE, mE - 1, dE);
+                const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
                 
-                const percentage = totalMs > 0 ? Math.min(Math.max((passedMs / totalMs) * 100, 0), 100) : 0;
+                // Total de dias programados para o período
+                const totalDays = Math.round((endUTC - startUTC) / 86400000) + 1;
+                
+                // Dias restantes desde hoje até ao fimUTC (incluindo o próprio dia)
+                let remaining = Math.round((endUTC - todayUTC) / 86400000) + 1;
+                if (remaining < 0) remaining = 0;
+                if (remaining > totalDays) remaining = totalDays; 
+                
+                const passed = totalDays - remaining;
+                
+                // 2. Cálculo suave em milissegundos exclusivo para a barra de progresso (%)
+                const startMs = new Date(yS, mS - 1, dS, 0, 0, 0).getTime();
+                const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
+                const currentMs = now.getTime();
+                
+                const totalMs = endMs - startMs;
+                const elapsedMs = currentMs - startMs;
+                const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
                 
                 return (
                   <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
@@ -469,18 +483,29 @@ export default function VacationAnalytics({
         </div>
         <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
           {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
-            const start = new Date(`${s.dataInicioFerias}T00:00:00`);
-            const end = new Date(`${s.dataFimFerias}T23:59:59`);
             
-            const totalMs = end.getTime() - start.getTime();
-            const passedMs = Math.max(0, now.getTime() - start.getTime());
-            const remainingMs = Math.max(0, end.getTime() - now.getTime());
+            const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
+            const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
             
-            const totalDays = Math.round(totalMs / (1000 * 60 * 60 * 24));
-            const remaining = Math.ceil(remainingMs / (1000 * 60 * 60 * 24)); 
-            const passed = Math.max(0, totalDays - remaining);
+            const startUTC = Date.UTC(yS, mS - 1, dS);
+            const endUTC = Date.UTC(yE, mE - 1, dE);
+            const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
             
-            const percentage = totalMs > 0 ? Math.min(Math.max((passedMs / totalMs) * 100, 0), 100) : 0;
+            const totalDays = Math.round((endUTC - startUTC) / 86400000) + 1;
+            
+            let remaining = Math.round((endUTC - todayUTC) / 86400000) + 1;
+            if (remaining < 0) remaining = 0;
+            if (remaining > totalDays) remaining = totalDays; 
+            
+            const passed = totalDays - remaining;
+            
+            const startMs = new Date(yS, mS - 1, dS, 0, 0, 0).getTime();
+            const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
+            const currentMs = now.getTime();
+            
+            const totalMs = endMs - startMs;
+            const elapsedMs = currentMs - startMs;
+            const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
             
             return (
               <div key={s.employeeId} className="bg-white border border-orange-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
