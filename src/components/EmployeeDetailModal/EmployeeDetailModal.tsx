@@ -27,7 +27,7 @@ const generateNewInsight = async () => {
       
       const currentDateString = `${currentReqYear}-${String(currentReqMonth + 1).padStart(2, '0')}-${String(dayInt).padStart(2, '0')}`;
 
-      // NOVO: Preparar um histórico em português legível para a IA não alucinar datas e folgas.
+      // Preparar histórico legível para a IA não alucinar dias de folga da escala 12x36
       const detailedHistoryArray = [];
       for (let d = 1; d <= dayInt; d++) {
          const wdName = getWeekdayName(d, currentReqMonth, currentReqYear);
@@ -37,6 +37,7 @@ const generateNewInsight = async () => {
          else if (status === 'Fe') detailedHistoryArray.push(`- Dia ${d} (${wdName}): FÉRIAS`);
          else if (status === 'A') detailedHistoryArray.push(`- Dia ${d} (${wdName}): AFASTAMENTO LEGAL`);
          else if (status === 'P') detailedHistoryArray.push(`- Dia ${d} (${wdName}): PRESENÇA CONFIRMADA`);
+         // dias sem status = folga da escala 12x36, não incluídos propositalmente
       }
       const detailedHistoryText = detailedHistoryArray.length > 0 
         ? detailedHistoryArray.join('\n') 
@@ -47,7 +48,7 @@ const generateNewInsight = async () => {
         record,
         holidays,
         currentDateString,
-        detailedHistoryText // Enviando o texto preparado
+        detailedHistoryText
       );
 
       await setDoc(insightRef, {
@@ -66,7 +67,12 @@ const generateNewInsight = async () => {
         setInsight(response);
       }
     } catch (err: any) {
-      setInsightError('Erro ao gerar insight. Verifique se as chaves de API estão configuradas nas configurações do projeto.');
+      const msg = err?.message || 'Erro desconhecido';
+      setInsightError(
+        msg.includes('LIMITE DE CUSTO')
+          ? msg
+          : `Erro ao gerar insight: ${msg}`
+      );
     } finally {
       setLoadingInsight(false);
     }
