@@ -299,54 +299,60 @@ export default function App() {
       </main>
 
       {/* ─── Modals ────────────────────────────────────────────────────────── */}
-      <ErrorBoundary>
-        <Suspense fallback={null}>
-          <AddEmployeeModal
-            showAddEmployeeModal={data.showAddEmployeeModal}
-            setShowAddEmployeeModal={data.setShowAddEmployeeModal}
-            handleAddEmployee={data.handleAddEmployee}
-            newEmployeeName={data.newEmployeeName}
-            setNewEmployeeName={data.setNewEmployeeName}
-            newEmployeeRole={data.newEmployeeRole}
-            setNewEmployeeRole={data.setNewEmployeeRole}
-            newEmployeeAdmissionDate={data.newEmployeeAdmissionDate}
-            setNewEmployeeAdmissionDate={data.setNewEmployeeAdmissionDate}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      {data.showAddEmployeeModal && (
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <AddEmployeeModal
+              showAddEmployeeModal={data.showAddEmployeeModal}
+              setShowAddEmployeeModal={data.setShowAddEmployeeModal}
+              handleAddEmployee={data.handleAddEmployee}
+              newEmployeeName={data.newEmployeeName}
+              setNewEmployeeName={data.setNewEmployeeName}
+              newEmployeeRole={data.newEmployeeRole}
+              setNewEmployeeRole={data.setNewEmployeeRole}
+              newEmployeeAdmissionDate={data.newEmployeeAdmissionDate}
+              setNewEmployeeAdmissionDate={data.setNewEmployeeAdmissionDate}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
 
-      <ErrorBoundary>
-        <Suspense fallback={null}>
-          <EditEmployeeModal
-            showEditEmployeeModal={data.showEditEmployeeModal}
-            setShowEditEmployeeModal={data.setShowEditEmployeeModal}
-            editingEmployee={data.editingEmployee}
-            setEditingEmployee={data.setEditingEmployee}
-            handleUpdateEmployee={data.handleUpdateEmployee}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      {data.showEditEmployeeModal && (
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <EditEmployeeModal
+              showEditEmployeeModal={data.showEditEmployeeModal}
+              setShowEditEmployeeModal={data.setShowEditEmployeeModal}
+              editingEmployee={data.editingEmployee}
+              setEditingEmployee={data.setEditingEmployee}
+              handleUpdateEmployee={data.handleUpdateEmployee}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
 
-      <ErrorBoundary>
-        <Suspense fallback={null}>
-          <EmployeeDetailModal
-            selectedEmployeeDetail={data.selectedEmployeeDetail}
-            setSelectedEmployeeDetail={data.setSelectedEmployeeDetail}
-            getInitials={getInitials}
-            globalAttendance={data.globalAttendance}
-            VALID_WORK_DAYS={VALID_WORK_DAYS}
-            employeeData={analytics.employeeData}
-            daysInMonth={daysInMonth}
-            currentMonth={currentMonth}
-            currentYear={currentYear}
-            isWorkDay={isWorkDay}
-            getWeekdayName={getWeekdayName}
-            supervisionShiftFilter={supervisionShiftFilter}
-            isSupervision={auth.isSupervision}
-            currentShift={auth.currentShift}
-          />
-        </Suspense>
-      </ErrorBoundary>
+      {data.selectedEmployeeDetail && (
+        <ErrorBoundary>
+          <Suspense fallback={null}>
+            <EmployeeDetailModal
+              selectedEmployeeDetail={data.selectedEmployeeDetail}
+              setSelectedEmployeeDetail={data.setSelectedEmployeeDetail}
+              getInitials={getInitials}
+              globalAttendance={data.globalAttendance}
+              VALID_WORK_DAYS={VALID_WORK_DAYS}
+              employeeData={analytics.employeeData}
+              daysInMonth={daysInMonth}
+              currentMonth={currentMonth}
+              currentYear={currentYear}
+              isWorkDay={isWorkDay}
+              getWeekdayName={getWeekdayName}
+              supervisionShiftFilter={supervisionShiftFilter}
+              isSupervision={auth.isSupervision}
+              currentShift={auth.currentShift}
+            />
+          </Suspense>
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
