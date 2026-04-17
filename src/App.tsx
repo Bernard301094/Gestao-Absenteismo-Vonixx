@@ -132,7 +132,14 @@ export default function App() {
   if (!auth.user) {
     return (
       <ErrorBoundary>
-        <Login onLogin={auth.login} loading={auth.loading} error={auth.error} />
+        <Login
+          handleLogin={auth.handleLogin}
+          selectedShiftLogin={auth.selectedShiftLogin}
+          setSelectedShiftLogin={auth.setSelectedShiftLogin}
+          loginPassword={auth.loginPassword}
+          setLoginPassword={auth.setLoginPassword}
+          loginError={auth.loginError}
+        />
       </ErrorBoundary>
     );
   }
