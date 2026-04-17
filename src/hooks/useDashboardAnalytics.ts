@@ -46,6 +46,15 @@ export function useDashboardAnalytics({
   vacations,
 }: UseDashboardAnalyticsParams) {
 
+  // ─── Limite de dias passados (não mostrar dias futuros) ───────────────────
+  const todayLimitDay = useMemo(() => {
+    const now = new Date();
+    const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
+    return isCurrentMonth
+      ? now.getDate()
+      : new Date(currentYear, currentMonth + 1, 0).getDate();
+  }, [currentMonth, currentYear]);
+
   // ─── KPIs Básicos ─────────────────────────────────────────────────────────
 
   const totalFaltasMes = useMemo(() => {
@@ -87,20 +96,25 @@ export function useDashboardAnalytics({
 
   const dailyData = useMemo<DayData[]>(() => {
     if (selectedDay === 'all') {
-      return VALID_WORK_DAYS.map(day => {
-        let faltas = 0;
-        Object.values(attendance).forEach(empRecord => {
-          if (empRecord[day] === 'F') faltas++;
+      // Filtra apenas dias que já ocorreram (não mostra dias futuros)
+      return VALID_WORK_DAYS
+        .filter(day => day <= todayLimitDay)
+        .map(day => {
+          let faltas = 0;
+          Object.values(attendance).forEach(empRecord => {
+            if (empRecord[day] === 'F') faltas++;
+          });
+          return { day: day.toString(), faltas };
         });
-        return { day: day.toString(), faltas };
-      });
     }
+    // Dia individual — só retorna se não for futuro
+    if ((selectedDay as number) > todayLimitDay) return [];
     let faltas = 0;
     Object.values(attendance).forEach(empRecord => {
       if (empRecord[selectedDay] === 'F') faltas++;
     });
     return [{ day: selectedDay.toString(), faltas }];
-  }, [attendance, VALID_WORK_DAYS, selectedDay]);
+  }, [attendance, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
 
   const weekdayData = useMemo<WeekdayData[]>(() => {
     const counts: Record<string, number> = { Dom: 0, Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, Sáb: 0 };
@@ -244,9 +258,7 @@ export function useDashboardAnalytics({
   const vacationMonthlyBreakdown = useMemo(() => {
     const years = [2026, 2027, 2028];
     const months = Array.from({ length: 12 }, (_, i) => i);
-    
     const breakdown: Record<number, number[]> = {};
-    
     years.forEach(year => {
       breakdown[year] = months.map(month => {
         return vacations.filter(v => {
@@ -256,9 +268,46 @@ export function useDashboardAnalytics({
         }).length;
       });
     });
-    
     return breakdown;
   }, [vacations]);
+
+  const vacationLiability = useMemo(() => {
+    return vacationStats.reduce((acc, s) => acc + (Number(s.diasAGozar) || 0), 0);
+  }, [vacationStats]);
+
+  const vacationOverlapAlerts = useMemo(() => {
+    const result: string[] = [];
+    const roles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
+    roles.forEach(role => {
+      const roleEmps = employees.filter(e => e.role === role);
+      if (roleEmps.length < 2) return;
+      const onVacation = vacationStats.filter(s =>
+        s.cargo === role && s.status === 'em_ferias_agora'
+      );
+      const percentage = (onVacation.length / roleEmps.length) * 100;
+      if (percentage >= 30) {
+        result.push(`${Math.round(percentage)}% dos ${role}s estão de férias simultaneamente.`);
+      }
+    });
+    return result;
+  }, [employees, vacationStats]);
+
+  const vacationHeatmap = useMemo(() => {
+    const heatmap: Record<string, number> = {};
+    vacations.forEach(v => {
+      if (!v.startDate || !v.endDate) return;
+      let current = new Date(v.startDate + 'T12:00:00');
+      const end = new Date(v.endDate + 'T12:00:00');
+      while (current <= end) {
+        if (current.getFullYear() === currentYear) {
+          const key = current.toISOString().split('T')[0];
+          heatmap[key] = (heatmap[key] || 0) + 1;
+        }
+        current.setDate(current.getDate() + 1);
+      }
+    });
+    return heatmap;
+  }, [vacations, currentYear]);
 
   return {
     totalFaltasMes, faltasDoDia, taxaAbsenteismo,
@@ -268,55 +317,8 @@ export function useDashboardAnalytics({
     leaderboardData, alerts,
     vacationStats,
     vacationMonthlyBreakdown,
-    vacationLiability: useMemo(() => {
-      return vacationStats.reduce((acc, s) => acc + (Number(s.diasAGozar) || 0), 0);
-    }, [vacationStats]),
-    vacationOverlapAlerts: useMemo(() => {
-      const alerts: string[] = [];
-      const today = new Date();
-      const roles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
-      
-      roles.forEach(role => {
-        const roleEmps = employees.filter(e => e.role === role);
-        if (roleEmps.length < 2) return;
-
-        const onVacation = vacationStats.filter(s => 
-          s.cargo === role && s.status === 'em_ferias_agora'
-        );
-
-        const percentage = (onVacation.length / roleEmps.length) * 100;
-        if (percentage >= 30) {
-          alerts.push(`${Math.round(percentage)}% dos ${role}s estão de férias simultaneamente.`);
-        }
-      });
-      return alerts;
-    }, [employees, vacationStats]),
-    
-    // ─── CORRECCIÓN DEL MAPA DE CALOR ───────────────────────────────────────
-    vacationHeatmap: useMemo(() => {
-      const heatmap: Record<string, number> = {};
-      
-      vacations.forEach(v => {
-        if (!v.startDate || !v.endDate) return;
-        let current = new Date(v.startDate + 'T12:00:00');
-        const end = new Date(v.endDate + 'T12:00:00');
-        
-        while (current <= end) {
-          // ✅ Verificamos contra currentYear, no contra un año fijo
-          if (current.getFullYear() === currentYear) {
-            
-            // 💡 Opcional: Descomenta la siguiente línea si solo quieres 
-            // contabilizar posibles cruces operativos de lunes a viernes:
-            // if (isWorkDay(current.getDate(), current.getMonth(), currentYear)) {
-              const key = current.toISOString().split('T')[0];
-              heatmap[key] = (heatmap[key] || 0) + 1;
-            // }
-            
-          }
-          current.setDate(current.getDate() + 1);
-        }
-      });
-      return heatmap;
-    }, [vacations, currentYear]), // ✅ Dependencia actualizada
+    vacationLiability,
+    vacationOverlapAlerts,
+    vacationHeatmap,
   };
 }
