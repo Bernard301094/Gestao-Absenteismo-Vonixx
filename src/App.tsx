@@ -30,81 +30,62 @@ function SectionLoader() {
   );
 }
 
-// ─── Date Seed ────────────────────────────────────────────────────────────────
-const now = new Date();
-const INITIAL_MONTH = now.getMonth();
-const INITIAL_YEAR  = now.getFullYear();
-
 export default function App() {
-  // ─── UI State ───────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard'>('dashboard');
-  const [currentMonth, setCurrentMonth] = useState(INITIAL_MONTH);
-  const [currentYear, setCurrentYear]   = useState(INITIAL_YEAR);
-  const [selectedDay, setSelectedDay]   = useState<number | 'all'>('all');
-  const [searchTerm, setSearchTerm]               = useState('');
-  const [registroSearchTerm, setRegistroSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'regular' | 'atencao' | 'critico'>('all');
-  const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
-  const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<'A' | 'B' | 'C' | 'D'>('A');
+  const auth = useAuth();
 
-  // ─── Date Calculations ─────────────────────────────────────────────────────
+  const [activeTab, setActiveTab]   = useState<'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard'>('dashboard');
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
+  const [currentYear, setCurrentYear]   = useState(new Date().getFullYear());
+  const [selectedDay, setSelectedDay]   = useState<number | 'all'>('all');
+  const [searchTerm, setSearchTerm]     = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortOrder, setSortOrder]       = useState<'alpha' | 'faltas'>('faltas');
+  const [registroSearchTerm, setRegistroSearchTerm] = useState('');
+  const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<string>('all');
+
   const daysInMonth = useMemo(
     () => getDaysInMonth(currentMonth, currentYear),
-    [currentMonth, currentYear],
+    [currentMonth, currentYear]
   );
 
   const currentDayOfMonth = useMemo(() => {
-    const today = new Date();
-    if (today.getMonth() === currentMonth && today.getFullYear() === currentYear) return today.getDate();
+    const now = new Date();
+    if (now.getMonth() === currentMonth && now.getFullYear() === currentYear) {
+      return now.getDate();
+    }
     return daysInMonth;
   }, [currentMonth, currentYear, daysInMonth]);
 
-  const isValidDay = useCallback(
-    (day: number) => {
-      if (currentYear > now.getFullYear()) return false;
-      if (currentYear === now.getFullYear() && currentMonth > now.getMonth()) return false;
-      if (currentYear === now.getFullYear() && currentMonth === now.getMonth()) {
-        return day <= now.getDate() && day !== 1;
-      }
-      return day !== 1;
-    },
-    [currentMonth, currentYear],
-  );
-
-  const VALID_WORK_DAYS = useMemo(
-    () =>
-      Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(
-        d => isWorkDay(d, currentMonth, currentYear) && isValidDay(d),
-      ),
-    [daysInMonth, currentMonth, currentYear, isValidDay],
-  );
-
-  // ─── Custom Hooks ───────────────────────────────────────────────────────────
-  const auth = useAuth();
-
-  useEffect(() => { testConnection(); }, []);
-
   const data = useFirestoreData({
-    user: auth.user,
-    currentShift: auth.currentShift,
-    isSupervision: auth.isSupervision,
-    isAdminUser: auth.isAdminUser,
-    supervisionShiftFilter,
     currentMonth,
     currentYear,
-    selectedDay,
-    VALID_WORK_DAYS,
+    daysInMonth,
   });
 
+  const VALID_WORK_DAYS = useMemo(() => {
+    const days: number[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      if (isWorkDay(d, currentMonth, currentYear)) days.push(d);
+    }
+    return days;
+  }, [daysInMonth, currentMonth, currentYear]);
+
+  const isValidDay = useCallback(
+    (day: number) => isWorkDay(day, currentMonth, currentYear),
+    [currentMonth, currentYear]
+  );
+
   const analytics = useDashboardAnalytics({
-    attendance: data.attendance,
     employees: data.employees,
-    globalEmployees: data.globalEmployees,
-    globalAttendance: data.globalAttendance,
-    globalCompletions: data.globalCompletions,
+    attendance: data.attendance,
     vacations: data.vacations,
-    selectedDay,
+    notes: data.notes,
     currentMonth,
+    currentYear,
+    daysInMonth,
+    selectedDay,
+    supervisionShiftFilter,
+    activeShift: auth.currentShift || 'A',
     currentYear,
     VALID_WORK_DAYS,
     isSupervision: auth.isSupervision,
@@ -139,31 +120,21 @@ export default function App() {
   };
 
   const handleNextDay = () => {
-    const idx = selectedDay === 'all' ? -1 : VALID_WORK_DAYS.indexOf(selectedDay as number);
+    if (selectedDay === 'all') return;
+    const idx = VALID_WORK_DAYS.indexOf(selectedDay as number);
     if (idx < VALID_WORK_DAYS.length - 1) setSelectedDay(VALID_WORK_DAYS[idx + 1]);
   };
 
-  // ─── Render: Loading ───────────────────────────────────────────────────────
-  if (auth.authLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700" />
-      </div>
-    );
-  }
+  // ─── Firebase connection test (dev only) ──────────────────────────────────
+  useEffect(() => {
+    testConnection();
+  }, []);
 
-  // ─── Render: Login ─────────────────────────────────────────────────────────
+  // ─── Render: Auth Guard ───────────────────────────────────────────────────
   if (!auth.user) {
     return (
       <ErrorBoundary>
-        <Login
-          handleLogin={auth.handleLogin}
-          selectedShiftLogin={auth.selectedShiftLogin}
-          setSelectedShiftLogin={auth.setSelectedShiftLogin}
-          loginPassword={auth.loginPassword}
-          setLoginPassword={auth.setLoginPassword}
-          loginError={auth.loginError}
-        />
+        <Login onLogin={auth.login} loading={auth.loading} error={auth.error} />
       </ErrorBoundary>
     );
   }
@@ -203,9 +174,9 @@ export default function App() {
           <SectionLoader />
         ) : (
           <ErrorBoundary>
-            <Suspense fallback={<SectionLoader />}>
-
-              {activeTab === 'dashboard' && (
+            {/* Suspense individual por tab — evita React error #306 */}
+            {activeTab === 'dashboard' && (
+              <Suspense fallback={<SectionLoader />}>
                 <AbsenteeismDashboard
                   handleExportExcel={data.handleExportExcel}
                   isSupervision={auth.isSupervision}
@@ -234,9 +205,11 @@ export default function App() {
                   setSelectedEmployeeDetail={data.setSelectedEmployeeDetail}
                   getInitials={getInitials}
                 />
-              )}
+              </Suspense>
+            )}
 
-              {activeTab === 'registro' && !auth.isSupervision && (
+            {activeTab === 'registro' && !auth.isSupervision && (
+              <Suspense fallback={<SectionLoader />}>
                 <AttendanceRegistry
                   selectedDay={selectedDay}
                   currentDayOfMonth={currentDayOfMonth}
@@ -264,10 +237,12 @@ export default function App() {
                   handleSave={data.handleSave}
                   isSaving={data.isSaving}
                 />
-              )}
+              </Suspense>
+            )}
 
-              {/* ─── FÉRIAS: agora recebe vacationStats de analytics ─── */}
-              {activeTab === 'ferias' && !auth.isSupervision && (
+            {/* ─── FÉRIAS: agora recebe vacationStats de analytics ─── */}
+            {activeTab === 'ferias' && !auth.isSupervision && (
+              <Suspense fallback={<SectionLoader />}>
                 <VacationManagement
                   employees={data.employees}
                   vacations={data.vacations}
@@ -277,9 +252,11 @@ export default function App() {
                   handleUpdateVacation={data.handleUpdateVacation}
                   updateEmployeeData={data.updateEmployeeData}
                 />
-              )}
+              </Suspense>
+            )}
 
-              {activeTab === 'ferias_dashboard' && (
+            {activeTab === 'ferias_dashboard' && (
+              <Suspense fallback={<SectionLoader />}>
                 <VacationAnalytics
                   vacationStats={analytics.vacationStats}
                   vacationMonthlyBreakdown={analytics.vacationMonthlyBreakdown}
@@ -291,9 +268,8 @@ export default function App() {
                   allEmployees={data.employees}
                   currentYear={currentYear}
                 />
-              )}
-
-            </Suspense>
+              </Suspense>
+            )}
           </ErrorBoundary>
         )}
       </main>
