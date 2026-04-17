@@ -109,7 +109,7 @@ function DetailCell({ label, value }: { label: string; value: string | number })
 }
 
 function PreviewBlock({ preview, vendeuFerias, diasVendidos }: {
-  preview: { diasAGozar: number; endDate: string; returnDate: string } | null;
+  preview: { diasAGozar: number; endDate: string; returnDate: string; returnDateAdjusted?: boolean } | null;
   vendeuFerias: boolean;
   diasVendidos: number;
 }) {
@@ -126,6 +126,16 @@ function PreviewBlock({ preview, vendeuFerias, diasVendidos }: {
         <DetailCell label="Retorno" value={fmtDate(preview.returnDate)} />
         <DetailCell label="Abono" value={vendeuFerias ? `${diasVendidos} dias` : 'Não'} />
       </div>
+      
+      {/* Alerta de Ajuste 12x36 */}
+      {preview.returnDateAdjusted && (
+        <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-blue-100/50 border border-blue-200 p-3">
+          <span className="text-lg leading-none mt-0.5">💡</span>
+          <p className="text-xs font-medium text-blue-800 leading-relaxed">
+            O dia de retorno original cairia numa folga (escala 12x36). O sistema ajustou a data de retorno automaticamente para o próximo <b>dia de trabalho</b>.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
