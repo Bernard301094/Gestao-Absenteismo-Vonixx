@@ -39,7 +39,7 @@ export default function App() {
   const [selectedDay, setSelectedDay]   = useState<number | 'all'>('all');
   const [searchTerm, setSearchTerm]     = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sortOrder, setSortOrder]       = useState<'alpha' | 'faltas'>('faltas');
+  const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
   const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<string>('all');
 
@@ -75,10 +75,6 @@ export default function App() {
     [currentMonth, currentYear]
   );
 
-  // Mapear sortOrder local para o formato esperado pelo hook
-  const mappedSortOrder: 'desc_faltas' | 'asc_name' | 'desc_name' =
-    sortOrder === 'alpha' ? 'asc_name' : 'desc_faltas';
-
   const analytics = useDashboardAnalytics({
     employees: data.employees,
     attendance: data.attendance,
@@ -93,7 +89,7 @@ export default function App() {
     isSupervision: auth.isSupervision,
     searchTerm,
     statusFilter,
-    sortOrder: mappedSortOrder,
+    sortOrder: sortOrder,
     registroSearchTerm,
     isValidDay,
   });
@@ -132,7 +128,7 @@ export default function App() {
     testConnection();
   }, []);
 
-  // ─── Render: Auth Guard ───────────────────────────────────────────────────
+  // ─── Render: Auth Guard ────────────────────────────────────────────────────
   if (!auth.user) {
     return (
       <ErrorBoundary>
@@ -141,7 +137,7 @@ export default function App() {
     );
   }
 
-  // ─── Render: App ───────────────────────────────────────────────────────────
+  // ─── Render: App ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 font-sans pb-16 overflow-x-hidden">
       <ErrorBoundary>
@@ -242,7 +238,7 @@ export default function App() {
               </Suspense>
             )}
 
-            {/* ─── FÉRIAS: agora recebe vacationStats de analytics ─── */}
+            {/* ─── FÉRIAS: recebe vacationStats de analytics ─── */}
             {activeTab === 'ferias' && !auth.isSupervision && (
               <Suspense fallback={<SectionLoader />}>
                 <VacationManagement
@@ -276,7 +272,7 @@ export default function App() {
         )}
       </main>
 
-      {/* ─── Modals ────────────────────────────────────────────────────────── */}
+      {/* ─── Modals ─────────────────────────────────────────────────────────── */}
       {data.showAddEmployeeModal && (
         <ErrorBoundary>
           <Suspense fallback={null}>
