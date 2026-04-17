@@ -1,11 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   PieChart,
   Pie,
   Cell,
   Tooltip,
   ResponsiveContainer,
-  type TooltipProps,
 } from 'recharts';
 import type { Employee, AttendanceRecord } from '../../types';
 
@@ -32,7 +31,6 @@ const PALETTE = {
     text:    '#065f46',
     label:   '#059669',
     glow:    'rgba(16, 185, 129, 0.25)',
-    icon:    '✦',
   },
   faltas: {
     solid:   '#f43f5e',
@@ -41,7 +39,6 @@ const PALETTE = {
     text:    '#881337',
     label:   '#e11d48',
     glow:    'rgba(244, 63, 94, 0.25)',
-    icon:    '✦',
   },
   outros: {
     solid:   '#8b5cf6',
@@ -50,7 +47,6 @@ const PALETTE = {
     text:    '#4c1d95',
     label:   '#7c3aed',
     glow:    'rgba(139, 92, 246, 0.25)',
-    icon:    '✦',
   },
 } as const;
 
@@ -147,7 +143,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, theme, total }) =
         (e.currentTarget as HTMLDivElement).style.boxShadow = `0 2px 8px ${theme.glow}, 0 1px 2px rgba(0,0,0,0.04)`;
       }}
     >
-      {/* Decorative corner accent */}
       <div
         style={{
           position: 'absolute',
@@ -160,8 +155,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, theme, total }) =
           opacity: 0.08,
         }}
       />
-
-      {/* Dot indicator */}
       <span
         style={{
           width: '6px',
@@ -172,7 +165,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, theme, total }) =
           flexShrink: 0,
         }}
       />
-
       <span
         style={{
           fontSize: '9px',
@@ -184,7 +176,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, theme, total }) =
       >
         {label}
       </span>
-
       <span
         style={{
           fontSize: '22px',
@@ -195,7 +186,6 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, theme, total }) =
       >
         {value}
       </span>
-
       <span
         style={{
           fontSize: '10px',
@@ -217,7 +207,12 @@ export default function DistributionChart({
   attendance,
   selectedDay,
 }: DistributionChartProps) {
-  // ── Data computation (lógica intacta) ─────────────────────────────────────
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const faltasCount   = employees.filter(emp => attendance[emp.id]?.[selectedDay] === 'F').length;
   const outrosCount   = employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay] ?? 'P')).length;
   const presentesCount = employees.length - faltasCount;
@@ -229,7 +224,6 @@ export default function DistributionChart({
     { name: 'Outros',    value: outrosCount },
   ].filter(d => d.value > 0);
 
-  // ── Rate coloring for the center stat ─────────────────────────────────────
   const rateColor =
     presencaRate >= 90 ? PALETTE.presentes.text :
     presencaRate >= 70 ? '#92400e' :
@@ -256,7 +250,6 @@ export default function DistributionChart({
         overflow: 'hidden',
       }}
     >
-      {/* Subtle background mesh accent */}
       <div
         style={{
           position: 'absolute',
@@ -270,7 +263,6 @@ export default function DistributionChart({
         }}
       />
 
-      {/* ── Header ── */}
       <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
@@ -299,39 +291,39 @@ export default function DistributionChart({
         </div>
       </div>
 
-      {/* ── Chart ── */}
       <div style={{ height: '300px', width: '100%', maxWidth: '420px', position: 'relative' }}>
-        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-          <PieChart>
-            <Pie
-              data={pieData}
-              cx="50%"
-              cy="50%"
-              innerRadius={82}
-              outerRadius={118}
-              paddingAngle={5}
-              cornerRadius={8}
-              dataKey="value"
-              stroke="none"
-              animationBegin={0}
-              animationDuration={700}
-              animationEasing="ease-out"
-            >
-              {pieData.map((_, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={PIE_COLORS[index]}
-                />
-              ))}
-            </Pie>
-            <Tooltip
-              content={<CustomTooltip />}
-              cursor={false}
-            />
-          </PieChart>
-        </ResponsiveContainer>
+        {mounted && (
+          <ResponsiveContainer width="99%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieData}
+                cx="50%"
+                cy="50%"
+                innerRadius={82}
+                outerRadius={118}
+                paddingAngle={5}
+                cornerRadius={8}
+                dataKey="value"
+                stroke="none"
+                animationBegin={0}
+                animationDuration={700}
+                animationEasing="ease-out"
+              >
+                {pieData.map((_, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={PIE_COLORS[index]}
+                  />
+                ))}
+              </Pie>
+              <Tooltip
+                content={<CustomTooltip />}
+                cursor={false}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
 
-        {/* Center stat */}
         <div
           style={{
             position: 'absolute',
@@ -346,7 +338,6 @@ export default function DistributionChart({
             gap: '2px',
           }}
         >
-          {/* Glow ring */}
           <div
             style={{
               position: 'absolute',
@@ -386,7 +377,6 @@ export default function DistributionChart({
         </div>
       </div>
 
-      {/* ── Divider ── */}
       <div
         style={{
           width: '100%',
@@ -396,14 +386,12 @@ export default function DistributionChart({
         }}
       />
 
-      {/* ── Metric Cards ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', width: '100%' }}>
         <MetricCard label="Presentes" value={presentesCount} theme={PALETTE.presentes} total={employees.length} />
         <MetricCard label="Faltas"    value={faltasCount}    theme={PALETTE.faltas}    total={employees.length} />
         <MetricCard label="Outros"    value={outrosCount}    theme={PALETTE.outros}    total={employees.length} />
       </div>
 
-      {/* ── Legend row ── */}
       <div style={{ display: 'flex', gap: '16px', marginTop: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
         {(
           [
