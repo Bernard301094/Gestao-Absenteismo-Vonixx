@@ -48,13 +48,11 @@ const getEndpoint = (provider: AIProvider) => {
   return '';
 };
 
+// Apenas modelos de chat confiáveis — removidos modelos de segurança e instáveis
 const OPENROUTER_FREE_MODELS = [
   'google/gemma-3-27b-it:free',
-  'venice/dolphin-mistral-24b:free',
   'nousresearch/hermes-3-llama-3.1-405b:free',
   'google/gemma-3-4b-it:free',
-  'google/gemma-3n-4b-it:free',
-  'meta-llama/llama-guard-4-12b-it:free'
 ];
 
 const getModel = (provider: AIProvider) => {
@@ -109,7 +107,7 @@ export async function callAI(messages: { role: string; content: string }[], prov
       body: JSON.stringify({
         model,
         messages,
-        temperature: 0.2, // Reduzido para menos alucinações
+        temperature: 0.2,
       }),
     });
 
@@ -133,7 +131,7 @@ export async function callAI(messages: { role: string; content: string }[], prov
   return data.choices?.[0]?.message?.content || "";
 }
 
-// 1. Generación de Resúmenes de Turno (Handover)
+// 1. Generação de Resumo de Turno (Handover)
 export async function generateShiftSummary(
   shift: string,
   absentEmployees: any[],
@@ -162,7 +160,7 @@ Por favor, gere o resumo do turno.`;
   ], provider);
 }
 
-// 2. Detección de Patrones de Comportamiento
+// 2. Detecção de Padrões de Comportamento
 export async function analyzePatterns(weekdayData: any[], provider: AIProvider = 'groq') {
   const systemPrompt = `Você é um analista de dados de RH industrial.
 Sua tarefa é analisar os dados de absenteísmo por dia da semana e identificar 1 ou 2 padrões ou tendências importantes.
@@ -179,7 +177,7 @@ Gere os insights.`;
   ], provider);
 }
 
-// 3. Resolución de Conflictos de Vacaciones
+// 3. Resolução de Conflitos de Férias
 export async function suggestVacationResolution(conflictData: any, provider: AIProvider = 'groq') {
   const systemPrompt = `Você é um planejador de RH industrial estratégico.
 Sua tarefa é ler um conflito de sobreposição de férias entre funcionários e sugerir uma realocação matemática de datas.
@@ -202,43 +200,52 @@ export async function generateEmployeeInsight(
   attendanceRecord: any,
   holidays: any[],
   currentDate: string, // YYYY-MM-DD
-  detailedHistoryText?: string, // NOVO PARÂMETRO PARA BLOQUEAR ALUCINAÇÕES
-  provider: AIProvider = 'groq'
+  detailedHistoryText?: string,
+  provider: AIProvider = 'groq' // Groq (llama-3.1-8b) é mais confiável para insights individuais
 ) {
-  const currentDayNum = parseInt(currentDate.split('-')[2], 10);
-  
+  const [yearStr, monthStr, dayStr] = currentDate.split('-');
+  const currentDayNum = parseInt(dayStr, 10);
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+
   const pastAttendance = Object.fromEntries(
     Object.entries(attendanceRecord).filter(([day]) => parseInt(day, 10) <= currentDayNum)
   );
 
-  const absencesCount = Object.values(pastAttendance).filter(s => s === 'F').length;
+  const absencesCount  = Object.values(pastAttendance).filter(s => s === 'F').length;
   const vacationsCount = Object.values(pastAttendance).filter(s => s === 'Fe').length;
-  const leavesCount = Object.values(pastAttendance).filter(s => s === 'A').length;
-  const presenceCount = Object.values(pastAttendance).filter(s => s === 'P').length;
+  const leavesCount    = Object.values(pastAttendance).filter(s => s === 'A').length;
+  const presenceCount  = Object.values(pastAttendance).filter(s => s === 'P').length;
+  const workDaysCount  = presenceCount + absencesCount; // total de dias de trabalho esperados
 
-  const systemPrompt = `Você é um Analista Comportamental de RH altamente rigoroso.
-Sua tarefa é analisar o histórico de ausências de um funcionário em escala 12x36 (folga dia sim, dia não) e fornecer um "AI Insight" SEM INVENTAR NADA.
+  const systemPrompt = `Você é um Analista de RH de uma indústria brasileira. Analise o histórico de presença de um colaborador em escala 12x36 e gere um insight objetivo.
 
-DADOS MATEMÁTICOS ABSOLUTOS (OBEDEÇA CEGAMENTE A ESTES NÚMEROS):
-- Faltas Reais Injustificadas: ${absencesCount}
-- Dias de Férias: ${vacationsCount}
-- Dias de Afastamento Legal: ${leavesCount}
-- Presenças Confirmadas: ${presenceCount}
+REGRAS ABSOLUTAS — OBEDEÇA CEGAMENTE:
+1. A escala é 12x36: o colaborador trabalha 1 dia e folga no seguinte. Dias sem registro NO HISTÓRICO = FOLGA DA ESCALA. NÃO são ausências.
+2. Os únicos dias de trabalho são os que aparecem com status P, F, Fe ou A no histórico.
+3. Faltas reais injustificadas = ${absencesCount}. NÃO invente faltas. Se for 0, elogie a assiduidade.
+4. Férias (Fe) e Afastamentos (A) são direitos trabalhistas. NUNCA os cite como problema.
+5. Escreva 2-3 frases diretas em português brasileiro + 1 ação prática em negrito.
+6. NÃO repita os dados brutos. NÃO use markdown excessivo. Seja humano e objetivo.
+7. Se não houver faltas (${absencesCount} = 0), foque em aspectos positivos e sugestões de engajamento.`;
 
-REGRAS INQUEBRÁVEIS:
-1. JAMAIS INVENTE FALTAS. O número exato de faltas é ${absencesCount}. Se for 0, elogie a assiduidade e não sugira problemas de comparecimento.
-2. Férias ('Fe') e Afastamentos ('A') SÃO DIREITOS e NÃO são faltas. Se estiver de férias, mencione que está usufruindo do seu descanso legal.
-3. A escala é 12x36. Portanto, NÃO considere dias vazios ou alternados como ausências, são folgas.
-4. Baseie-se APENAS no Histórico Detalhado em texto fornecido na mensagem do usuário para entender os dias.
-5. Seja direto: 2 a 3 frases curtas de análise + 1 Ação Prática (em negrito).`;
+  const userPrompt = `Colaborador: ${employee.name} | Cargo: ${employee.role}
+Mês/Ano: ${month}/${year} | Período analisado: dias 1 a ${currentDayNum}
 
-  const userPrompt = `Funcionário: ${employee.name} (${employee.role})
-Histórico Detalhado do Mês até o dia ${currentDayNum}:
-${detailedHistoryText ? detailedHistoryText : JSON.stringify(pastAttendance)}
+Resumo estatístico confirmado:
+- Presenças confirmadas (P): ${presenceCount}
+- Faltas injustificadas (F): ${absencesCount}
+- Férias (Fe): ${vacationsCount}
+- Afastamentos legais (A): ${leavesCount}
+- Total de dias de trabalho esperados: ${workDaysCount}
+- Taxa de presença: ${workDaysCount > 0 ? Math.round((presenceCount / workDaysCount) * 100) : 100}%
 
-Feriados do Mês: ${JSON.stringify(holidays)}
+Histórico detalhado dia a dia (apenas dias de trabalho):
+${detailedHistoryText || 'Sem registros detalhados disponíveis.'}
 
-Gere o insight obedecendo rigorosamente às regras matemáticas informadas no sistema. Retorne APENAS o texto da análise.`;
+Feriados do mês: ${holidays.length > 0 ? JSON.stringify(holidays.map((h: any) => h.name || h.date)) : 'Nenhum'}
+
+Gere o insight seguindo rigorosamente as regras do sistema.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
