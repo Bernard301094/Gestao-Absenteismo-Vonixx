@@ -4,7 +4,6 @@ import { db } from '../firebase';
 export type AIProvider = 'openrouter' | 'groq';
 
 // Global AI quota variables
-// LIMITE MÁXIMO DEFINIDO PARA MANTER USO DENTRO DO PLANO GRATUITO
 const MAX_MONTHLY_CALLS = 200; 
 
 async function checkAndIncrementQuota(): Promise<void> {
@@ -25,9 +24,7 @@ async function checkAndIncrementQuota(): Promise<void> {
   await setDoc(quotaRef, { calls: count + 1 }, { merge: true });
 }
 
-// Function to get API keys from different sources (Firestore or Env)
 async function fetchApiKey(provider: AIProvider): Promise<string | null> {
-  // 1. Check Firestore first (for persistence outside Google AI Studio)
   try {
     const configSnap = await getDoc(doc(db, 'system', 'ai_config'));
     if (configSnap.exists()) {
@@ -39,7 +36,6 @@ async function fetchApiKey(provider: AIProvider): Promise<string | null> {
     console.warn("Firestore config check failed:", e);
   }
 
-  // 2. Check Environment Variables (standard way)
   if (provider === 'openrouter') return import.meta.env.VITE_OPENROUTER_API_KEY || null;
   if (provider === 'groq') return import.meta.env.VITE_GROQ_API_KEY || null;
   
@@ -61,9 +57,7 @@ const OPENROUTER_FREE_MODELS = [
   'meta-llama/llama-guard-4-12b-it:free'
 ];
 
-// Use a free tier model ID for cost 0 compliance
 const getModel = (provider: AIProvider) => {
-  // Enforcing :free model for OpenRouter to ensure cost 0
   if (provider === 'openrouter') {
     return OPENROUTER_FREE_MODELS[Math.floor(Math.random() * OPENROUTER_FREE_MODELS.length)];
   }
@@ -75,7 +69,6 @@ export async function callAI(messages: { role: string; content: string }[], prov
   let activeProvider = provider;
   let activeApiKey = await fetchApiKey(activeProvider);
   
-  // Provider rotation logic: OpenRouter (Free) -> Groq
   if (!activeApiKey) {
     const providers: AIProvider[] = ['openrouter', 'groq'];
     for (const p of providers) {
@@ -93,10 +86,8 @@ export async function callAI(messages: { role: string; content: string }[], prov
     throw new Error('Nenhuma chave de API configurada. Configure o OpenRouter ou Groq nas configurações.');
   }
 
-  // Check global database quota
   await checkAndIncrementQuota();
 
-  // If using HTTP providers (OpenRouter, Groq)
   const endpoint = getEndpoint(activeProvider);
   const model = getModel(activeProvider);
 
@@ -118,7 +109,7 @@ export async function callAI(messages: { role: string; content: string }[], prov
       body: JSON.stringify({
         model,
         messages,
-        temperature: 0.3,
+        temperature: 0.2, // Reduzido para menos alucinações
       }),
     });
 
@@ -211,12 +202,11 @@ export async function generateEmployeeInsight(
   attendanceRecord: any,
   holidays: any[],
   currentDate: string, // YYYY-MM-DD
+  detailedHistoryText?: string, // NOVO PARÂMETRO PARA BLOQUEAR ALUCINAÇÕES
   provider: AIProvider = 'groq'
 ) {
   const currentDayNum = parseInt(currentDate.split('-')[2], 10);
   
-  // Filter attendance record strictly to days <= current day of month (if we are looking at the current month)
-  // We assume the caller handles parsing if looking at a past month.
   const pastAttendance = Object.fromEntries(
     Object.entries(attendanceRecord).filter(([day]) => parseInt(day, 10) <= currentDayNum)
   );
@@ -226,33 +216,29 @@ export async function generateEmployeeInsight(
   const leavesCount = Object.values(pastAttendance).filter(s => s === 'A').length;
   const presenceCount = Object.values(pastAttendance).filter(s => s === 'P').length;
 
-  const systemPrompt = `Você é um Analista Comportamental de RH sênior.
-Sua tarefa é analisar o histórico de ausências de um funcionário e fornecer um "AI Insight" inteligente.
+  const systemPrompt = `Você é um Analista Comportamental de RH altamente rigoroso.
+Sua tarefa é analisar o histórico de ausências de um funcionário em escala 12x36 (folga dia sim, dia não) e fornecer um "AI Insight" SEM INVENTAR NADA.
 
-CONTEXTO DE DADOS:
-- 'P': Presença.
-- 'F': Falta Injustificada.
-- 'Fe': Férias (NÃO É FALTA).
-- 'A': Afastamento (NÃO É FALTA).
+DADOS MATEMÁTICOS ABSOLUTOS (OBEDEÇA CEGAMENTE A ESTES NÚMEROS):
+- Faltas Reais Injustificadas: ${absencesCount}
+- Dias de Férias: ${vacationsCount}
+- Dias de Afastamento Legal: ${leavesCount}
+- Presenças Confirmadas: ${presenceCount}
 
-DADOS REAIS TOTAIS (BASEIE-SE NISSO PARA NÃO ERRAR A CONTA):
-- Total de Faltas Reais ('F'): ${absencesCount}
-- Total de Dias em Férias ('Fe'): ${vacationsCount}
-- Total de Dias Afastado ('A'): ${leavesCount}
-- Total de Presenças ('P'): ${presenceCount}
-
-REGRAS CRÍTICAS:
-1. NUNCA some Férias ('Fe') ou Afastamentos ('A') ao total de "faltas". Se o funcionário tem apenas 2 faltas ('F'), você DEVE dizer que ele tem 2 faltas, mesmo que tenha 30 dias de férias.
-2. Analise apenas os dias com 'F' (faltas injustificadas) para identificar padrões de comportamento (proximidade com feriados ou fins de semana).
-3. Se o funcionário estiver em férias ('Fe'), mencione que ele "está em período de descanso" e não que está "faltando irregularmente".
-4. Seja conciso: 2 a 3 frases de análise + 1 Ação Prática (em negrito).
-`;
+REGRAS INQUEBRÁVEIS:
+1. JAMAIS INVENTE FALTAS. O número exato de faltas é ${absencesCount}. Se for 0, elogie a assiduidade e não sugira problemas de comparecimento.
+2. Férias ('Fe') e Afastamentos ('A') SÃO DIREITOS e NÃO são faltas. Se estiver de férias, mencione que está usufruindo do seu descanso legal.
+3. A escala é 12x36. Portanto, NÃO considere dias vazios ou alternados como ausências, são folgas.
+4. Baseie-se APENAS no Histórico Detalhado em texto fornecido na mensagem do usuário para entender os dias.
+5. Seja direto: 2 a 3 frases curtas de análise + 1 Ação Prática (em negrito).`;
 
   const userPrompt = `Funcionário: ${employee.name} (${employee.role})
-Histórico Diário (Dia: Status): ${JSON.stringify(pastAttendance)}
+Histórico Detalhado do Mês até o dia ${currentDayNum}:
+${detailedHistoryText ? detailedHistoryText : JSON.stringify(pastAttendance)}
+
 Feriados do Mês: ${JSON.stringify(holidays)}
 
-Gere o insight respeitando os totais informados. Retorne APENAS o texto do insight e a sugestão de ação.`;
+Gere o insight obedecendo rigorosamente às regras matemáticas informadas no sistema. Retorne APENAS o texto da análise.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
