@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { Employee, Vacation, VacationStats, VacationStatusType } from '../types';
+import { isWorkDay } from '../utils/dateUtils';
 
 // ─── Utilitários de Data ──────────────────────────────────────────────────────
 
@@ -68,13 +69,6 @@ interface PeriodInfo {
   dataLimiteConcessao: Date;
 }
 
-/**
- * Calcula as datas do período aquisitivo/concessivo para um ciclo específico.
- * Baseado nas fórmulas Excel:
- * Inic. Per. Aquisitivo: DATA(ANO(Adm)+Periodo-1; MÊS(Adm); DIA(Adm))
- * Fim Per. Aquisitivo: DATA(ANO(Adm)+Periodo; MÊS(Adm); DIA(Adm))
- * Fim Per. Concessivo: DATA(ANO(Adm)+Periodo+1; MÊS(Adm); DIA(Adm))
- */
 function getPeriod(admDate: Date, periodNumber: number): PeriodInfo {
   const y = admDate.getFullYear();
   const m = admDate.getMonth() + 1;
@@ -101,12 +95,11 @@ export interface VacationDates {
   startDate: string;
   endDate: string;
   returnDate: string;
+  returnDateAdjusted?: boolean;
 }
 
 /**
- * Dado o início das férias, calcula endDate e returnDate segundo CLT.
- * diasDireito: normalmente 30
- * diasVendidos: dias de abono pecuniário (máx 10)
+ * Dado o início das férias, calcula endDate e returnDate segundo CLT e escala 12x36.
  */
 export function calcVacationDates(
   startDate: string,
@@ -116,21 +109,27 @@ export function calcVacationDates(
   const diasAGozar = diasDireito - diasVendidos;
   const start = parseISO(startDate);
   const end = addDays(start, diasAGozar - 1);
-  const returnDay = addDays(end, 1);
+  
+  let returnDay = addDays(end, 1);
+  let returnDateAdjusted = false;
+
+  // Verifica se o dia de retorno cai numa folga da escala 12x36
+  if (!isWorkDay(returnDay.getDate(), returnDay.getMonth(), returnDay.getFullYear())) {
+    returnDay = addDays(returnDay, 1); // Pula para o dia seguinte (dia de trabalho)
+    returnDateAdjusted = true;
+  }
+
   return {
     diasAGozar,
     startDate,
     endDate: toISO(end),
     returnDate: toISO(returnDay),
+    returnDateAdjusted,
   };
 }
 
 // ─── Motor Principal ──────────────────────────────────────────────────────────
 
-/**
- * Computa o VacationStats de todos os funcionários aplicando as regras CLT.
- * Pode ser chamado fora do contexto React (p.ex. em testes).
- */
 export function computeVacationStats(
   employees: Employee[],
   vacations: Vacation[],
@@ -157,7 +156,6 @@ export function computeVacationStats(
       diasRestantes: '',
     };
 
-    // ── Sem data de admissão ────────────────────────────────────────────────
     if (!emp.admissionDate || emp.admissionDate.length < 10) {
       const empVacations = vacations
         .filter(v => v.employeeId === emp.id)
@@ -194,18 +192,11 @@ export function computeVacationStats(
       };
     }
 
-    // ── Férias do funcionário, ordenadas por início ───────────────────────
     const empVacations = vacations
       .filter(v => v.employeeId === emp.id)
       .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-    // ── Encontra o ciclo alvo segundo a fórmula Excel fornecida ───────────
-    // Periodo: =SE(D4="";"";SE(E(P4>=L4;O4<>"";O4<HOJE());DATADIF(D4;HOJE();"Y")+2;DATADIF(D4;HOJE();"Y")+1))
-    
     const years = completedYears(admDate, today);
-    
-    // Verificamos se as férias do ciclo atual (years + 1) já foram concluídas
-    // Nota: years + 1 é o período padrão.
     const pCurrent = getPeriod(admDate, years + 1);
     const fimAqISO_C = toISO(pCurrent.inicioAquisitivo);
     const fimConISO_C = toISO(pCurrent.fimConcessivo);
@@ -226,20 +217,15 @@ export function computeVacationStats(
                        currentVac.endDate && parseISO(currentVac.endDate) < today;
 
     const periodNumber = isFinished ? years + 2 : years + 1;
-
     const period = getPeriod(admDate, periodNumber);
     const fimAqISO = toISO(period.inicioAquisitivo);
     const fimConISO = toISO(period.fimConcessivo);
-    
-    // Dias p/ Vencer: =SE(M4="";"";M4-HOJE())
     const diasParaVencer = daysBetween(today, period.dataLimiteConcessao);
 
-    // ── Férias deste ciclo ────────────────────────────────────────────────
     const currentVacation = empVacations.find(
       v => v.startDate >= fimAqISO && v.startDate < fimConISO,
     );
 
-    // ── Determina Status conforme fórmula Excel ───────────────────────────
     let status: VacationStatusType;
     let diasRestantes: number | string = '';
 
@@ -255,20 +241,29 @@ export function computeVacationStats(
       status = 'ferias_concluidas';
     } else if (N4 && todayISO >= N4 && todayISO <= O4) {
       status = 'em_ferias_agora';
-      // Dias restantes: =SE(R4="🏖️ Em Férias AGORA";O4-HOJE()+1;"")
       diasRestantes = daysBetween(today, parseISO(O4)) + 1;
     } else if (N4 && O4 && parseISO(O4) > today) {
       status = 'ferias_agendadas';
     } else if (today > H4) {
-      status = 'critico_vencido'; // VENCIDO - Agendar JÁ
+      status = 'critico_vencido';
     } else if (today > M4) {
-      status = 'critico_vencido'; // Crítico - Agendar JÁ
+      status = 'critico_vencido';
     } else if (daysBetween(today, M4) <= 60) {
       status = 'agendar_em_breve';
     } else if (today < G4) {
       status = 'em_per_aquisitivo';
     } else {
-      status = 'a_vencer'; // "🟢 A Vencer"
+      status = 'a_vencer';
+    }
+
+    // Calcula a data final de retorno garantindo que caia em dia útil
+    let finalReturnDate = '';
+    if ((status === 'em_ferias_agora' || status === 'ferias_agendadas') && O4) {
+      let tentativeReturn = addDays(parseISO(O4), 1);
+      if (!isWorkDay(tentativeReturn.getDate(), tentativeReturn.getMonth(), tentativeReturn.getFullYear())) {
+        tentativeReturn = addDays(tentativeReturn, 1);
+      }
+      finalReturnDate = toISO(tentativeReturn);
     }
 
     return {
@@ -288,9 +283,7 @@ export function computeVacationStats(
       diasAGozar: L4.toString(),
       dataInicioFerias: N4,
       dataFimFerias: O4,
-      dataRetorno: (status === 'em_ferias_agora' || status === 'ferias_agendadas') && O4
-        ? toISO(addDays(parseISO(O4), 1))
-        : '',
+      dataRetorno: finalReturnDate,
       diasGozados: P4.toString(),
     };
   });
