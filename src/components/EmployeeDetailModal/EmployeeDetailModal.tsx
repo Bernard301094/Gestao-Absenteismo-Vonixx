@@ -25,27 +25,36 @@ interface EmployeeDetailModalProps {
   currentShift: string | null;
 }
 
-// ─── Markdown com alto contraste para fundo escuro ────────────────────────────
+// ─── Markdown com renderers customizados para forçar texto branco ─────────────
 function AIMarkdown({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm max-w-none
-      prose-headings:font-black prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:first:mt-0
-      prose-h1:text-sm prose-h2:text-sm prose-h3:text-xs
-      prose-h1:text-white prose-h2:text-white prose-h3:text-sky-200
-      prose-p:text-slate-100 prose-p:leading-relaxed prose-p:mb-3 prose-p:last:mb-0 prose-p:text-sm
-      prose-strong:text-white prose-strong:font-black
-      prose-em:text-sky-300 prose-em:not-italic prose-em:font-semibold
-      prose-li:text-slate-100 prose-li:mb-1.5 prose-li:leading-relaxed prose-li:text-sm
-      prose-ul:my-3 prose-ul:space-y-1
-      prose-ol:my-3 prose-ol:space-y-1
-      [&>ul]:list-none [&>ul]:pl-0
-      [&_ul]:list-none [&_ul]:pl-0
-      [&_ol]:list-decimal [&_ol]:pl-4
-      [&_li]:relative [&_li]:pl-5
-      [&_ul>li]:before:content-['▸'] [&_ul>li]:before:absolute [&_ul>li]:before:left-0 [&_ul>li]:before:text-sky-400 [&_ul>li]:before:font-bold
-      prose-hr:border-slate-500 prose-hr:my-4
-      prose-code:text-sky-300 prose-code:bg-slate-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:before:content-none prose-code:after:content-none">
-      <ReactMarkdown>{content}</ReactMarkdown>
+    <div style={{ color: '#e2e8f0', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => <h1 style={{ color: '#ffffff', fontWeight: 900, fontSize: '0.9rem', marginBottom: '0.5rem', marginTop: '1rem' }}>{children}</h1>,
+          h2: ({ children }) => <h2 style={{ color: '#ffffff', fontWeight: 900, fontSize: '0.875rem', marginBottom: '0.5rem', marginTop: '1rem' }}>{children}</h2>,
+          h3: ({ children }) => <h3 style={{ color: '#bae6fd', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.375rem', marginTop: '0.75rem' }}>{children}</h3>,
+          p:  ({ children }) => <p  style={{ color: '#e2e8f0', marginBottom: '0.75rem', lineHeight: '1.65' }}>{children}</p>,
+          strong: ({ children }) => <strong style={{ color: '#ffffff', fontWeight: 900 }}>{children}</strong>,
+          em: ({ children }) => <em style={{ color: '#7dd3fc', fontStyle: 'normal', fontWeight: 600 }}>{children}</em>,
+          ul: ({ children }) => <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0' }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ paddingLeft: '1.25rem', margin: '0.5rem 0' }}>{children}</ol>,
+          li: ({ children }) => (
+            <li style={{ color: '#e2e8f0', marginBottom: '0.375rem', paddingLeft: '1.125rem', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#38bdf8', fontWeight: 700 }}>▸</span>
+              {children}
+            </li>
+          ),
+          hr: () => <hr style={{ borderColor: '#334155', margin: '1rem 0' }} />,
+          code: ({ children }) => (
+            <code style={{ color: '#7dd3fc', background: '#1e3a5f', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+              {children}
+            </code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -151,7 +160,6 @@ export default function EmployeeDetailModal({
   const totalWorkDays = faltasMes + presencasMes;
   const presenceRate  = totalWorkDays > 0 ? Math.round((presencasMes / totalWorkDays) * 100) : 100;
 
-  // Cores do calendário: fundo colorido + número sempre visível
   const dayCellClass = (status: string | undefined, isWork: boolean): string => {
     if (status === 'P')  return 'bg-emerald-100 text-emerald-800 border-emerald-300 font-black';
     if (status === 'F')  return 'bg-red-100 text-red-800 border-red-300 font-black';
@@ -161,15 +169,12 @@ export default function EmployeeDetailModal({
     return 'bg-gray-50 text-gray-300 border-transparent font-medium';
   };
 
-  // Bolinha indicadora de status no canto do dia
   const statusDot = (status: string | undefined) => {
     if (!status) return null;
     const colors: Record<string, string> = {
       P: 'bg-emerald-500', F: 'bg-red-500', Fe: 'bg-blue-500', A: 'bg-amber-500',
     };
-    return (
-      <span className={`absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full ${colors[status] ?? 'bg-gray-400'}`} />
-    );
+    return <span className={`absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full ${colors[status] ?? 'bg-gray-400'}`} />;
   };
 
   return (
@@ -178,7 +183,7 @@ export default function EmployeeDetailModal({
 
       <div className="relative bg-white w-full sm:max-w-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[92dvh] sm:max-h-[88vh] rounded-t-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
 
-        {/* ── Header ──────────────────────────────────────────────────────── */}
+        {/* ── Header ───────────────────────────────────────────────────────── */}
         <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 p-5 shrink-0 overflow-hidden">
           <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full bg-blue-500/10 blur-2xl pointer-events-none" />
           <div className="relative flex items-center gap-4">
@@ -229,7 +234,7 @@ export default function EmployeeDetailModal({
           ))}
         </div>
 
-        {/* ── Scroll area ───────────────────────────────────────────────────── */}
+        {/* ── Scroll area ──────────────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto">
 
           {/* Calendário */}
@@ -253,7 +258,7 @@ export default function EmployeeDetailModal({
                       ${dayCellClass(status, isWork)}
                       ${isToday ? 'ring-2 ring-blue-400 ring-offset-1' : ''}
                     `}
-                    title={status ? { P: 'Presença', F: 'Falta', Fe: 'Férias', A: 'Afastamento' }[status] ?? status : (isWork ? 'Dia de trabalho' : 'Folga')}
+                    title={status ? ({ P: 'Presença', F: 'Falta', Fe: 'Férias', A: 'Afastamento' } as Record<string,string>)[status] ?? status : (isWork ? 'Dia de trabalho' : 'Folga')}
                   >
                     {day}
                     {statusDot(status)}
@@ -278,10 +283,9 @@ export default function EmployeeDetailModal({
             </div>
           </div>
 
-          {/* ── Seção Insight IA ──────────────────────────────────────────── */}
+          {/* ── Seção Insight IA ─────────────────────────────────────────────── */}
           <div className="p-5">
             <div className="relative rounded-2xl overflow-hidden">
-              {/* Fundo sólido com bom contraste */}
               <div className="absolute inset-0 bg-[#0f1e36]" />
               <div className="absolute inset-0 rounded-2xl border border-white/10 pointer-events-none" />
 
