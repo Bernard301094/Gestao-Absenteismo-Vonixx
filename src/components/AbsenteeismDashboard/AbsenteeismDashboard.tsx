@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Download, Bot, Sparkles, Loader2 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { exportToPDF } from '../../utils/exportPDF';
@@ -144,10 +145,34 @@ export default function Dashboard({
               </button>
             )}
           </div>
-          
+
+          {/* ── Insight renderizado com Markdown ── */}
           {aiInsights && (
-            <div className="mt-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4 text-white text-sm font-medium leading-relaxed whitespace-pre-wrap">
-              {aiInsights}
+            <div className="mt-4 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-4">
+              <div className="prose prose-invert prose-sm max-w-none
+                prose-headings:text-white prose-headings:font-bold prose-headings:mb-2 prose-headings:mt-3
+                prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
+                prose-p:text-white/90 prose-p:leading-relaxed prose-p:mb-2
+                prose-strong:text-white prose-strong:font-bold
+                prose-em:text-blue-200
+                prose-li:text-white/90 prose-li:mb-1
+                prose-ul:my-2 prose-ul:space-y-1
+                prose-ol:my-2 prose-ol:space-y-1
+                [&>ul]:list-disc [&>ul]:pl-4
+                [&>ol]:list-decimal [&>ol]:pl-4
+                [&_ul]:list-disc [&_ul]:pl-4
+                [&_ol]:list-decimal [&_ol]:pl-4
+                prose-hr:border-white/20">
+                <ReactMarkdown>
+                  {aiInsights}
+                </ReactMarkdown>
+              </div>
+              <button
+                onClick={() => setAiInsights(null)}
+                className="mt-3 text-blue-300 hover:text-white text-xs font-semibold transition-colors"
+              >
+                ✕ Fechar insights
+              </button>
             </div>
           )}
         </div>
@@ -219,7 +244,7 @@ export default function Dashboard({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ZONA 1 — Evolução do Mês  (DailyTable + LineChart lado a lado)
+          ZONA 1 — Evolução do Mês
           ═══════════════════════════════════════════════════════════════════ */}
       {selectedDay === 'all' && (
         <div>
@@ -227,11 +252,9 @@ export default function Dashboard({
             Evolução do Mês
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
-            {/* DailyTable — stacked on mobile, sidebar on desktop */}
             <div className="lg:col-span-1 h-[280px] sm:h-[340px] lg:h-[420px]">
               <DailyTable data={dailyData} currentMonth={currentMonth} />
             </div>
-            {/* Daily Evolution chart */}
             <div className="lg:col-span-3">
               <DailyEvolutionChart data={dailyData} currentMonth={currentMonth} />
             </div>
@@ -240,7 +263,7 @@ export default function Dashboard({
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          ZONA 2 — Análise Detalhada  (Ranking + Weekday, Performance full)
+          ZONA 2 — Análise Detalhada
           ═══════════════════════════════════════════════════════════════════ */}
       {selectedDay === 'all' && (
         <div>
@@ -251,7 +274,6 @@ export default function Dashboard({
             {isSupervision && (
               <PerformanceChart data={leaderboardData} />
             )}
-            {/* Ranking + Weekday — stack on mobile, 2 cols on lg */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <RankingChart data={topEmployees} />
               <WeekdayChart data={weekdayData} />
@@ -260,7 +282,6 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Vista de dia único — Distribution chart */}
       {selectedDay !== 'all' && (
         <DistributionChart
           employees={employees}
