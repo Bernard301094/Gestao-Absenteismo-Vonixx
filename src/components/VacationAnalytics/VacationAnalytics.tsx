@@ -140,6 +140,7 @@ export default function VacationAnalytics({
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
+    // Atualiza a cada minuto. Quando passar das 23:59 para 00:00, os dias vão abater automaticamente.
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
@@ -424,29 +425,29 @@ export default function VacationAnalytics({
             <tbody>
               {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
                 
-                // 1. Extração segura para contagem rígida no calendário UTC (evita bugs de fuso horário e horas)
+                // Extração estrita sem fuso horário (UTC bug fix)
                 const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
                 const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
                 
-                const startUTC = Date.UTC(yS, mS - 1, dS);
-                const endUTC = Date.UTC(yE, mE - 1, dE);
-                const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+                // Datas cravadas às 00:00:00 da zona local
+                const startLocal = new Date(yS, mS - 1, dS, 0, 0, 0);
+                const endLocal = new Date(yE, mE - 1, dE, 0, 0, 0);
+                const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
                 
-                // Total de dias programados para o período
-                const totalDays = Math.round((endUTC - startUTC) / 86400000) + 1;
+                // Matemática imutável de dias totais
+                const totalDays = Math.round((endLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
                 
-                // Dias restantes desde hoje até ao fimUTC (incluindo o próprio dia)
-                let remaining = Math.round((endUTC - todayUTC) / 86400000) + 1;
+                // O dia atual é subtraído corretamente do fim a cada viragem da meia-noite
+                let remaining = Math.round((endLocal.getTime() - todayLocal.getTime()) / 86400000) + 1;
                 if (remaining < 0) remaining = 0;
-                if (remaining > totalDays) remaining = totalDays; 
+                if (remaining > totalDays) remaining = totalDays;
                 
                 const passed = totalDays - remaining;
                 
-                // 2. Cálculo suave em milissegundos exclusivo para a barra de progresso (%)
-                const startMs = new Date(yS, mS - 1, dS, 0, 0, 0).getTime();
+                // Animação visual em percentagem contínua via ms (23:59:59 para ir até ao fim real do dia)
+                const startMs = startLocal.getTime();
                 const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
                 const currentMs = now.getTime();
-                
                 const totalMs = endMs - startMs;
                 const elapsedMs = currentMs - startMs;
                 const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
@@ -487,22 +488,21 @@ export default function VacationAnalytics({
             const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
             const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
             
-            const startUTC = Date.UTC(yS, mS - 1, dS);
-            const endUTC = Date.UTC(yE, mE - 1, dE);
-            const todayUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+            const startLocal = new Date(yS, mS - 1, dS, 0, 0, 0);
+            const endLocal = new Date(yE, mE - 1, dE, 0, 0, 0);
+            const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
             
-            const totalDays = Math.round((endUTC - startUTC) / 86400000) + 1;
+            const totalDays = Math.round((endLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
             
-            let remaining = Math.round((endUTC - todayUTC) / 86400000) + 1;
+            let remaining = Math.round((endLocal.getTime() - todayLocal.getTime()) / 86400000) + 1;
             if (remaining < 0) remaining = 0;
-            if (remaining > totalDays) remaining = totalDays; 
+            if (remaining > totalDays) remaining = totalDays;
             
             const passed = totalDays - remaining;
             
-            const startMs = new Date(yS, mS - 1, dS, 0, 0, 0).getTime();
+            const startMs = startLocal.getTime();
             const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
             const currentMs = now.getTime();
-            
             const totalMs = endMs - startMs;
             const elapsedMs = currentMs - startMs;
             const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
