@@ -20,7 +20,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
         <TrendingUp className="w-5 h-5 text-emerald-500" />
       </div>
       <div className="h-[200px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <BarChart data={data} layout="vertical" margin={{ left: 40, right: 40 }}>
             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} hide />
