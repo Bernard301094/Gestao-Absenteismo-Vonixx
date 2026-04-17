@@ -1,4 +1,5 @@
-import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export const generateStatsImage = async (data: { 
   faltas: string[]; 
@@ -6,41 +7,71 @@ export const generateStatsImage = async (data: {
   ferias: string[]; 
   percentual: string 
 }) => {
-  const container = document.createElement('div');
-  container.style.padding = '25px';
-  container.style.background = 'white';
-  container.style.width = '450px';
-  container.style.borderRadius = '20px';
-  container.style.fontFamily = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
-  container.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)';
-  
-  const renderList = (title: string, list: string[], color: string) => `
-    <div style="margin-bottom: 15px;">
-      <h3 style="margin: 0 0 8px 0; color: ${color}; font-size: 14px;">${title} (${list.length})</h3>
-      <ul style="margin: 0; padding: 0 0 0 16px; font-size: 12px; color: #555;">
-        ${list.map(name => `<li>${name}</li>`).join('') || '<li style="list-style:none;">Nenhum</li>'}
-      </ul>
-    </div>
-  `;
-  
-  container.innerHTML = `
-    <h2 style="color: #1a5276; margin: 0 0 20px 0; border-bottom: 2px solid #1a5276; padding-bottom: 10px;">Relatório Diário</h2>
-    ${renderList('Faltas', data.faltas, '#e74c3c')}
-    ${renderList('Afastamentos', data.afastamentos, '#f39c12')}
-    ${renderList('Férias', data.ferias, '#3498db')}
-    <div style="margin-top: 20px; padding: 15px; background: #f8f9f9; border-radius: 10px; display: flex; justify-content: space-between;">
-      <span style="font-weight: bold; color: #2c3e50;">Absenteísmo Total:</span>
-      <span style="color: #c0392b; font-weight: bold; font-size: 18px;">${data.percentual}</span>
-    </div>
-  `;
-  document.body.appendChild(container);
-  
-  // Faster render option: use standard scale, avoid high overhead
-  const canvas = await html2canvas(container, { scale: 1.5 });
-  document.body.removeChild(container);
-  
-  const link = document.createElement('a');
-  link.download = 'resumo_turno_detalhado.png';
-  link.href = canvas.toDataURL('image/png', 0.8); // slight quality reduction for speed
-  link.click();
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const generatedAt = new Date().toLocaleString('pt-BR');
+  const totalOcorrencias = data.faltas.length + data.afastamentos.length + data.ferias.length;
+
+  doc.setFillColor(17, 24, 39);
+  doc.rect(0, 0, 210, 32, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('Resumo do Turno', 14, 13);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text('Relatório Executivo de Frequência', 14, 20);
+  doc.text(`Gerado em ${generatedAt}`, 14, 26);
+
+  doc.setTextColor(31, 41, 55);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('Indicadores-chave', 14, 42);
+
+  autoTable(doc, {
+    startY: 46,
+    theme: 'grid',
+    head: [['Indicador', 'Valor']],
+    body: [
+      ['Absenteísmo Total', data.percentual],
+      ['Faltas', String(data.faltas.length)],
+      ['Afastamentos', String(data.afastamentos.length)],
+      ['Em Férias', String(data.ferias.length)],
+      ['Total de Ocorrências', String(totalOcorrencias)],
+    ],
+    headStyles: { fillColor: [31, 41, 55], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 10, cellPadding: 2.5, textColor: [55, 65, 81] },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 100 },
+      1: { halign: 'right', cellWidth: 70 },
+    },
+  });
+
+  const sectionRows = [
+    ...data.faltas.map((name) => ['Falta', name]),
+    ...data.afastamentos.map((name) => ['Afastamento', name]),
+    ...data.ferias.map((name) => ['Férias', name]),
+  ];
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 8,
+    theme: 'striped',
+    head: [['Categoria', 'Colaborador']],
+    body: sectionRows.length ? sectionRows : [['Sem ocorrências', 'Nenhum colaborador registrado']],
+    headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 10, textColor: [31, 41, 55], cellPadding: 2.5 },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: 55 },
+      1: { cellWidth: 130 },
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+  });
+
+  const footerY = (doc as any).lastAutoTable.finalY + 12;
+  doc.setDrawColor(229, 231, 235);
+  doc.line(14, footerY, 196, footerY);
+  doc.setFontSize(9);
+  doc.setTextColor(107, 114, 128);
+  doc.text('Vonixx Frequência · Documento de uso interno', 14, footerY + 5);
+
+  doc.save('resumo_turno_detalhado.pdf');
 };

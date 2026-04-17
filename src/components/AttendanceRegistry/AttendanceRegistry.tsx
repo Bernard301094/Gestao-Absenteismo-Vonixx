@@ -3,7 +3,7 @@ import {
   CalendarX, UserPlus, CheckCircle2, Search,
   Edit2, Trash2, XCircle, Palmtree, Stethoscope,
   MessageSquare, Activity, CalendarDays, Lock, Unlock,
-  ShieldCheck, Camera
+  ShieldCheck, FileText
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { generateStatsImage } from '../../utils/generateStatsImage';
@@ -170,7 +170,7 @@ export default function AttendanceRegistry({
         : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
   }));
 
-  const handleGenerateImage = () => {
+  const handleGeneratePDF = () => {
     const listF = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'F').map(e => e.name);
     const listA = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'A').map(e => e.name);
     const listFe = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'Fe').map(e => e.name);
@@ -304,11 +304,11 @@ export default function AttendanceRegistry({
             </button>
 
             <button
-              onClick={handleGenerateImage}
+              onClick={handleGeneratePDF}
               className="inline-flex items-center gap-2 bg-violet-50 hover:bg-violet-100 text-violet-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 border border-violet-200"
             >
-              <Camera className="w-3.5 h-3.5" />
-              Exportar Resumo (Img)
+              <FileText className="w-3.5 h-3.5" />
+              Exportar Resumo (PDF)
             </button>
 
             {isLocked && (
