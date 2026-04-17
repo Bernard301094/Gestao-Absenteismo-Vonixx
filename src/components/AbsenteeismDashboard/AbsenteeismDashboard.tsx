@@ -46,27 +46,36 @@ interface DashboardProps {
   getInitials: (name: string) => string;
 }
 
-// ─── Componente de renderização Markdown com estilo rico ──────────────────────
+// ─── Markdown com renderers inline — força texto branco no fundo escuro ──────
 function AIMarkdown({ content }: { content: string }) {
   return (
-    <div className="prose prose-sm max-w-none
-      prose-headings:font-black prose-headings:tracking-tight prose-headings:mb-2 prose-headings:mt-4 prose-headings:first:mt-0
-      prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
-      prose-h1:text-white prose-h2:text-blue-100 prose-h3:text-blue-200
-      prose-p:text-white/90 prose-p:leading-relaxed prose-p:mb-3 prose-p:last:mb-0
-      prose-strong:text-white prose-strong:font-black
-      prose-em:text-blue-200 prose-em:not-italic prose-em:font-semibold
-      prose-li:text-white/85 prose-li:mb-1.5 prose-li:leading-relaxed
-      prose-ul:my-3 prose-ul:space-y-1
-      prose-ol:my-3 prose-ol:space-y-1
-      [&>ul]:list-none [&>ul]:pl-0
-      [&_ul]:list-none [&_ul]:pl-0
-      [&_ol]:list-decimal [&_ol]:pl-4
-      [&_li]:relative [&_li]:pl-5
-      [&_ul>li]:before:content-['▸'] [&_ul>li]:before:absolute [&_ul>li]:before:left-0 [&_ul>li]:before:text-blue-300 [&_ul>li]:before:font-bold
-      prose-hr:border-white/15 prose-hr:my-4
-      prose-code:text-blue-200 prose-code:bg-blue-900/40 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:font-mono prose-code:before:content-none prose-code:after:content-none">
-      <ReactMarkdown>{content}</ReactMarkdown>
+    <div style={{ color: '#e2e8f0', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
+      <ReactMarkdown
+        components={{
+          h1: ({ children }) => <h1 style={{ color: '#ffffff', fontWeight: 900, fontSize: '0.9rem', marginBottom: '0.5rem', marginTop: '1rem' }}>{children}</h1>,
+          h2: ({ children }) => <h2 style={{ color: '#ffffff', fontWeight: 900, fontSize: '0.875rem', marginBottom: '0.5rem', marginTop: '1rem' }}>{children}</h2>,
+          h3: ({ children }) => <h3 style={{ color: '#bae6fd', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.375rem', marginTop: '0.75rem' }}>{children}</h3>,
+          p:  ({ children }) => <p  style={{ color: '#e2e8f0', marginBottom: '0.75rem', lineHeight: '1.65' }}>{children}</p>,
+          strong: ({ children }) => <strong style={{ color: '#ffffff', fontWeight: 900 }}>{children}</strong>,
+          em: ({ children }) => <em style={{ color: '#7dd3fc', fontStyle: 'normal', fontWeight: 600 }}>{children}</em>,
+          ul: ({ children }) => <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0' }}>{children}</ul>,
+          ol: ({ children }) => <ol style={{ paddingLeft: '1.25rem', margin: '0.5rem 0' }}>{children}</ol>,
+          li: ({ children }) => (
+            <li style={{ color: '#e2e8f0', marginBottom: '0.375rem', paddingLeft: '1.125rem', position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 0, color: '#38bdf8', fontWeight: 700 }}>▸</span>
+              {children}
+            </li>
+          ),
+          hr: () => <hr style={{ borderColor: '#334155', margin: '1rem 0' }} />,
+          code: ({ children }) => (
+            <code style={{ color: '#7dd3fc', background: '#1e3a5f', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
+              {children}
+            </code>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -130,7 +139,7 @@ export default function Dashboard({
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────────────── */}
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
         <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
@@ -144,33 +153,30 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ── AI Insights Card (Pattern Detection) ─────────────────────────── */}
+      {/* ── AI Insights Card ──────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <div className="relative rounded-2xl overflow-hidden shadow-xl">
-          {/* Fundo com gradiente rico */}
-          <div className="absolute inset-0 bg-gradient-to-br from-[#0f172a] via-[#1e3a5f] to-[#0c2a4a]" />
-          {/* Orbes decorativos */}
+          <div className="absolute inset-0 bg-[#0f1e36]" />
           <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
           <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
-          {/* Borda sutil */}
-          <div className="absolute inset-0 rounded-2xl border border-white/8 pointer-events-none" />
+          <div className="absolute inset-0 rounded-2xl border border-white/10 pointer-events-none" />
 
           <div className="relative p-5 sm:p-6">
             {/* Cabeçalho do card */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-400/20 to-indigo-500/20 border border-blue-400/25 flex items-center justify-center shrink-0 shadow-inner">
-                  <Sparkles className="w-5 h-5 text-blue-300" />
+                <div className="w-11 h-11 rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-5 h-5 text-sky-300" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-white font-black text-base sm:text-lg tracking-tight">Insights de IA</h3>
-                    <span className="hidden sm:inline-flex items-center gap-1 bg-blue-500/20 border border-blue-400/30 text-blue-300 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
-                      <Zap className="w-2.5 h-2.5" /> Beta
+                    <span className="hidden sm:inline-flex items-center gap-1 bg-sky-500/20 border border-sky-400/30 text-sky-300 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
+                      <Zap className="w-2.5 h-2.5" /> IA
                     </span>
                   </div>
-                  <p className="text-blue-200/60 text-xs font-medium mt-0.5">
-                    Análise de padrões de absenteísmo por dia da semana
+                  <p className="text-slate-400 text-xs font-medium mt-0.5">
+                    Análise de padrões de absenteisão por dia da semana
                   </p>
                 </div>
               </div>
@@ -187,7 +193,7 @@ export default function Dashboard({
                 <button
                   onClick={handleAnalyzePatterns}
                   disabled={isAnalyzingPatterns}
-                  className="flex items-center gap-2 bg-white hover:bg-blue-50 disabled:bg-white/80 text-blue-900 disabled:text-blue-900/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-900/30 active:scale-95 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 bg-white hover:bg-sky-50 disabled:bg-white/80 text-slate-900 disabled:text-slate-900/60 px-4 py-2 rounded-xl text-xs sm:text-sm font-black uppercase tracking-wider transition-all shadow-lg active:scale-95 disabled:cursor-not-allowed"
                 >
                   {isAnalyzingPatterns
                     ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analisando...</>
@@ -199,14 +205,14 @@ export default function Dashboard({
               </div>
             </div>
 
-            {/* Estado de carregamento */}
+            {/* Loading */}
             {isAnalyzingPatterns && (
               <div className="mt-5 flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                <Loader2 className="w-4 h-4 text-blue-300 animate-spin shrink-0" />
-                <p className="text-blue-200/80 text-sm">Processando dados de absenteísmo...</p>
+                <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
+                <p className="text-slate-300 text-sm">Processando dados de absenteisão...</p>
                 <div className="ml-auto flex gap-1">
                   {[0,1,2].map(i => (
-                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-blue-400/60 animate-pulse" style={{ animationDelay: `${i * 150}ms` }} />
+                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" style={{ animationDelay: `${i * 150}ms` }} />
                   ))}
                 </div>
               </div>
@@ -214,25 +220,23 @@ export default function Dashboard({
 
             {/* Erro */}
             {aiError && (
-              <div className="mt-5 flex items-start gap-3 bg-red-500/10 border border-red-400/25 rounded-xl px-4 py-3">
-                <div className="w-5 h-5 rounded-full bg-red-500/20 flex items-center justify-center shrink-0 mt-0.5">
+              <div className="mt-5 flex items-start gap-3 bg-red-900/30 border border-red-500/40 rounded-xl px-4 py-3">
+                <div className="w-5 h-5 rounded-full bg-red-500/30 flex items-center justify-center shrink-0 mt-0.5">
                   <span className="text-red-300 text-xs font-black">!</span>
                 </div>
-                <p className="text-red-200/90 text-sm leading-relaxed">{aiError}</p>
+                <p className="text-red-200 text-sm leading-relaxed">{aiError}</p>
               </div>
             )}
 
-            {/* Conteúdo do insight */}
+            {/* Insight gerado */}
             {aiInsights && !isAnalyzingPatterns && (
               <div className="mt-5">
-                {/* Separador */}
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
-                  <span className="text-white/30 text-[10px] font-bold uppercase tracking-widest">Análise gerada</span>
-                  <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                  <div className="h-px flex-1 bg-slate-600" />
+                  <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Análise gerada</span>
+                  <div className="h-px flex-1 bg-slate-600" />
                 </div>
-
-                <div className="bg-white/6 backdrop-blur-sm border border-white/10 rounded-xl p-5">
+                <div className="bg-slate-800/60 border border-slate-600 rounded-xl p-5">
                   <AIMarkdown content={aiInsights} />
                 </div>
               </div>
@@ -242,10 +246,10 @@ export default function Dashboard({
             {!aiInsights && !isAnalyzingPatterns && !aiError && (
               <div className="mt-5 flex flex-col items-center gap-2 py-4 text-center">
                 <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-blue-300/60" />
+                  <Bot className="w-5 h-5 text-slate-500" />
                 </div>
-                <p className="text-blue-200/40 text-xs max-w-xs">
-                  Clique em <strong className="text-blue-200/60">Analisar Padrões</strong> para detectar tendências de absenteísmo com IA.
+                <p className="text-slate-400 text-xs max-w-xs">
+                  Clique em <strong className="text-slate-200">Analisar Padrões</strong> para detectar tendências de absenteisão com IA.
                 </p>
               </div>
             )}
@@ -253,7 +257,7 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── Alerts ─────────────────────────────────────────────────────────── */}
+      {/* ── Alerts ─────────────────────────────────────────────────────────────────── */}
       {isSupervision && alerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
           {alerts.map((alert, idx) => (
@@ -274,7 +278,7 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── KPI Cards ──────────────────────────────────────────────────────── */}
+      {/* ── KPI Cards ──────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
@@ -289,7 +293,7 @@ export default function Dashboard({
 
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
-            {selectedDay === 'all' ? 'Absenteísmo' : 'Presentes'}
+            {selectedDay === 'all' ? 'Absenteisão' : 'Presentes'}
           </h3>
           <div className="text-3xl sm:text-4xl font-extrabold text-orange-600">
             {selectedDay === 'all'
@@ -318,9 +322,7 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          ZONA 1 — Evolução do Mês
-      ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── Evolução do Mês ────────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Evolução do Mês</p>
@@ -335,9 +337,7 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          ZONA 2 — Análise Detalhada
-      ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── Análise Detalhada ────────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Análise Detalhada</p>
@@ -359,9 +359,7 @@ export default function Dashboard({
         />
       )}
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          ZONA 3 — Detalhamento por Funcionário
-      ═══════════════════════════════════════════════════════════════════ */}
+      {/* ── Detalhamento por Funcionário ───────────────────────────────────────────── */}
       <div>
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Detalhamento por Funcionário</p>
         <EmployeeTable
