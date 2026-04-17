@@ -162,7 +162,6 @@ export default function Dashboard({
           <div className="absolute inset-0 rounded-2xl border border-white/10 pointer-events-none" />
 
           <div className="relative p-5 sm:p-6">
-            {/* Cabeçalho do card */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shrink-0">
@@ -205,7 +204,6 @@ export default function Dashboard({
               </div>
             </div>
 
-            {/* Loading */}
             {isAnalyzingPatterns && (
               <div className="mt-5 flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                 <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
@@ -218,7 +216,6 @@ export default function Dashboard({
               </div>
             )}
 
-            {/* Erro */}
             {aiError && (
               <div className="mt-5 flex items-start gap-3 bg-red-900/30 border border-red-500/40 rounded-xl px-4 py-3">
                 <div className="w-5 h-5 rounded-full bg-red-500/30 flex items-center justify-center shrink-0 mt-0.5">
@@ -228,7 +225,6 @@ export default function Dashboard({
               </div>
             )}
 
-            {/* Insight gerado */}
             {aiInsights && !isAnalyzingPatterns && (
               <div className="mt-5">
                 <div className="flex items-center gap-3 mb-4">
@@ -242,7 +238,6 @@ export default function Dashboard({
               </div>
             )}
 
-            {/* Estado vazio */}
             {!aiInsights && !isAnalyzingPatterns && !aiError && (
               <div className="mt-5 flex flex-col items-center gap-2 py-4 text-center">
                 <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
@@ -351,10 +346,11 @@ export default function Dashboard({
         </div>
       )}
 
+      {/* ── Distribuição do Dia ─────────────────────────────────────────────────── */}
       {selectedDay !== 'all' && (
         <DistributionChart
           employees={employees}
-          attendance={attendance}
+          getStatusForDay={getStatusForDay}
           selectedDay={selectedDay as number}
         />
       )}

@@ -6,13 +6,13 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import type { Employee, AttendanceRecord } from '../../types';
+import type { Employee } from '../../types';
 
-// ─── Types ────────────────────────────────────────────────────────────────────────────
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface DistributionChartProps {
   employees: Employee[];
-  attendance: AttendanceRecord;
+  getStatusForDay: (empId: string, day: number) => string;
   selectedDay: number;
 }
 
@@ -21,7 +21,7 @@ interface PieEntry {
   value: number;
 }
 
-// ─── Palette ───────────────────────────────────────────────────────────────────────────
+// ─── Palette ───────────────────────────────────────────────────────────────────
 
 const PALETTE = {
   presentes: {
@@ -56,7 +56,7 @@ const PIE_COLORS = [
   PALETTE.outros.solid,
 ];
 
-// ─── Custom Tooltip ────────────────────────────────────────────────────────────────────
+// ─── Custom Tooltip ────────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
@@ -82,16 +82,17 @@ const CustomTooltip = ({ active, payload }: any) => {
   );
 };
 
-// ─── Component ───────────────────────────────────────────────────────────────────────────
+// ─── Component ─────────────────────────────────────────────────────────────────
 
-export default function DistributionChart({ employees, attendance, selectedDay }: DistributionChartProps) {
+export default function DistributionChart({ employees, getStatusForDay, selectedDay }: DistributionChartProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const presentes = employees.filter(e => attendance[e.id]?.[selectedDay] === 'P').length;
-  const faltas    = employees.filter(e => attendance[e.id]?.[selectedDay] === 'F').length;
+  // Usa getStatusForDay (inclui pendingAttendance + fallback 'P') igual ao resto do sistema
+  const presentes = employees.filter(e => getStatusForDay(e.id, selectedDay) === 'P').length;
+  const faltas    = employees.filter(e => getStatusForDay(e.id, selectedDay) === 'F').length;
   const outros    = employees.filter(e => {
-    const s = attendance[e.id]?.[selectedDay];
+    const s = getStatusForDay(e.id, selectedDay);
     return s === 'Fe' || s === 'A';
   }).length;
 
@@ -162,7 +163,7 @@ export default function DistributionChart({ employees, attendance, selectedDay }
         </div>
       </div>
 
-      {/* ─── Chart: minWidth:0 evita width=-1 em layouts flex/grid ─── */}
+      {/* ─── Chart ─── */}
       <div style={{ height: '300px', width: '100%', maxWidth: '420px', position: 'relative', minWidth: 0 }}>
         {mounted && (
           <ResponsiveContainer width="99%" height="100%">
