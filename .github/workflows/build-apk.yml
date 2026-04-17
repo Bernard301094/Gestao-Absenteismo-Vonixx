@@ -29,6 +29,7 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: 'gradle'
 
       # 3. Node.js
       - name: Setup Node.js
@@ -43,12 +44,13 @@ jobs:
 
       # 5. Instalar dependencias Node (incluye @capacitor/cli, core, android)
       - name: Instalar dependencias
-        run: npm install
+        run: npm ci
 
       # 6. Crear .env con secrets de Firebase
+      # IMPORTANTE: heredoc SEM aspas simples para que os secrets sejam expandidos
       - name: Criar arquivo .env
         run: |
-          cat > .env << 'EOF'
+          cat > .env << EOF
           VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
           VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}
@@ -75,48 +77,64 @@ jobs:
       - name: Capacitor sync Android
         run: npx cap sync android
 
-      # 10. Dar permisos de ejecución a gradlew
+      # 10. Cache do Gradle (acelera builds subsequentes)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            android/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # 11. Dar permisos de ejecución a gradlew
       - name: Permissões Gradle
         run: chmod +x android/gradlew
 
-      # 11. Compilar APK debug
+      # 12. Compilar APK debug
       - name: Compilar APK (debug)
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # 12. Renombrar APK con timestamp
+      # 13. Renombrar APK con timestamp
       - name: Renomear APK
         run: |
           TIMESTAMP=$(date +'%Y%m%d_%H%M')
           cp android/app/build/outputs/apk/debug/app-debug.apk \
              android/app/build/outputs/apk/debug/vonixx-frequencia-${TIMESTAMP}.apk
           echo "APK_NAME=vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
+          echo "APK_PATH=android/app/build/outputs/apk/debug/vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
 
-      # 13. Subir APK como artifact (disponible 30 días)
+      # 14. Subir APK como artifact (disponible 30 días)
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.APK_NAME }}
-          path: android/app/build/outputs/apk/debug/${{ env.APK_NAME }}
+          path: ${{ env.APK_PATH }}
           retention-days: 30
 
-      # 14. Crear Release en GitHub (solo si es un tag v*)
+      # 15. Crear Release en GitHub (solo si es un tag v* o workflow_dispatch con tag)
       - name: Crear GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
-          files: android/app/build/outputs/apk/debug/${{ env.APK_NAME }}
-          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          files: ${{ env.APK_PATH }}
+          name: "Vonixx Frequência ${{ github.event.inputs.release_tag || github.ref_name }}"
           body: |
-            ## Vonixx Frequência ${{ github.ref_name }}
+            ## Vonixx Frequência ${{ github.event.inputs.release_tag || github.ref_name }}
 
             ### Como instalar
             1. Baixe o arquivo `.apk` abaixo
-            2. No Android, vá em **Configurações → Segurança → Fontes desconhecidas** e habilite
+            2. No Android: **Configurações → Segurança → Fontes desconhecidas** → habilitar
             3. Abra o arquivo `.apk` para instalar
 
-            > Build gerado automaticamente pelo GitHub Actions
+            ---
+            > ✅ Build gerado automaticamente pelo GitHub Actions
+            > 📅 ${{ github.event.head_commit.timestamp }}
           draft: false
           prerelease: false
         env:
