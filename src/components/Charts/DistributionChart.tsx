@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import type { Employee } from '../../types';
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────────────
 
 interface DistributionChartProps {
   employees: Employee[];
@@ -21,7 +21,7 @@ interface PieEntry {
   value: number;
 }
 
-// ─── Palette ───────────────────────────────────────────────────────────────────
+// ─── Palette ───────────────────────────────────────────────────────────────────────────
 
 const PALETTE = {
   presentes: {
@@ -56,7 +56,7 @@ const PIE_COLORS = [
   PALETTE.outros.solid,
 ];
 
-// ─── Custom Tooltip ────────────────────────────────────────────────────────────
+// ─── Custom Tooltip ────────────────────────────────────────────────────────────────────
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
@@ -82,13 +82,12 @@ const CustomTooltip = ({ active, payload }: any) => {
   );
 };
 
-// ─── Component ─────────────────────────────────────────────────────────────────
+// ─── Component ───────────────────────────────────────────────────────────────────────────
 
 export default function DistributionChart({ employees, getStatusForDay, selectedDay }: DistributionChartProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  // Usa getStatusForDay (inclui pendingAttendance + fallback 'P') igual ao resto do sistema
   const presentes = employees.filter(e => getStatusForDay(e.id, selectedDay) === 'P').length;
   const faltas    = employees.filter(e => getStatusForDay(e.id, selectedDay) === 'F').length;
   const outros    = employees.filter(e => {
@@ -103,6 +102,8 @@ export default function DistributionChart({ employees, getStatusForDay, selected
   ].filter(d => d.value > 0);
 
   const total = presentes + faltas + outros;
+  // % de presença: presentes vs. todos os demais
+  const pctPresenca = total > 0 ? Math.round((presentes / total) * 100) : 0;
 
   if (!mounted || pieData.length === 0) {
     return (
@@ -163,7 +164,7 @@ export default function DistributionChart({ employees, getStatusForDay, selected
         </div>
       </div>
 
-      {/* ─── Chart ─── */}
+      {/* ─── Chart: minWidth:0 evita width=-1 em layouts flex/grid ─── */}
       <div style={{ height: '300px', width: '100%', maxWidth: '420px', position: 'relative', minWidth: 0 }}>
         {mounted && (
           <ResponsiveContainer width="99%" height="100%">
@@ -197,6 +198,7 @@ export default function DistributionChart({ employees, getStatusForDay, selected
           </ResponsiveContainer>
         )}
 
+        {/* Centro: % de presença com cor semafórica */}
         <div
           style={{
             position: 'absolute',
@@ -209,11 +211,23 @@ export default function DistributionChart({ employees, getStatusForDay, selected
             pointerEvents: 'none',
           }}
         >
-          <span style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
-            {total}
+          <span style={{
+            fontSize: '26px',
+            fontWeight: 800,
+            lineHeight: 1,
+            color: pctPresenca >= 80 ? '#059669' : pctPresenca >= 60 ? '#d97706' : '#e11d48',
+          }}>
+            {pctPresenca}%
           </span>
-          <span style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            Total
+          <span style={{
+            fontSize: '10px',
+            color: '#94a3b8',
+            marginTop: '3px',
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+            textAlign: 'center',
+          }}>
+            Presença
           </span>
         </div>
       </div>
