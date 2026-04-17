@@ -14,7 +14,8 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
+    const raf = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   return (
@@ -25,7 +26,7 @@ export default function PerformanceChart({ data }: PerformanceChartProps) {
         </h3>
         <TrendingUp className="w-5 h-5 text-emerald-500" />
       </div>
-      <div className="h-[200px] w-full">
+      <div className="h-[200px] w-full" style={{ minWidth: 0 }}>
         {mounted && (
           <ResponsiveContainer width="99%" height="100%">
             <BarChart data={data} layout="vertical" margin={{ left: 40, right: 40 }}>
