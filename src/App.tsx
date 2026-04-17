@@ -41,7 +41,7 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
-  const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<string>('all');
+  const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<'A' | 'B' | 'C' | 'D'>('A');
 
   const daysInMonth = useMemo(
     () => getDaysInMonth(currentMonth, currentYear),
@@ -56,12 +56,6 @@ export default function App() {
     return daysInMonth;
   }, [currentMonth, currentYear, daysInMonth]);
 
-  const data = useFirestoreData({
-    currentMonth,
-    currentYear,
-    daysInMonth,
-  });
-
   const VALID_WORK_DAYS = useMemo(() => {
     const days: number[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
@@ -74,6 +68,18 @@ export default function App() {
     (day: number) => isWorkDay(day, currentMonth, currentYear),
     [currentMonth, currentYear]
   );
+
+  const data = useFirestoreData({
+    user: auth.user,
+    currentShift: auth.currentShift,
+    isSupervision: auth.isSupervision,
+    isAdminUser: auth.isAdminUser,
+    supervisionShiftFilter,
+    currentMonth,
+    currentYear,
+    selectedDay,
+    VALID_WORK_DAYS,
+  });
 
   const analytics = useDashboardAnalytics({
     employees: data.employees,
@@ -89,7 +95,7 @@ export default function App() {
     isSupervision: auth.isSupervision,
     searchTerm,
     statusFilter,
-    sortOrder: sortOrder,
+    sortOrder,
     registroSearchTerm,
     isValidDay,
   });
@@ -101,7 +107,7 @@ export default function App() {
     }
   }, [auth.isSupervision, activeTab]);
 
-  // ─── Day Navigation ─────────────────────────────────────────────────────────
+  // ─── Day Navigation ────────────────────────────────────────────────────────
   useEffect(() => {
     if (
       selectedDay !== 'all' &&
@@ -179,7 +185,6 @@ export default function App() {
           <SectionLoader />
         ) : (
           <ErrorBoundary>
-            {/* Suspense individual por tab — evita React error #306 */}
             {activeTab === 'dashboard' && (
               <Suspense fallback={<SectionLoader />}>
                 <AbsenteeismDashboard
@@ -245,7 +250,6 @@ export default function App() {
               </Suspense>
             )}
 
-            {/* ─── FÉRIAS: recebe vacationStats de analytics ─── */}
             {activeTab === 'ferias' && !auth.isSupervision && (
               <Suspense fallback={<SectionLoader />}>
                 <VacationManagement
@@ -279,7 +283,7 @@ export default function App() {
         )}
       </main>
 
-      {/* ─── Modals ─────────────────────────────────────────────────────────── */}
+      {/* ─── Modals ──────────────────────────────────────────────────────────── */}
       {data.showAddEmployeeModal && (
         <ErrorBoundary>
           <Suspense fallback={null}>
