@@ -244,179 +244,53 @@ export default function VacationAnalytics({
           style={{
             backgroundImage:
               'linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
+            backgroundSize: '24px 24px',
           }}
         />
-        <div className="absolute -top-12 -right-12 w-56 h-56 rounded-full bg-blue-400/10 blur-3xl pointer-events-none" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center gap-4">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center shrink-0">
-              <CalendarDays className="w-6 h-6 text-white" strokeWidth={2} />
-            </div>
-            <div>
-              <h1 className="text-lg font-black text-white leading-tight">
-                Análise de Férias · Turno {currentShift}
-              </h1>
-              <p className="text-blue-200/60 text-xs font-medium mt-0.5">
-                Ano {currentYear} · Atualizado em{' '}
-                {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-              </p>
-            </div>
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black text-blue-300 uppercase tracking-widest mb-1">Gestão de Férias</p>
+            <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight leading-none">
+              Analytics de Férias
+            </h2>
+            <p className="text-blue-200/60 text-xs mt-1.5 font-medium">
+              Turno {currentShift} · Ano {currentYear}
+            </p>
           </div>
-          {roles.length > 0 && (
-            <div className="flex items-center gap-2 self-start sm:self-auto min-w-[140px]">
-              <CustomDropdown
-                value={roleFilter}
-                onChange={(val) => setRoleFilter(val)}
-                options={[
-                  { value: 'all', label: 'Todos os Cargos' },
-                  ...roles.map(r => ({ value: r, label: r }))
-                ]}
-                compact
-                variant="header"
-              />
-            </div>
-          )}
+          <div className="shrink-0">
+            <CustomDropdown
+              value={roleFilter}
+              onChange={setRoleFilter}
+              options={[
+                { value: 'all', label: 'Todos os Cargos' },
+                ...roles.map(r => ({ value: r, label: r })),
+              ]}
+              className="min-w-[180px] text-sm"
+            />
+          </div>
         </div>
       </div>
 
-      {/* ── KPI Grid ──────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8 gap-2.5">
-        {[
-          { label: 'Total',          value: kpis.total,         sub: 'colaboradores', acc: 'bg-gray-400'   },
-          { label: 'Em Férias',      value: kpis.em_ferias,     sub: 'agora',         acc: 'bg-orange-500' },
-          { label: 'Concluídas',     value: kpis.concluidas,    sub: 'no ciclo',      acc: 'bg-emerald-500'},
-          { label: 'Agendadas',      value: kpis.agendadas,     sub: 'previstas',     acc: 'bg-blue-600'   },
-          { label: 'Agendar Breve',  value: kpis.agendar_breve, sub: 'atenção',       acc: 'bg-amber-500'  },
-          { label: 'Críticos',       value: kpis.criticos,      sub: 'vencidos',      acc: 'bg-red-600'    },
-          { label: 'Aquisitivo',     value: kpis.em_aquisitivo, sub: 'período',       acc: 'bg-cyan-500'   },
-          { label: 'Aguardando',     value: kpis.aguardando,    sub: 'dados',         acc: 'bg-slate-400'  },
-        ].map(({ label, value, sub, acc }) => (
-          <KpiCard key={label} label={label} value={value} sub={sub} accentClass={acc} />
-        ))}
+      {/* ── KPI Grid ────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <KpiCard label="Em Férias Agora"   value={kpis.em_ferias}     sub="colaboradores ativos"    accentClass="bg-orange-400" />
+        <KpiCard label="Férias Concluídas" value={kpis.concluidas}    sub="no histórico"            accentClass="bg-emerald-400" />
+        <KpiCard label="Agendadas"         value={kpis.agendadas}     sub="próximas a iniciar"      accentClass="bg-blue-400" />
+        <KpiCard label="Críticos / Venc."  value={kpis.criticos}      sub="prazo expirado"          accentClass="bg-red-500" />
       </div>
 
-      {/* ── Alertas Críticos (Banner) ─────────────────────────────────────── */}
-      {vacationOverlapAlerts.length > 0 && (
-        <div className="bg-red-50 border border-red-200 border-l-4 border-l-red-500 rounded-2xl p-4 flex gap-3 items-start">
-          <div className="w-9 h-9 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
-            <ShieldAlert className="w-5 h-5 text-red-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-black text-red-800 uppercase tracking-wider mb-1.5">
-              ⚠ Alerta de Cobertura Crítica
-            </p>
-            <div className="space-y-3 mt-2">
-              {vacationOverlapAlerts.map((a, i) => (
-                <div key={i} className="bg-white/60 rounded-xl p-3 border border-red-100">
-                  <p className="text-xs text-red-700 font-medium">· {a}</p>
-                  <div className="mt-3">
-                    {!aiResolutions[i] && (
-                      <button
-                        onClick={() => handleSuggestResolution(i, a)}
-                        disabled={isResolving[i]}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm active:scale-95"
-                      >
-                        {isResolving[i] ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                        Sugerir Resolução com IA
-                      </button>
-                    )}
-                    {aiResolutions[i] && (
-                      <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
-                        <div className="flex items-center gap-1.5 text-blue-800 mb-1.5">
-                          <Bot className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase tracking-wider">Sugestão da IA</span>
-                        </div>
-                        <p className="text-xs text-blue-900 font-medium leading-relaxed whitespace-pre-wrap">
-                          {aiResolutions[i]}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Alertas Críticos — Listagem ─────────────────────────────────── */}
+      {/* ── Em Férias Agora ──────────────────────────────────────────────── */}
       <Section
-        id="critical" expanded={expandedSection} onToggle={toggle}
-        title="Alertas Críticos — Agendar Imediatamente"
-        icon={<AlertCircle className="w-4 h-4 text-red-500" />}
-        iconBg="bg-red-100" count={alertasCriticos.length} accentClass="bg-red-100 text-red-700"
-      >
-        <div className="hidden sm:block">
-          <DataTable>
-            <thead>
-              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Fim Concessivo</Th><Th>Limite</Th><Th>Dias</Th><Th>Status</Th></tr>
-            </thead>
-            <tbody>
-              {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
-                <tr key={s.employeeId} className="bg-red-50/30 hover:bg-red-50/60 transition-colors">
-                  <Td muted mono>{i + 1}</Td>
-                  <Td><span className="font-black text-red-700 uppercase text-[12px]">{s.employeeName}</span></Td>
-                  <Td><Badge color="red">{s.cargo}</Badge></Td>
-                  <Td mono><span className="text-red-500">{fmtDate(s.fimConcessivo)}</span></Td>
-                  <Td mono><span className="font-black text-red-600">{fmtDate(s.dataLimiteConcessao)}</span></Td>
-                  <Td><Badge color="red">{s.diasParaVencer}d</Badge></Td>
-                  <Td><Badge color="red">🔴 Crítico</Badge></Td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={7} className="py-10 text-center text-sm text-emerald-500 italic">
-                    ✓ Nenhum alerta crítico no momento
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </DataTable>
-        </div>
-        <div className="sm:hidden p-4 space-y-3 bg-red-50/10">
-          {alertasCriticos.length > 0 ? alertasCriticos.map((s, i) => (
-            <div key={s.employeeId} className="bg-white border border-red-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">#{i + 1}</span>
-                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
-                </div>
-                <Badge color="red">{s.cargo}</Badge>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-[11px]">
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim Concessivo</p>
-                  <p className="text-gray-700 font-mono">{fmtDate(s.fimConcessivo)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Data Limite</p>
-                  <p className="text-red-600 font-black font-mono">{fmtDate(s.dataLimiteConcessao)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Dias p/ Vencer</p>
-                  <p className="text-red-700 font-black">{s.diasParaVencer}d</p>
-                </div>
-                <div className="flex items-end">
-                  <Badge color="red">🔴 Crítico</Badge>
-                </div>
-              </div>
-            </div>
-          )) : (
-            <p className="py-6 text-center text-xs text-emerald-500 italic bg-white rounded-xl border border-emerald-100">
-              ✓ Nenhum alerta crítico no momento
-            </p>
-          )}
-        </div>
-      </Section>
-
-      {/* ── Em Férias Agora ───────────────────────────────────────────────── */}
-      <Section
-        id="current" expanded={expandedSection} onToggle={toggle}
+        id="current"
+        expanded={expandedSection}
+        onToggle={toggle}
         title="Em Férias Agora"
-        icon={<TrendingUp className="w-4 h-4 text-orange-500" />}
-        iconBg="bg-orange-100" count={emFeriasAgora.length} accentClass="bg-orange-100 text-orange-700"
+        icon={<CalendarDays className="w-4 h-4 text-orange-600" />}
+        iconBg="bg-orange-50"
+        count={kpis.em_ferias}
+        accentClass="bg-orange-100 text-orange-700"
       >
+        {/* Desktop table */}
         <div className="hidden sm:block">
           <DataTable>
             <thead>
@@ -431,24 +305,25 @@ export default function VacationAnalytics({
                 
                 // Datas cravadas às 00:00:00 da zona local
                 const startLocal = new Date(yS, mS - 1, dS, 0, 0, 0);
-                const endLocal = new Date(yE, mE - 1, dE, 0, 0, 0);
+                const endLocal   = new Date(yE, mE - 1, dE, 0, 0, 0);
                 const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
                 
-                // Matemática imutável de dias totais
+                // Total de días del período (inicio y fin inclusivos)
                 const totalDays = Math.round((endLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
                 
-                // O dia atual é subtraído corretamente do fim a cada viragem da meia-noite
-                let remaining = Math.round((endLocal.getTime() - todayLocal.getTime()) / 86400000) + 1;
-                if (remaining < 0) remaining = 0;
-                if (remaining > totalDays) remaining = totalDays;
+                // Días ya gozados = desde inicio hasta HOY inclusive
+                let passed = Math.round((todayLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
+                if (passed < 0) passed = 0;
+                if (passed > totalDays) passed = totalDays;
                 
-                const passed = totalDays - remaining;
+                // Días restantes = total - gozados
+                const remaining = Math.max(totalDays - passed, 0);
                 
-                // Animação visual em percentagem contínua via ms (23:59:59 para ir até ao fim real do dia)
-                const startMs = startLocal.getTime();
-                const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
+                // Animação visual em percentagem contínua via ms
+                const startMs   = startLocal.getTime();
+                const endMs     = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
                 const currentMs = now.getTime();
-                const totalMs = endMs - startMs;
+                const totalMs   = endMs - startMs;
                 const elapsedMs = currentMs - startMs;
                 const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
                 
@@ -482,6 +357,8 @@ export default function VacationAnalytics({
             </tbody>
           </DataTable>
         </div>
+
+        {/* Mobile cards */}
         <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
           {emFeriasAgora.length > 0 ? emFeriasAgora.map((s, i) => {
             
@@ -489,21 +366,24 @@ export default function VacationAnalytics({
             const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
             
             const startLocal = new Date(yS, mS - 1, dS, 0, 0, 0);
-            const endLocal = new Date(yE, mE - 1, dE, 0, 0, 0);
+            const endLocal   = new Date(yE, mE - 1, dE, 0, 0, 0);
             const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
             
+            // Total de días del período (inicio y fin inclusivos)
             const totalDays = Math.round((endLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
             
-            let remaining = Math.round((endLocal.getTime() - todayLocal.getTime()) / 86400000) + 1;
-            if (remaining < 0) remaining = 0;
-            if (remaining > totalDays) remaining = totalDays;
+            // Días ya gozados = desde inicio hasta HOY inclusive
+            let passed = Math.round((todayLocal.getTime() - startLocal.getTime()) / 86400000) + 1;
+            if (passed < 0) passed = 0;
+            if (passed > totalDays) passed = totalDays;
             
-            const passed = totalDays - remaining;
+            // Días restantes = total - gozados
+            const remaining = Math.max(totalDays - passed, 0);
             
-            const startMs = startLocal.getTime();
-            const endMs = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
+            const startMs   = startLocal.getTime();
+            const endMs     = new Date(yE, mE - 1, dE, 23, 59, 59).getTime();
             const currentMs = now.getTime();
-            const totalMs = endMs - startMs;
+            const totalMs   = endMs - startMs;
             const elapsedMs = currentMs - startMs;
             const percentage = totalMs > 0 ? Math.min(Math.max((elapsedMs / totalMs) * 100, 0), 100) : 0;
             
@@ -548,142 +428,252 @@ export default function VacationAnalytics({
 
       {/* ── Previsão ──────────────────────────────────────────────────────── */}
       <Section
-        id="forecast" expanded={expandedSection} onToggle={toggle}
-        title="Previsão — Próximas Férias"
-        icon={<CalendarDays className="w-4 h-4 text-blue-600" />}
-        iconBg="bg-blue-100" count={previsaoProximas.length} accentClass="bg-blue-100 text-blue-700"
+        id="upcoming"
+        expanded={expandedSection}
+        onToggle={toggle}
+        title="Previsão de Próximas Férias"
+        icon={<TrendingUp className="w-4 h-4 text-blue-600" />}
+        iconBg="bg-blue-50"
+        count={previsaoProximas.length}
+        accentClass="bg-blue-100 text-blue-700"
       >
         <div className="hidden sm:block">
-          <DataTable maxHeight>
+          <DataTable>
             <thead>
-              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th center>Dias</Th><Th>Vence em</Th></tr>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início Previsto</Th><Th>Fim Previsto</Th><Th center>Dias</Th><Th center>Status</Th></tr>
             </thead>
             <tbody>
-              {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
-                <tr key={s.employeeId} className="hover:bg-gray-50 transition-colors">
-                  <Td muted mono>{i + 1}</Td>
-                  <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
-                  <Td><Badge color="blue">{s.cargo}</Badge></Td>
-                  <Td><span className="font-black text-blue-700 font-mono text-xs">{fmtDate(s.dataInicioFerias)}</span></Td>
-                  <Td mono>{fmtDate(s.dataFimFerias)}</Td>
-                  <Td center><span className="font-black text-gray-700 font-mono text-xs">{s.diasAGozar}</span></Td>
-                  <Td muted mono>{s.diasParaVencer}d</Td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={7} className="py-10 text-center text-sm text-gray-400 italic">
-                    Nenhuma previsão de férias
-                  </td>
-                </tr>
+              {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => {
+                const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
+                const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
+                const start = new Date(yS, mS - 1, dS);
+                const end   = new Date(yE, mE - 1, dE);
+                const dias  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+                const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const daysUntil  = Math.round((start.getTime() - todayLocal.getTime()) / 86400000);
+                return (
+                  <tr key={s.employeeId + i} className="hover:bg-gray-50 transition-colors">
+                    <Td muted mono>{i + 1}</Td>
+                    <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
+                    <Td><Badge color="blue">{s.cargo}</Badge></Td>
+                    <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
+                    <Td mono>{fmtDate(s.dataFimFerias)}</Td>
+                    <Td center accent>{isNaN(dias) ? '?' : dias}</Td>
+                    <Td center>
+                      {daysUntil <= 7
+                        ? <Badge color="red">Iminente ({daysUntil}d)</Badge>
+                        : daysUntil <= 30
+                        ? <Badge color="amber">Em breve ({daysUntil}d)</Badge>
+                        : <Badge color="blue">{daysUntil}d</Badge>
+                      }
+                    </Td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan={7} className="py-10 text-center text-sm text-gray-400 italic">Sem férias agendadas</td></tr>
               )}
             </tbody>
           </DataTable>
         </div>
-        <div className="sm:hidden p-4 space-y-3 bg-blue-50/10">
-          {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => (
-            <div key={s.employeeId} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">#{i + 1}</span>
-                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+        <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
+          {previsaoProximas.length > 0 ? previsaoProximas.map((s, i) => {
+            const [yS, mS, dS] = (s.dataInicioFerias || '').split('-').map(Number);
+            const [yE, mE, dE] = (s.dataFimFerias || '').split('-').map(Number);
+            const start = new Date(yS, mS - 1, dS);
+            const end   = new Date(yE, mE - 1, dE);
+            const dias  = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+            const todayLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const daysUntil  = Math.round((start.getTime() - todayLocal.getTime()) / 86400000);
+            return (
+              <div key={s.employeeId + i} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-1">#{i + 1}</span>
+                    <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                  </div>
+                  <Badge color="blue">{s.cargo}</Badge>
                 </div>
-                <Badge color="blue">{s.cargo}</Badge>
+                <div className="grid grid-cols-2 gap-2 text-[11px] mb-3">
+                  <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p><p className="text-gray-700 font-mono">{fmtDate(s.dataInicioFerias)}</p></div>
+                  <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p><p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias)}</p></div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-gray-600">{isNaN(dias) ? '?' : dias} dias</span>
+                  {daysUntil <= 7 ? <Badge color="red">Iminente ({daysUntil}d)</Badge>
+                    : daysUntil <= 30 ? <Badge color="amber">Em breve ({daysUntil}d)</Badge>
+                    : <Badge color="blue">{daysUntil}d</Badge>}
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-[11px]">
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
-                  <p className="text-blue-700 font-black font-mono">{fmtDate(s.dataInicioFerias)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p>
-                  <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Dias a Gozar</p>
-                  <p className="text-gray-900 font-black">{s.diasAGozar} dias</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Vence em</p>
-                  <p className="text-gray-500 font-bold">{s.diasParaVencer}d</p>
-                </div>
-              </div>
-            </div>
-          )) : (
-            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">
-              Nenhuma previsão de férias
-            </p>
+            );
+          }) : (
+            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">Sem férias agendadas</p>
           )}
         </div>
       </Section>
 
       {/* ── Histórico ─────────────────────────────────────────────────────── */}
       <Section
-        id="history" expanded={expandedSection} onToggle={toggle}
-        title="Histórico — Ciclos Concluídos"
+        id="history"
+        expanded={expandedSection}
+        onToggle={toggle}
+        title="Histórico de Férias Concluídas"
         icon={<History className="w-4 h-4 text-emerald-600" />}
-        iconBg="bg-emerald-100" count={historicoConcluido.length} accentClass="bg-emerald-100 text-emerald-700"
+        iconBg="bg-emerald-50"
+        count={historicoConcluido.length}
+        accentClass="bg-emerald-100 text-emerald-700"
       >
         <div className="hidden sm:block">
           <DataTable maxHeight>
             <thead>
-              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início Férias</Th><Th>Fim Férias</Th><Th center>Período</Th></tr>
+              <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Início</Th><Th>Fim</Th><Th center>Período</Th></tr>
             </thead>
             <tbody>
-              {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
-                <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+              {historicoConcluido.length > 0 ? historicoConcluido.map((r, i) => (
+                <tr key={r.id} className="hover:bg-gray-50 transition-colors">
                   <Td muted mono>{i + 1}</Td>
-                  <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
-                  <Td><Badge color="green">{s.cargo}</Badge></Td>
-                  <Td mono>{fmtDate(s.dataInicioFerias)}</Td>
-                  <Td mono>{fmtDate(s.dataFimFerias || '')}</Td>
-                  <Td center><Badge color="blue">#{s.numeroPeriodo}</Badge></Td>
+                  <Td><span className="font-black text-gray-900 uppercase text-[12px]">{r.employeeName}</span></Td>
+                  <Td><Badge color="green">{r.cargo}</Badge></Td>
+                  <Td mono>{fmtDate(r.dataInicioFerias)}</Td>
+                  <Td mono>{fmtDate(r.dataFimFerias)}</Td>
+                  <Td center accent>{r.numeroPeriodo}º</Td>
                 </tr>
               )) : (
-                <tr>
-                  <td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">
-                    Nenhum histórico encontrado
-                  </td>
-                </tr>
+                <tr><td colSpan={6} className="py-10 text-center text-sm text-gray-400 italic">Sem histórico disponível</td></tr>
               )}
             </tbody>
           </DataTable>
         </div>
-        <div className="sm:hidden p-4 space-y-3 bg-emerald-50/10">
-          {historicoConcluido.length > 0 ? historicoConcluido.map((s, i) => (
-            <div key={s.id} className="bg-white border border-emerald-100 rounded-xl p-4 shadow-sm">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">#{i + 1}</span>
-                  <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+        <div className="sm:hidden p-4 space-y-3 bg-gray-50/30 max-h-[420px] overflow-y-auto">
+          {historicoConcluido.length > 0 ? historicoConcluido.map((r, i) => (
+            <div key={r.id} className="bg-white border border-emerald-100 rounded-xl p-4 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest block mb-1">#{i + 1} · {r.numeroPeriodo}º período</span>
+                  <span className="text-sm font-black text-gray-900 uppercase">{r.employeeName}</span>
                 </div>
-                <Badge color="green">{s.cargo}</Badge>
+                <Badge color="green">{r.cargo}</Badge>
               </div>
-              <div className="grid grid-cols-2 gap-3 text-[11px]">
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p>
-                  <p className="text-gray-700 font-mono">{fmtDate(s.dataInicioFerias)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p>
-                  <p className="text-gray-700 font-mono">{fmtDate(s.dataFimFerias || '')}</p>
-                </div>
-                <div className="col-span-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-gray-400 font-bold uppercase text-[9px]">Período Aquisitivo:</p>
-                    <Badge color="blue">#{s.numeroPeriodo}</Badge>
-                  </div>
-                </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Início</p><p className="text-gray-700 font-mono">{fmtDate(r.dataInicioFerias)}</p></div>
+                <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Fim</p><p className="text-gray-700 font-mono">{fmtDate(r.dataFimFerias)}</p></div>
               </div>
             </div>
           )) : (
-            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">
-              Nenhum histórico encontrado
-            </p>
+            <p className="py-6 text-center text-xs text-gray-400 italic bg-white rounded-xl border border-gray-100">Sem histórico disponível</p>
           )}
         </div>
       </Section>
 
-      <div className="h-4" />
+      {/* ── Alertas Críticos ──────────────────────────────────────────────── */}
+      {alertasCriticos.length > 0 && (
+        <Section
+          id="critical"
+          expanded={expandedSection}
+          onToggle={toggle}
+          title="Alertas Críticos"
+          icon={<ShieldAlert className="w-4 h-4 text-red-600" />}
+          iconBg="bg-red-50"
+          count={alertasCriticos.length}
+          accentClass="bg-red-100 text-red-700"
+        >
+          <div className="hidden sm:block">
+            <DataTable>
+              <thead>
+                <tr><Th>#</Th><Th>Colaborador</Th><Th>Cargo</Th><Th>Admissão</Th><Th>Vencimento</Th><Th center>Dias Vencidos</Th></tr>
+              </thead>
+              <tbody>
+                {alertasCriticos.map((s, i) => {
+                  const venc = s.dataFimPeriodoAquisitivo
+                    ? Math.round((now.getTime() - new Date(s.dataFimPeriodoAquisitivo + 'T12:00:00').getTime()) / 86400000)
+                    : null;
+                  return (
+                    <tr key={s.employeeId} className="hover:bg-red-50/50 transition-colors">
+                      <Td muted mono>{i + 1}</Td>
+                      <Td><span className="font-black text-gray-900 uppercase text-[12px]">{s.employeeName}</span></Td>
+                      <Td><Badge color="red">{s.cargo}</Badge></Td>
+                      <Td mono>{fmtDate(s.dataAdmissao)}</Td>
+                      <Td mono>{fmtDate(s.dataFimPeriodoAquisitivo)}</Td>
+                      <Td center><span className="font-black text-red-600">{venc !== null ? `${venc}d` : '—'}</span></Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+          </div>
+          <div className="sm:hidden p-4 space-y-3 bg-gray-50/30">
+            {alertasCriticos.map((s, i) => {
+              const venc = s.dataFimPeriodoAquisitivo
+                ? Math.round((now.getTime() - new Date(s.dataFimPeriodoAquisitivo + 'T12:00:00').getTime()) / 86400000)
+                : null;
+              return (
+                <div key={s.employeeId} className="bg-white border border-red-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-red-500" />
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <span className="text-[10px] font-black text-red-600 uppercase tracking-widest block mb-1">#{i + 1} · CRÍTICO</span>
+                      <span className="text-sm font-black text-gray-900 uppercase">{s.employeeName}</span>
+                    </div>
+                    <Badge color="red">{s.cargo}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] mb-2">
+                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Admissão</p><p className="text-gray-700 font-mono">{fmtDate(s.dataAdmissao)}</p></div>
+                    <div><p className="text-gray-400 font-bold uppercase text-[9px] mb-0.5">Vencimento</p><p className="text-gray-700 font-mono">{fmtDate(s.dataFimPeriodoAquisitivo)}</p></div>
+                  </div>
+                  {venc !== null && (
+                    <p className="text-xs font-black text-red-600">{venc} dias vencidos</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Section>
+      )}
+
+      {/* ── Conflitos de Sobreposição ─────────────────────────────────────── */}
+      {vacationOverlapAlerts.length > 0 && (
+        <Section
+          id="conflicts"
+          expanded={expandedSection}
+          onToggle={toggle}
+          title="Conflitos de Sobreposição"
+          icon={<AlertCircle className="w-4 h-4 text-amber-600" />}
+          iconBg="bg-amber-50"
+          count={vacationOverlapAlerts.length}
+          accentClass="bg-amber-100 text-amber-700"
+        >
+          <div className="p-4 space-y-3">
+            {vacationOverlapAlerts.map((alert, i) => (
+              <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-amber-800 font-semibold leading-relaxed">{alert}</p>
+                    {aiResolutions[i] && (
+                      <div className="mt-3 bg-white border border-amber-200 rounded-lg p-3">
+                        <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1.5">Sugestão IA</p>
+                        <p className="text-xs text-gray-700 leading-relaxed">{aiResolutions[i]}</p>
+                      </div>
+                    )}
+                  </div>
+                  {!aiResolutions[i] && (
+                    <button
+                      onClick={() => handleSuggestResolution(i, alert)}
+                      disabled={isResolving[i]}
+                      className="shrink-0 flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 disabled:opacity-70"
+                    >
+                      {isResolving[i] ? <Loader2 className="w-3 h-3 animate-spin" /> : <Bot className="w-3 h-3" />}
+                      Resolver
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
     </div>
   );
 }
