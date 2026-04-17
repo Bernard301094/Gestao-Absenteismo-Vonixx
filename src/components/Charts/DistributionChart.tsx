@@ -301,7 +301,7 @@ export default function DistributionChart({
 
       {/* ── Chart ── */}
       <div style={{ height: '300px', width: '100%', maxWidth: '420px', position: 'relative' }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
           <PieChart>
             <Pie
               data={pieData}
