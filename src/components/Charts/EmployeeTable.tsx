@@ -31,7 +31,7 @@ interface EmployeeTableProps {
   statusFilter: string;
   setStatusFilter: (sf: any) => void;
   sortOrder: string;
-  setSortOrder: (so: any) => void;
+  setSortOrder: (so: string) => void;
   getStatusForDay: (empId: string, day: number) => string;
   setSelectedEmployeeDetail: (emp: any) => void;
   getInitials: (name: string) => string;
@@ -117,9 +117,7 @@ export default function EmployeeTable({
                 <th className="py-3.5 px-6 text-[10px] font-bold text-gray-400 uppercase tracking-[0.13em] border-b border-gray-100">
                   <button
                     onClick={() =>
-                      setSortOrder((prev: string) =>
-                        prev === 'asc_name' ? 'desc_name' : 'asc_name'
-                      )
+                      setSortOrder(sortOrder === 'asc_name' ? 'desc_name' : 'asc_name')
                     }
                     className="flex items-center gap-2 hover:text-blue-600 transition-colors group"
                   >
@@ -349,7 +347,7 @@ export default function EmployeeTable({
                   isExpanded ? 'border-blue-200 ring-2 ring-blue-500/5' : 'border-gray-100'
                 }`}
               >
-                {/* Accordion Header - Essential Info */}
+                {/* Accordion Header */}
                 <div 
                   onClick={() => setExpandedId(isExpanded ? null : emp.id)}
                   className="flex items-center justify-between p-3 cursor-pointer active:bg-gray-50"
@@ -369,7 +367,6 @@ export default function EmployeeTable({
                   </div>
 
                   <div className="flex items-center gap-4 shrink-0">
-                    {/* Summary Metric */}
                     <div className="flex flex-col items-end">
                       {selectedDay === 'all' ? (
                         <div className="flex items-center gap-1.5">
@@ -389,17 +386,15 @@ export default function EmployeeTable({
                   </div>
                 </div>
 
-                {/* Accordion Content - Detailed Info */}
+                {/* Accordion Content */}
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-1 animate-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-2 gap-4 py-3 border-t border-gray-50">
-                      {/* ID info */}
                       <div className="flex flex-col gap-1">
                         <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Identificador</span>
                         <span className="text-[10px] text-gray-600 font-mono font-bold">#{emp.id.padStart(3, '0')}</span>
                       </div>
 
-                      {/* Detail Metric (Trend or Progress) */}
                       <div className="flex flex-col gap-1">
                         <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">
                           {selectedDay === 'all' ? 'Tendência' : 'Status Completo'}
@@ -420,7 +415,6 @@ export default function EmployeeTable({
                         )}
                       </div>
 
-                      {/* Observations */}
                       <div className="col-span-2 flex flex-col gap-1">
                         <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Observações do Dia</span>
                         <div className="flex items-center gap-1.5 text-gray-500 italic text-[10px] bg-gray-50 p-2 rounded-lg border border-gray-100/50">
