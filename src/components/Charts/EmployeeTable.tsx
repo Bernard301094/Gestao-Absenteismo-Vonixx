@@ -192,9 +192,20 @@ export default function EmployeeTable({
                           {getInitials(emp.name)}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
-                            {emp.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                             <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
+                               {emp.name}
+                             </span>
+                             {/* ÍCONE DISCRETO APENAS NO DIA A DIA */}
+                             {selectedDay !== 'all' && emp.trend !== 'neutral' && (
+                               <div title={emp.trend === 'up' ? "Tendência de piora recente" : "Tendência de melhora recente"}>
+                                 {emp.trend === 'up' 
+                                   ? <TrendingUp className="w-3 h-3 text-red-500" /> 
+                                   : <TrendingDown className="w-3 h-3 text-emerald-500" />
+                                 }
+                               </div>
+                             )}
+                          </div>
                           <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wide mt-0.5">
                             {emp.role || 'Membro da Equipe'}
                           </span>
@@ -246,7 +257,9 @@ export default function EmployeeTable({
                               ? 'bg-red-50 text-red-700 ring-1 ring-red-200'
                               : status === 'Fe'
                               ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
-                              : 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                              : status === 'A'
+                              ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                              : ''
                           }`}
                         >
                           <div
@@ -257,7 +270,9 @@ export default function EmployeeTable({
                                 ? 'bg-red-500'
                                 : status === 'Fe'
                                 ? 'bg-blue-500'
-                                : 'bg-amber-500'
+                                : status === 'A'
+                                ? 'bg-amber-500'
+                                : ''
                             }`}
                           />
                           {status ? STATUS_LABELS[status] || status : '—'}
@@ -273,7 +288,7 @@ export default function EmployeeTable({
                             {emp.trend === 'up' ? (
                               <div
                                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100 text-red-600 cursor-help transition-transform hover:scale-105"
-                                title="Piorando: Faltas aumentaram na 2ª quinzena"
+                                title="Piorando: Faltas aumentaram recentemente"
                               >
                                 <TrendingUp className="w-3.5 h-3.5" />
                                 <span className="text-[10px] font-bold uppercase tracking-wide">
@@ -283,7 +298,7 @@ export default function EmployeeTable({
                             ) : emp.trend === 'down' ? (
                               <div
                                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 cursor-help transition-transform hover:scale-105"
-                                title="Melhorando: Faltas reduziram na 2ª quinzena"
+                                title="Melhorando: Faltas reduziram recentemente"
                               >
                                 <TrendingDown className="w-3.5 h-3.5" />
                                 <span className="text-[10px] font-bold uppercase tracking-wide">
@@ -293,7 +308,7 @@ export default function EmployeeTable({
                             ) : (
                               <div
                                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 cursor-help transition-transform hover:scale-105"
-                                title="Estável: Sem aumento de faltas"
+                                title="Estável: Sem alteração significativa"
                               >
                                 <Minus className="w-3.5 h-3.5" />
                                 <span className="text-[10px] font-bold uppercase tracking-wide">
@@ -302,13 +317,6 @@ export default function EmployeeTable({
                               </div>
                             )}
                           </div>
-
-                          {isSupervision && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 animate-pulse transition-opacity">
-                              <BrainCircuit className="w-3 h-3" />
-                              <span className="text-[9px] font-black uppercase tracking-widest">IA Disponível</span>
-                            </div>
-                          )}
                         </div>
                       </td>
                     )}

@@ -31,7 +31,6 @@ function SectionLoader() {
 }
 
 // ─── Constantes de data de início do app ─────────────────────────────────────
-// O app começou a registrar dados a partir do dia 3 de Abril de 2026.
 const APP_START_YEAR  = 2026;
 const APP_START_MONTH = 3;   // 0-indexed → Abril
 const APP_START_DAY   = 3;
@@ -62,25 +61,15 @@ export default function App() {
     return daysInMonth;
   }, [currentMonth, currentYear, daysInMonth]);
 
-  // ─── VALID_WORK_DAYS com limites de início e data atual ──────────────────
+  // ─── VALID_WORK_DAYS (Mapeia apenas dias de trabalho até hoje) ──────────
   const VALID_WORK_DAYS = useMemo(() => {
     const now = new Date();
     const todayYear  = now.getFullYear();
     const todayMonth = now.getMonth();
     const todayDay   = now.getDate();
 
-    // Dia mínimo: se estamos no mês/ano de início do app, começar do APP_START_DAY
-    const minDay =
-      currentYear === APP_START_YEAR && currentMonth === APP_START_MONTH
-        ? APP_START_DAY
-        : 1;
-
-    // Dia máximo: se estamos no mês/ano atual, limitar ao dia de hoje;
-    // caso contrário, ir até o final do mês.
-    const maxDay =
-      currentYear === todayYear && currentMonth === todayMonth
-        ? todayDay
-        : daysInMonth;
+    const minDay = currentYear === APP_START_YEAR && currentMonth === APP_START_MONTH ? APP_START_DAY : 1;
+    const maxDay = currentYear === todayYear && currentMonth === todayMonth ? todayDay : daysInMonth;
 
     const days: number[] = [];
     for (let d = minDay; d <= maxDay; d++) {
@@ -125,6 +114,25 @@ export default function App() {
     isValidDay,
   });
 
+  // ─── Lógica de abertura inteligente (Folga vs Trabalho) ──────────────────
+  useEffect(() => {
+    const now = new Date();
+    const today = now.getDate();
+    const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
+
+    // Se estamos no mês atual e o sistema acabou de carregar (selectedDay === 'all')
+    if (isCurrentMonth && selectedDay === 'all' && VALID_WORK_DAYS.length > 0) {
+      if (VALID_WORK_DAYS.includes(today)) {
+        // Se hoje for dia de trabalho, foca no dia de hoje
+        setSelectedDay(today);
+      } else {
+        // Se for folga, foca no último dia útil disponível
+        const lastWorkDay = VALID_WORK_DAYS[VALID_WORK_DAYS.length - 1];
+        setSelectedDay(lastWorkDay);
+      }
+    }
+  }, [VALID_WORK_DAYS, currentMonth, currentYear]);
+
   // ─── Access Control ────────────────────────────────────────────────────────
   useEffect(() => {
     if (auth.isSupervision && (activeTab === 'registro' || activeTab === 'ferias')) {
@@ -154,12 +162,10 @@ export default function App() {
     if (idx < VALID_WORK_DAYS.length - 1) setSelectedDay(VALID_WORK_DAYS[idx + 1]);
   };
 
-  // ─── Firebase connection test (dev only) ──────────────────────────────────
   useEffect(() => {
     testConnection();
   }, []);
 
-  // ─── Render: Auth Guard ────────────────────────────────────────────────────
   if (!auth.user) {
     return (
       <ErrorBoundary>
@@ -175,7 +181,6 @@ export default function App() {
     );
   }
 
-  // ─── Render: App ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 font-sans pb-16 overflow-x-hidden">
       <ErrorBoundary>

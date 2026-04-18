@@ -133,34 +133,49 @@ export function useDashboardAnalytics({
 
   // ─── Dados de Funcionários ─────────────────────────────────────────────────
 
-  const employeeData = useMemo<EmployeeWithStats[]>(() => {
-    return employees.map(emp => {
-      let faltas = 0;
-      let firstHalfFaltas = 0;
-      let secondHalfFaltas = 0;
+  // No ficheiro src/hooks/useDashboardAnalytics.ts
 
-      if (attendance[emp.id]) {
-        Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
-          const day = Number(dayStr);
-          if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
-            faltas++;
-            if (day <= 15) firstHalfFaltas++;
-            else secondHalfFaltas++;
+const employeeData = useMemo<EmployeeWithStats[]>(() => {
+  const now = new Date();
+  const today = now.getDate();
+  
+  // Janela móvel: últimos 7 dias vs 7 dias anteriores
+  const windowSize = 7;
+  const currentWindowStart = Math.max(1, today - windowSize + 1);
+  const previousWindowStart = Math.max(1, currentWindowStart - windowSize);
+  const previousWindowEnd = currentWindowStart - 1;
+
+  return employees.map(emp => {
+    let totalFaltasMes = 0;
+    let faltasJanelaAtual = 0;
+    let faltasJanelaAnterior = 0;
+
+    if (attendance[emp.id]) {
+      Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
+        const day = Number(dayStr);
+        if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
+          totalFaltasMes++;
+          
+          if (day >= currentWindowStart && day <= today) {
+            faltasJanelaAtual++;
+          } else if (day >= previousWindowStart && day <= previousWindowEnd) {
+            faltasJanelaAnterior++;
           }
-        });
-      }
+        }
+      });
+    }
 
-      let trend: 'up' | 'down' | 'neutral' = 'neutral';
-      if (secondHalfFaltas > firstHalfFaltas) trend = 'up';
-      else if (secondHalfFaltas < firstHalfFaltas) trend = 'down';
+    let trend: 'up' | 'down' | 'neutral' = 'neutral';
+    if (faltasJanelaAtual > faltasJanelaAnterior) trend = 'up';
+    else if (faltasJanelaAtual < faltasJanelaAnterior && faltasJanelaAnterior > 0) trend = 'down';
 
-      return {
-        ...emp,
-        faltas: selectedDay === 'all' ? faltas : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
-        trend,
-      };
-    }).sort((a, b) => b.faltas - a.faltas);
-  }, [attendance, employees, selectedDay, currentMonth, currentYear]);
+    return {
+      ...emp,
+      faltas: selectedDay === 'all' ? totalFaltasMes : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
+      trend,
+    };
+  }).sort((a, b) => b.faltas - a.faltas);
+}, [attendance, employees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
 
   const filteredEmployees = useMemo(() => {
     let result = employeeData;
