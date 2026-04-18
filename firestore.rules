@@ -21,7 +21,6 @@ service cloud.firestore {
              (email == 'turnod@vonixx.com' || email == 'turno.d@vonixx.com') ? 'D' : null;
     }
 
-    // FIX Bug 5: documento sem campo 'shift' não bloqueia mais atualizações
     function isOwnerShift() {
       let shift = getUserShift();
       return isAdmin() || (shift != null && (
@@ -67,7 +66,6 @@ service cloud.firestore {
                request.resource.data.shift in ['A', 'B', 'C', 'D']);
     }
 
-    // FIX Bug 2: removido 'employeeName' dos campos obrigatórios
     function isValidVacation() {
       return hasRequiredFields(['employeeId', 'startDate', 'endDate', 'status']) &&
              isValidString('employeeId', 1, 100) &&
@@ -97,6 +95,13 @@ service cloud.firestore {
              isValidOptionalString('note', 0, 500) &&
              request.resource.data.updatedAt is timestamp &&
              request.resource.data.shift in ['A', 'B', 'C', 'D'];
+    }
+
+    // ─── config/passwords: leitura pública (necessária antes do login) ────────
+    // Somente admin pode alterar as senhas
+    match /config/passwords {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /employees/{employeeId} {
@@ -139,7 +144,7 @@ service cloud.firestore {
       allow create, update: if isAuthenticated();
       allow delete: if isAdmin();
     }
-    
+
     match /system/ai_config {
       allow read, write: if isAdmin();
     }

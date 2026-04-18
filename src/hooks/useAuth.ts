@@ -1,30 +1,50 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, loginWithEmail, logout as firebaseLogout } from '../firebase';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, loginWithEmail, logout as firebaseLogout } from '../firebase';
 import type { ShiftType, LoginShiftType } from '../types';
 
-// ─── Contraseñas desde variables de entorno ────────────────────────────────
-// Definir en .env local: VITE_PWD_TURNO_A, VITE_PWD_SUPERVISAO, VITE_PWD_TURNOS_BCD
-// NUNCA commitear el archivo .env al repositorio
-const PWD_TURNO_A      = import.meta.env.VITE_PWD_TURNO_A      ?? 'TurnoA@Vonixx2026';
-const PWD_SUPERVISAO   = import.meta.env.VITE_PWD_SUPERVISAO   ?? 'Supervisao@Vonixx2026';
-const PWD_TURNOS_BCD   = import.meta.env.VITE_PWD_TURNOS_BCD   ?? 'vonixx2026';
-
-// ─── Tipos propios (sin any) ───────────────────────────────────────────────
 type DeferredInstallPrompt = Event & {
   prompt: () => void;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 };
 
-export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [selectedShiftLogin, setSelectedShiftLogin] = useState<LoginShiftType>('A');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
-  const [deferredPrompt, setDeferredPrompt] = useState<DeferredInstallPrompt | null>(null);
+interface ShiftPasswords {
+  turnoA: string;
+  supervisao: string;
+  turnosBCD: string;
+}
 
-  // ─── Derived Auth State ─────────────────────────────────────────────────────
+export function useAuth() {
+  const [user, setUser]                             = useState<User | null>(null);
+  const [authLoading, setAuthLoading]               = useState(true);
+  const [passwords, setPasswords]                   = useState<ShiftPasswords | null>(null);
+  const [pwdLoading, setPwdLoading]                 = useState(true);
+  const [selectedShiftLogin, setSelectedShiftLogin] = useState<LoginShiftType>('A');
+  const [loginPassword, setLoginPassword]           = useState('');
+  const [loginError, setLoginError]                 = useState('');
+  const [deferredPrompt, setDeferredPrompt]         = useState<DeferredInstallPrompt | null>(null);
+
+  // ─── Carregar senhas do Firestore (config/passwords) ──────────────────────
+  useEffect(() => {
+    const fetchPasswords = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'config', 'passwords'));
+        if (snap.exists()) {
+          setPasswords(snap.data() as ShiftPasswords);
+        } else {
+          console.error('[useAuth] Documento config/passwords não encontrado no Firestore.');
+        }
+      } catch (err) {
+        console.error('[useAuth] Erro ao carregar senhas do Firestore:', err);
+      } finally {
+        setPwdLoading(false);
+      }
+    };
+    fetchPasswords();
+  }, []);
+
+  // ─── Derived Auth State ────────────────────────────────────────────────────
   const currentShift = useMemo<ShiftType | null>(() => {
     if (!user?.email) return null;
     if (user.email === 'supervisao@vonixx.com' || user.email === 'bernard30101994@gmail.com') return 'ALL';
@@ -46,9 +66,7 @@ export function useAuth() {
     );
   }, []);
 
-  // ─── Effects ────────────────────────────────────────────────────────────────
-
-  // Auth listener + overscroll prevention
+  // ─── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
     document.body.style.overscrollBehaviorY = 'none';
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -58,14 +76,12 @@ export function useAuth() {
     return () => unsubscribe();
   }, []);
 
-  // Notification permission request
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
   }, []);
 
-  // PWA install prompt
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
@@ -75,11 +91,21 @@ export function useAuth() {
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // ─── Actions ─────────────────────────────────────────────────────────────────
-
+  // ─── Login ─────────────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
+
+    if (pwdLoading) {
+      setLoginError('Carregando configurações, aguarde...');
+      return;
+    }
+
+    if (!passwords) {
+      setLoginError('Sistema indisponível. Verifique sua conexão e tente novamente.');
+      return;
+    }
+
     const email =
       selectedShiftLogin === 'SUPERVISAO'
         ? 'supervisao@vonixx.com'
@@ -88,17 +114,18 @@ export function useAuth() {
     let passwordToUse = loginPassword;
 
     if (selectedShiftLogin === 'A') {
-      if (loginPassword !== PWD_TURNO_A) {
+      if (loginPassword !== passwords.turnoA) {
         setLoginError('Senha incorreta para o Turno A.');
         return;
       }
     } else if (selectedShiftLogin === 'SUPERVISAO') {
-      if (loginPassword !== PWD_SUPERVISAO) {
+      if (loginPassword !== passwords.supervisao) {
         setLoginError('Senha incorreta para Supervisão.');
         return;
       }
     } else {
-      passwordToUse = PWD_TURNOS_BCD;
+      // Turnos B, C, D: senha compartilhada
+      passwordToUse = passwords.turnosBCD;
     }
 
     try {
@@ -106,7 +133,7 @@ export function useAuth() {
     } catch (error: unknown) {
       const firebaseError = error as { code?: string; message?: string };
       if (firebaseError.code === 'auth/invalid-credential') {
-        setLoginError('Contraseña incorrecta.');
+        setLoginError('Credenciais inválidas.');
       } else {
         setLoginError('Erro: ' + (firebaseError.message ?? 'desconhecido'));
       }
@@ -127,7 +154,7 @@ export function useAuth() {
 
   return {
     user,
-    authLoading,
+    authLoading: authLoading || pwdLoading,
     currentShift,
     isSupervision,
     isAdminUser,
