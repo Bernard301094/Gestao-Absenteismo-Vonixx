@@ -185,7 +185,6 @@ export default function App() {
           currentMonth={currentMonth}
           setCurrentMonth={setCurrentMonth}
           currentYear={currentYear}
-          setCurrentYear={setCurrentYear}
           supervisionShiftFilter={supervisionShiftFilter}
           setSupervisionShiftFilter={setSupervisionShiftFilter}
           activeTab={activeTab}
@@ -239,6 +238,11 @@ export default function App() {
                   notes={data.notes}
                   setSelectedEmployeeDetail={data.setSelectedEmployeeDetail}
                   getInitials={getInitials}
+                  
+                  currentShift={auth.currentShift}
+                  lockedDays={data.lockedDays}
+                  validWorkDays={VALID_WORK_DAYS}
+                  vacations={data.vacations}
                 />
               </Suspense>
             )}
