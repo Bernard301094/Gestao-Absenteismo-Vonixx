@@ -1,63 +1,34 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
-  Bot, Sparkles, Loader2, RefreshCw, Zap,
-  Calendar, CalendarDays, Clock, CheckCircle2,
-  AlertTriangle, ChevronDown, ChevronUp,
+  Sparkles, Loader2, Calendar, CalendarDays,
+  ChevronDown, ChevronUp, Clock, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { useAIInsights, type AIInsight } from '../../hooks/useAIInsights';
 import type { Employee, AttendanceRecord, NotesRecord, Vacation } from '../../types';
 
-// ─── Markdown renderer (dark theme) ─────────────────────────────────────────
+// ─── Markdown renderer (Dark / Discreet Theme) ──────────────────────────────
 
 function AIMarkdown({ content }: { content: string }) {
   return (
-    <div style={{ color: '#e2e8f0', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
+    <div style={{ color: '#cbd5e1', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
       <ReactMarkdown
         components={{
-          h1: ({ children }) => (
-            <h1 style={{ color: '#ffffff', fontWeight: 900, fontSize: '0.95rem', marginBottom: '0.5rem', marginTop: '1rem' }}>
-              {children}
-            </h1>
-          ),
-          h2: ({ children }) => (
-            <h2 style={{ color: '#ffffff', fontWeight: 800, fontSize: '0.875rem', marginBottom: '0.5rem', marginTop: '1rem' }}>
-              {children}
-            </h2>
-          ),
-          h3: ({ children }) => (
-            <h3 style={{ color: '#bae6fd', fontWeight: 700, fontSize: '0.8rem', marginBottom: '0.375rem', marginTop: '0.75rem' }}>
-              {children}
-            </h3>
-          ),
-          p: ({ children }) => (
-            <p style={{ color: '#e2e8f0', marginBottom: '0.75rem', lineHeight: '1.65' }}>{children}</p>
-          ),
-          strong: ({ children }) => (
-            <strong style={{ color: '#ffffff', fontWeight: 900 }}>{children}</strong>
-          ),
-          em: ({ children }) => (
-            <em style={{ color: '#7dd3fc', fontStyle: 'normal', fontWeight: 600 }}>{children}</em>
-          ),
-          ul: ({ children }) => (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0' }}>{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol style={{ paddingLeft: '1.25rem', margin: '0.5rem 0' }}>{children}</ol>
-          ),
+          h1: ({ children }) => <h1 className="text-white font-bold text-base mt-5 mb-2 border-b border-slate-700 pb-2">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-slate-100 font-semibold text-sm mt-4 mb-2">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sky-400 font-semibold text-xs mt-4 mb-1 uppercase tracking-wider">{children}</h3>,
+          p: ({ children }) => <p className="text-slate-300 mb-3 leading-relaxed">{children}</p>,
+          strong: ({ children }) => <strong className="text-white font-bold">{children}</strong>,
+          ul: ({ children }) => <ul className="space-y-1.5 mb-3 list-none pl-1">{children}</ul>,
+          ol: ({ children }) => <ol className="space-y-1.5 mb-3 list-decimal pl-5 text-slate-300">{children}</ol>,
           li: ({ children }) => (
-            <li style={{ color: '#e2e8f0', marginBottom: '0.375rem', paddingLeft: '1.125rem', position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 0, color: '#38bdf8', fontWeight: 700 }}>▸</span>
+            <li className="text-slate-300 relative pl-4">
+              <span className="absolute left-0 top-[0.5em] w-1 h-1 bg-sky-500 rounded-full"></span>
               {children}
             </li>
           ),
-          hr: () => <hr style={{ borderColor: '#334155', margin: '1rem 0' }} />,
-          code: ({ children }) => (
-            <code style={{ color: '#7dd3fc', background: '#1e3a5f', padding: '0.125rem 0.375rem', borderRadius: '0.25rem', fontSize: '0.75rem', fontFamily: 'monospace' }}>
-              {children}
-            </code>
-          ),
+          hr: () => <hr className="border-slate-700/50 my-5" />,
         }}
       >
         {content}
@@ -81,7 +52,7 @@ function formatTimestamp(ts: any): string {
   }
 }
 
-// ─── InsightCard ──────────────────────────────────────────────────────────────
+// ─── InsightCard (Discreto e Oficial) ─────────────────────────────────────────
 
 interface InsightCardProps {
   insight: AIInsight;
@@ -93,39 +64,27 @@ function InsightCard({ insight, label }: InsightCardProps) {
   const ts = formatTimestamp(insight.generatedAt);
 
   return (
-    <div className="bg-slate-800/60 border border-slate-600/60 rounded-xl overflow-hidden">
-      {/* Card header */}
+    <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden transition-all">
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-800/60 transition-colors text-left"
       >
         <div className="flex items-center gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span className="text-white font-bold text-sm">{label}</span>
-          {insight.isAutoGenerated && (
-            <span className="inline-flex items-center gap-1 bg-sky-500/15 border border-sky-400/25 text-sky-300 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full">
-              <Zap className="w-2 h-2" /> Auto
-            </span>
-          )}
+          <span className="text-slate-200 font-semibold text-sm">{label}</span>
         </div>
-        <div className="flex items-center gap-2">
-          {ts && (
-            <span className="text-slate-500 text-[10px] hidden sm:block">{ts}</span>
-          )}
-          {expanded
-            ? <ChevronUp className="w-4 h-4 text-slate-400" />
-            : <ChevronDown className="w-4 h-4 text-slate-400" />
-          }
+        <div className="flex items-center gap-3">
+          {ts && <span className="text-slate-500 text-[10px] uppercase tracking-wider font-medium hidden sm:block">{ts}</span>}
+          {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
         </div>
       </button>
 
-      {/* Card body */}
       {expanded && (
-        <div className="px-5 pb-5 pt-1 border-t border-slate-700/50">
+        <div className="px-5 pb-5 pt-2 border-t border-slate-700/50 bg-slate-800/20">
           <AIMarkdown content={insight.content} />
           {ts && (
-            <p className="text-slate-600 text-[10px] mt-3 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Gerado em {ts}
+            <p className="text-slate-500 text-[10px] mt-5 flex items-center gap-1.5 uppercase tracking-wider font-semibold">
+              <Clock className="w-3 h-3" /> Emitido em {ts}
             </p>
           )}
         </div>
@@ -134,43 +93,28 @@ function InsightCard({ insight, label }: InsightCardProps) {
   );
 }
 
-// ─── GenerateButton ───────────────────────────────────────────────────────────
+// ─── GenerateButton (Apenas para geração primária) ────────────────────────────
 
 interface GenerateButtonProps {
   onClick: () => void;
   isLoading: boolean;
-  hasInsight: boolean;
   disabled?: boolean;
-  label?: string;
+  label: string;
 }
 
-function GenerateButton({ onClick, isLoading, hasInsight, disabled, label }: GenerateButtonProps) {
+function GenerateButton({ onClick, isLoading, disabled, label }: GenerateButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={isLoading || disabled}
-      className="flex items-center gap-2 bg-white hover:bg-sky-50 disabled:bg-white/70 text-slate-900 disabled:text-slate-900/50 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md active:scale-95 disabled:cursor-not-allowed"
+      className="flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800/50 text-white disabled:text-slate-500 border border-slate-600 disabled:border-slate-700/50 px-4 py-2 rounded-lg text-xs font-semibold transition-all active:scale-95 disabled:cursor-not-allowed w-full sm:w-auto shadow-sm"
     >
-      {isLoading
-        ? <><Loader2 className="w-3 h-3 animate-spin" /> Gerando...</>
-        : hasInsight
-        ? <><RefreshCw className="w-3 h-3" /> {label ?? 'Regen.'}</>
-        : <><Bot className="w-3 h-3" /> {label ?? 'Gerar'}</>
-      }
+      {isLoading ? (
+        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Gerando...</>
+      ) : (
+        <><Sparkles className="w-3.5 h-3.5 text-sky-400" /> {label}</>
+      )}
     </button>
-  );
-}
-
-// ─── EmptyState ───────────────────────────────────────────────────────────────
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 py-8 text-center">
-      <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-        <Bot className="w-5 h-5 text-slate-500" />
-      </div>
-      <p className="text-slate-400 text-xs max-w-xs leading-relaxed">{message}</p>
-    </div>
   );
 }
 
@@ -192,192 +136,118 @@ interface AIInsightsPanelProps {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AIInsightsPanel({
-  shift,
-  employees,
-  attendance,
-  notes,
-  vacations,
-  lockedDays,
-  currentMonth,
-  currentYear,
-  validWorkDays,
-  isSupervision,
+  shift, employees, attendance, notes, vacations,
+  lockedDays, currentMonth, currentYear, validWorkDays, isSupervision,
 }: AIInsightsPanelProps) {
 
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly'>('monthly');
 
   const {
-    monthlyInsight,
-    weeklyInsights,
-    isGeneratingMonthly,
-    isGeneratingWeekly,
-    monthlyError,
-    weeklyError,
-    setMonthlyError,
-    setWeeklyError,
-    handleGenerateMonthly,
-    handleGenerateWeekly,
-    canGenerateMonthly,
-    canGenerateWeekly,
-    getAvailableWeeks,
-    getWeekRange,
-    getLastWorkDayOfMonth,
+    monthlyInsight, weeklyInsights,
+    isGeneratingMonthly, isGeneratingWeekly,
+    monthlyError, weeklyError,
+    setMonthlyError, setWeeklyError,
+    handleGenerateMonthly, handleGenerateWeekly,
+    canGenerateMonthly, canGenerateWeekly,
+    getAvailableWeeks, getWeekRange, getLastWorkDayOfMonth,
+    isLoadingHistory
   } = useAIInsights({
-    shift,
-    employees,
-    attendance,
-    notes,
-    vacations,
-    lockedDays,
-    currentMonth,
-    currentYear,
-    validWorkDays,
-    isSupervision,
+    shift, employees, attendance, notes, vacations,
+    lockedDays, currentMonth, currentYear, validWorkDays, isSupervision,
   });
 
   const availableWeeks = getAvailableWeeks();
-  const lastWorkDay    = getLastWorkDayOfMonth();
+  const lastWorkDay = getLastWorkDayOfMonth();
   const monthlyUnlocked = canGenerateMonthly();
-
   const monthLabel = MONTH_NAMES?.[currentMonth] ?? `Mês ${currentMonth + 1}`;
 
+  if (isLoadingHistory) {
+    return (
+      <div className="bg-[#0f1e36] rounded-2xl border border-slate-700/50 p-10 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-5 h-5 text-slate-500 animate-spin" />
+      </div>
+    );
+  }
+
   return (
-    <div className="relative rounded-2xl overflow-hidden shadow-xl">
-      {/* Background */}
-      <div className="absolute inset-0 bg-[#0f1e36]" />
-      <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
-      <div className="absolute inset-0 rounded-2xl border border-white/10 pointer-events-none" />
-
-      <div className="relative p-5 sm:p-6">
-
-        {/* ── Panel Header ────────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-11 h-11 rounded-2xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shrink-0">
-            <Sparkles className="w-5 h-5 text-sky-300" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-white font-black text-base sm:text-lg tracking-tight">
-                Relatórios de IA
-              </h3>
-              <span className="hidden sm:inline-flex items-center gap-1 bg-sky-500/20 border border-sky-400/30 text-sky-300 text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full">
-                <Zap className="w-2.5 h-2.5" /> IA
-              </span>
+    <div className="bg-[#0f1e36] rounded-2xl border border-slate-700/50 overflow-hidden shadow-lg">
+      <div className="p-5 sm:p-6">
+        
+        {/* ── Header ──────────────────────────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
+              <Sparkles className="w-5 h-5 text-sky-400" />
             </div>
-            <p className="text-slate-400 text-xs font-medium mt-0.5">
-              Geração automática ao fechar o dia — mensal e semanal
-            </p>
+            <div>
+              <h3 className="text-white font-semibold text-base sm:text-lg">Auditoria de Turno (IA)</h3>
+              <p className="text-slate-400 text-xs mt-0.5">Relatórios oficiais de fechamento</p>
+            </div>
           </div>
-        </div>
 
-        {/* ── Tabs ────────────────────────────────────────────────────────── */}
-        <div className="flex gap-1 bg-white/5 border border-white/10 rounded-xl p-1 mb-5 w-fit">
-          <button
-            onClick={() => setActiveTab('monthly')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-              activeTab === 'monthly'
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            Mensal
-          </button>
-          <button
-            onClick={() => setActiveTab('weekly')}
-            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${
-              activeTab === 'weekly'
-                ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <CalendarDays className="w-3.5 h-3.5" />
-            Semanal
-            {weeklyInsights.length > 0 && (
-              <span className="bg-white/20 text-white text-[10px] font-black px-1.5 rounded-full leading-none py-0.5">
-                {weeklyInsights.length}
-              </span>
-            )}
-          </button>
+          {/* ── Tabs ──────────────────────────────────────────────────────── */}
+          <div className="flex bg-slate-800/80 p-1 rounded-lg self-start sm:self-auto border border-slate-700/50">
+            <button
+              onClick={() => setActiveTab('monthly')}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                activeTab === 'monthly' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" /> Mensal
+            </button>
+            <button
+              onClick={() => setActiveTab('weekly')}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                activeTab === 'weekly' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <CalendarDays className="w-3.5 h-3.5" /> Semanal
+            </button>
+          </div>
         </div>
 
         {/* ════════════════════════════════════════════════════════════════════
             TAB: MONTHLY
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'monthly' && (
-          <div className="space-y-4">
-            {/* Section header */}
-            <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="animate-in fade-in duration-300">
+            
+            {/* Bloco de Controle Mensal - Só mostra o botão se NÃO existir insight */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-5 p-4 rounded-xl bg-slate-800/40 border border-slate-700/50">
               <div>
-                <p className="text-white font-bold text-sm">
-                  Relatório de {monthLabel} {currentYear}
-                </p>
-                <p className="text-slate-400 text-xs mt-0.5">
-                  {monthlyUnlocked
-                    ? `Disponível — lista do dia ${lastWorkDay} fechada`
-                    : `Disponível após fechar a lista do dia ${lastWorkDay}`
-                  }
+                <p className="text-slate-200 font-semibold text-sm">Fechamento Gerencial — {monthLabel}</p>
+                <p className="text-slate-400 text-xs mt-1">
+                  {monthlyInsight ? 'Dossiê emitido e arquivado definitivamente.' :
+                   monthlyUnlocked ? `Lista do dia ${lastWorkDay} fechada. Pronto para emissão.` :
+                   `Emissão requer o fechamento do dia ${lastWorkDay}.`}
                 </p>
               </div>
-              <GenerateButton
-                onClick={() => { setMonthlyError(null); handleGenerateMonthly(); }}
-                isLoading={isGeneratingMonthly}
-                hasInsight={!!monthlyInsight}
-                disabled={!monthlyUnlocked}
-                label={monthlyInsight ? 'Regen. mês' : 'Gerar mês'}
-              />
+              
+              {!monthlyInsight && (
+                <GenerateButton
+                  onClick={() => { setMonthlyError(null); handleGenerateMonthly(); }}
+                  isLoading={isGeneratingMonthly}
+                  disabled={!monthlyUnlocked}
+                  label="Gerar Dossiê"
+                />
+              )}
             </div>
 
-            {/* Lock warning */}
-            {!monthlyUnlocked && (
-              <div className="flex items-start gap-2.5 bg-amber-900/20 border border-amber-500/30 rounded-xl px-4 py-3">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-amber-200 text-xs leading-relaxed">
-                  O relatório mensal será liberado quando a lista de presença do dia <strong>{lastWorkDay}</strong> (último dia de trabalho do mês) for fechada.
-                  Após isso, ele também pode ser gerado manualmente a qualquer momento.
-                </p>
-              </div>
-            )}
-
-            {/* Loading */}
-            {isGeneratingMonthly && (
-              <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
-                <p className="text-slate-300 text-sm">Analisando o mês completo...</p>
-                <div className="ml-auto flex gap-1">
-                  {[0, 1, 2].map(i => (
-                    <div
-                      key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"
-                      style={{ animationDelay: `${i * 150}ms` }}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Error */}
             {monthlyError && !isGeneratingMonthly && (
-              <div className="flex items-start gap-3 bg-red-900/30 border border-red-500/40 rounded-xl px-4 py-3">
-                <div className="w-5 h-5 rounded-full bg-red-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-red-300 text-xs font-black">!</span>
-                </div>
-                <p className="text-red-200 text-sm leading-relaxed">{monthlyError}</p>
+              <div className="flex items-start gap-3 bg-red-900/20 border border-red-500/30 rounded-xl p-4 mb-4">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <p className="text-red-300 text-sm">{monthlyError}</p>
               </div>
             )}
 
-            {/* Insight */}
             {monthlyInsight && !isGeneratingMonthly && (
-              <InsightCard
-                insight={monthlyInsight}
-                label={`Relatório — ${monthLabel} ${currentYear}`}
-              />
+              <InsightCard insight={monthlyInsight} label={`Relatório Final — ${monthLabel}`} />
             )}
 
-            {/* Empty */}
             {!monthlyInsight && !isGeneratingMonthly && !monthlyError && monthlyUnlocked && (
-              <EmptyState message={`Clique em "Gerar mês" para gerar o relatório completo de ${monthLabel}.`} />
+              <div className="py-8 text-center rounded-xl border border-dashed border-slate-700/50 bg-slate-800/20">
+                <p className="text-slate-500 text-sm">Pronto para gerar a auditoria final do mês.</p>
+              </div>
             )}
           </div>
         )}
@@ -386,27 +256,20 @@ export default function AIInsightsPanel({
             TAB: WEEKLY
         ════════════════════════════════════════════════════════════════════ */}
         {activeTab === 'weekly' && (
-          <div className="space-y-4">
-            <p className="text-slate-400 text-xs leading-relaxed">
-              Os relatórios semanais são gerados automaticamente quando você fecha a lista de presença.
-              Você também pode gerá-los manualmente para qualquer semana que já tenha ao menos um dia fechado.
-            </p>
-
-            {/* Weekly error */}
+          <div className="animate-in fade-in duration-300">
             {weeklyError && (
-              <div className="flex items-start gap-3 bg-red-900/30 border border-red-500/40 rounded-xl px-4 py-3">
-                <div className="w-5 h-5 rounded-full bg-red-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                  <span className="text-red-300 text-xs font-black">!</span>
-                </div>
-                <p className="text-red-200 text-sm leading-relaxed">{weeklyError}</p>
+              <div className="flex items-start gap-3 bg-red-900/20 border border-red-500/30 rounded-xl p-4 mb-5">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <p className="text-red-300 text-sm">{weeklyError}</p>
               </div>
             )}
 
-            {/* Weeks list */}
             {availableWeeks.length === 0 ? (
-              <EmptyState message="Nenhuma semana disponível ainda para este mês." />
+              <div className="py-10 text-center border border-dashed border-slate-700/50 rounded-xl bg-slate-800/20">
+                <p className="text-slate-500 text-sm">Nenhum ciclo disponível.</p>
+              </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {availableWeeks.map(weekNum => {
                   const { start, end, days } = getWeekRange(weekNum);
                   const existingInsight = weeklyInsights.find(w => w.weekNumber === weekNum);
@@ -414,59 +277,34 @@ export default function AIInsightsPanel({
                   const isGenerating = isGeneratingWeekly === weekNum;
 
                   return (
-                    <div key={weekNum} className="space-y-2">
-                      {/* Week header row */}
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-slate-300 font-bold text-sm">
-                            Semana {weekNum}
-                          </span>
-                          <span className="text-slate-500 text-xs">
-                            dias {start}–{end}
-                            {days.length > 0 && ` (${days.length} dia${days.length > 1 ? 's' : ''} de trabalho)`}
-                          </span>
-                          {existingInsight?.isAutoGenerated && (
-                            <span className="inline-flex items-center gap-1 bg-sky-500/15 border border-sky-400/25 text-sky-300 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full">
-                              <Zap className="w-2 h-2" /> Auto
-                            </span>
-                          )}
-                        </div>
-                        <GenerateButton
-                          onClick={() => { setWeeklyError(null); handleGenerateWeekly(weekNum); }}
-                          isLoading={isGenerating}
-                          hasInsight={!!existingInsight}
-                          disabled={!unlocked || (isGeneratingWeekly !== null && !isGenerating)}
-                          label={existingInsight ? `Regen. S${weekNum}` : `Gerar S${weekNum}`}
-                        />
-                      </div>
-
-                      {/* Generating indicator */}
-                      {isGenerating && (
-                        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl px-4 py-3">
-                          <Loader2 className="w-4 h-4 text-sky-400 animate-spin shrink-0" />
-                          <p className="text-slate-300 text-sm">Analisando semana {weekNum}...</p>
-                        </div>
-                      )}
-
-                      {/* Lock hint */}
-                      {!unlocked && days.length > 0 && (
-                        <p className="text-slate-600 text-[11px] flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          Feche a lista de ao menos um dia desta semana para liberar
-                        </p>
-                      )}
-
-                      {/* Insight card */}
-                      {existingInsight && !isGenerating && (
-                        <InsightCard
-                          insight={existingInsight}
-                          label={`Semana ${weekNum} — dias ${start} a ${end}`}
-                        />
-                      )}
-
-                      {/* Divider between weeks */}
-                      {weekNum < availableWeeks[availableWeeks.length - 1] && (
-                        <div className="h-px bg-slate-700/50 mt-2" />
+                    <div key={weekNum}>
+                      {/* Se o Relatório JÁ EXISTE, mostra apenas o Card. O botão some. */}
+                      {existingInsight && !isGenerating ? (
+                        <InsightCard insight={existingInsight} label={`Semana ${weekNum} (Dias ${start} a ${end})`} />
+                      ) : (
+                        /* Se NÃO EXISTE, mostra a área de geração com o botão */
+                        days.length > 0 && (
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-3 px-4 rounded-xl bg-slate-800/40 border border-slate-700/50">
+                            <div>
+                              <p className="text-slate-200 font-semibold text-sm">Semana {weekNum}</p>
+                              <p className="text-slate-400 text-xs mt-0.5">Dias {start} a {end}</p>
+                            </div>
+                            
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                              {!unlocked && (
+                                <span className="text-slate-500 text-xs flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3" /> Aguardando dia {end}
+                                </span>
+                              )}
+                              <GenerateButton
+                                onClick={() => { setWeeklyError(null); handleGenerateWeekly(weekNum); }}
+                                isLoading={isGenerating}
+                                disabled={!unlocked || (isGeneratingWeekly !== null && !isGenerating)}
+                                label={`Gerar Auditoria`}
+                              />
+                            </div>
+                          </div>
+                        )
                       )}
                     </div>
                   );
