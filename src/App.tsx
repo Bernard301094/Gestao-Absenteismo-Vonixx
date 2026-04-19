@@ -10,7 +10,7 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import Login from './components/Login/Login';
 import Header from './components/Header/Header';
 
-// ─── Code-Split Views (loaded on demand) ─────────────────────────────────────
+// ─── Code-Split Views ─────────────────────────────────────────────────────────
 const AbsenteeismDashboard = lazy(() => import('./components/AbsenteeismDashboard/AbsenteeismDashboard'));
 const AttendanceRegistry   = lazy(() => import('./components/AttendanceRegistry/AttendanceRegistry'));
 const VacationManagement   = lazy(() => import('./components/VacationManagement/VacationManagement'));
@@ -21,7 +21,6 @@ const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/Add
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
 const EmployeeDetailModal = lazy(() => import('./components/EmployeeDetailModal/EmployeeDetailModal'));
 
-// ─── Shared Loading Spinner ───────────────────────────────────────────────────
 function SectionLoader() {
   return (
     <div className="flex items-center justify-center py-24">
@@ -30,9 +29,8 @@ function SectionLoader() {
   );
 }
 
-// ─── Constantes de data de início do app ─────────────────────────────────────
 const APP_START_YEAR  = 2026;
-const APP_START_MONTH = 3;   // 0-indexed → Abril
+const APP_START_MONTH = 3;
 const APP_START_DAY   = 3;
 
 export default function App() {
@@ -47,6 +45,7 @@ export default function App() {
   const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
   const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<'A' | 'B' | 'C' | 'D'>('A');
+  const [showDismissed, setShowDismissed] = useState(false); // ← NOVO
 
   const daysInMonth = useMemo(
     () => getDaysInMonth(currentMonth, currentYear),
@@ -61,7 +60,6 @@ export default function App() {
     return daysInMonth;
   }, [currentMonth, currentYear, daysInMonth]);
 
-  // ─── VALID_WORK_DAYS (Mapeia apenas dias de trabalho até hoje) ──────────
   const VALID_WORK_DAYS = useMemo(() => {
     const now = new Date();
     const todayYear  = now.getFullYear();
@@ -112,35 +110,30 @@ export default function App() {
     sortOrder,
     registroSearchTerm,
     isValidDay,
+    showDismissed, // ← NOVO
   });
 
-  // ─── Lógica de abertura inteligente (Folga vs Trabalho) ──────────────────
   useEffect(() => {
     const now = new Date();
     const today = now.getDate();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
 
-    // Se estamos no mês atual e o sistema acabou de carregar (selectedDay === 'all')
     if (isCurrentMonth && selectedDay === 'all' && VALID_WORK_DAYS.length > 0) {
       if (VALID_WORK_DAYS.includes(today)) {
-        // Se hoje for dia de trabalho, foca no dia de hoje
         setSelectedDay(today);
       } else {
-        // Se for folga, foca no último dia útil disponível
         const lastWorkDay = VALID_WORK_DAYS[VALID_WORK_DAYS.length - 1];
         setSelectedDay(lastWorkDay);
       }
     }
   }, [VALID_WORK_DAYS, currentMonth, currentYear]);
 
-  // ─── Access Control ────────────────────────────────────────────────────────
   useEffect(() => {
     if (auth.isSupervision && (activeTab === 'registro' || activeTab === 'ferias')) {
       setActiveTab('dashboard');
     }
   }, [auth.isSupervision, activeTab]);
 
-  // ─── Day Navigation: reajusta selectedDay se sair dos limites ─────────────
   useEffect(() => {
     if (
       selectedDay !== 'all' &&
@@ -243,11 +236,13 @@ export default function App() {
                   notes={data.notes}
                   setSelectedEmployeeDetail={data.setSelectedEmployeeDetail}
                   getInitials={getInitials}
-                  
                   currentShift={auth.currentShift}
                   lockedDays={data.lockedDays}
                   validWorkDays={VALID_WORK_DAYS}
                   vacations={data.vacations}
+                  activeEmployeesCount={analytics.activeEmployees.length}
+                  showDismissed={showDismissed}
+                  setShowDismissed={setShowDismissed}
                 />
               </Suspense>
             )}
@@ -317,7 +312,6 @@ export default function App() {
         )}
       </main>
 
-      {/* ─── Modals ──────────────────────────────────────────────────────────── */}
       {data.showAddEmployeeModal && (
         <ErrorBoundary>
           <Suspense fallback={null}>
