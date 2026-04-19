@@ -58,7 +58,7 @@ jobs:
           VITE_GEMINI_API_KEY=${{ secrets.VITE_GEMINI_API_KEY }}
           EOF
 
-      # 7. Build Vite (Isso valida se o codigo esta sem erros de importacao)
+      # 7. Build Vite
       - name: Build Vite
         run: npm run build
 
@@ -75,14 +75,57 @@ jobs:
       - name: Capacitor sync Android
         run: npx cap sync android
 
-      # 10. ATUALIZAÇÃO AUTOMÁTICA DE VERSÃO (O segredo para atualizar sem apagar)
+      # 10. Atualizar versionCode e versionName
       - name: Bump Version Code
         run: |
           echo "Atualizando versionCode para: ${{ github.run_number }}"
           sed -i "s/versionCode [0-9]*/versionCode ${{ github.run_number }}/" android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"1.0.${{ github.run_number }}\"/" android/app/build.gradle
 
-      # 11. Cache Gradle
+      # 11. Restaurar Keystore fixa a partir do secret (ESSENCIAL para atualizar sem desinstalar)
+      - name: Restaurar Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/vonixx-release.jks
+
+      # 12. Configurar bloco signingConfigs no build.gradle
+      - name: Configurar signing no build.gradle
+        run: |
+          python3 - << 'PYEOF'
+          import re
+
+          with open("android/app/build.gradle", "r") as f:
+              content = f.read()
+
+          signing_config = """
+              signingConfigs {
+                  release {
+                      storeFile file("vonixx-release.jks")
+                      storePassword "${{ secrets.KEYSTORE_PASSWORD }}"
+                      keyAlias "${{ secrets.KEY_ALIAS }}"
+                      keyPassword "${{ secrets.KEYSTORE_PASSWORD }}"
+                  }
+              }
+          """
+
+          # Insere signingConfigs antes do bloco buildTypes
+          if "signingConfigs" not in content:
+              content = content.replace("    buildTypes {", signing_config + "\n    buildTypes {", 1)
+
+          # Garante que o buildType release usa o signingConfig
+          if "signingConfig signingConfigs.release" not in content:
+              content = content.replace(
+                  "release {",
+                  "release {\n            signingConfig signingConfigs.release",
+                  1
+              )
+
+          with open("android/app/build.gradle", "w") as f:
+              f.write(content)
+
+          print("build.gradle atualizado com sucesso.")
+          PYEOF
+
+      # 13. Cache Gradle
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -94,26 +137,26 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # 12. Permissoes Gradle
+      # 14. Permissoes Gradle
       - name: Permissoes Gradle
         run: chmod +x android/gradlew
 
-      # 13. Compilar APK debug
-      - name: Compilar APK (debug)
+      # 15. Compilar APK release (assinado com keystore fixa)
+      - name: Compilar APK (release)
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
-      # 14. Renomear APK com timestamp
+      # 16. Renomear APK
       - name: Renomear APK
         run: |
           TIMESTAMP=$(date +'%Y%m%d_%H%M')
-          cp android/app/build/outputs/apk/debug/app-debug.apk \
-             android/app/build/outputs/apk/debug/vonixx-frequencia-${TIMESTAMP}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk \
+             android/app/build/outputs/apk/release/vonixx-frequencia-${TIMESTAMP}.apk
           echo "APK_NAME=vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
-          echo "APK_PATH=android/app/build/outputs/apk/debug/vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
+          echo "APK_PATH=android/app/build/outputs/apk/release/vonixx-frequencia-${TIMESTAMP}.apk" >> $GITHUB_ENV
 
-      # 15. Upload APK artifact
+      # 17. Upload APK artifact
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -121,7 +164,7 @@ jobs:
           path: ${{ env.APK_PATH }}
           retention-days: 30
 
-      # 16. GitHub Release
+      # 18. GitHub Release
       - name: Criar GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
@@ -135,7 +178,7 @@ jobs:
 
             ### Como instalar
             1. Baixe o APK abaixo.
-            2. Abra e clique em 'Atualizar'.
+            2. Abra e clique em **Atualizar** (sem precisar desinstalar).
           draft: false
           prerelease: false
         env:
