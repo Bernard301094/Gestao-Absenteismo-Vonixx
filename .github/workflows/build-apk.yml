@@ -87,7 +87,7 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/vonixx-release.jks
 
-      # 12. Configurar bloco signingConfigs no build.gradle
+      # 12. Configurar bloco signingConfigs no build.gradle (CORREGIDO)
       - name: Configurar signing no build.gradle
         run: |
           python3 - << 'PYEOF'
@@ -107,17 +107,18 @@ jobs:
               }
           """
 
-          # Insere signingConfigs antes do bloco buildTypes
-          if "signingConfigs" not in content:
-              content = content.replace("    buildTypes {", signing_config + "\n    buildTypes {", 1)
-
-          # Garante que o buildType release usa o signingConfig
+          # 1. PRIMERO: Añadimos la llamada al signingConfig dentro del buildTypes.
+          # Se hace antes para que el replace afecte al 'release' original, no al nuevo que creamos arriba.
           if "signingConfig signingConfigs.release" not in content:
               content = content.replace(
                   "release {",
                   "release {\n            signingConfig signingConfigs.release",
                   1
               )
+
+          # 2. SEGUNDO: Insertamos la definición del Keystore justo antes de buildTypes
+          if "signingConfigs {" not in content:
+              content = content.replace("    buildTypes {", signing_config + "\n    buildTypes {", 1)
 
           with open("android/app/build.gradle", "w") as f:
               f.write(content)
