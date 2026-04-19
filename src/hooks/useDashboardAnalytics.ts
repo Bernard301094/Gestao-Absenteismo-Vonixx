@@ -25,6 +25,7 @@ interface UseDashboardAnalyticsParams {
   sortOrder: 'desc_faltas' | 'asc_name' | 'desc_name';
   registroSearchTerm: string;
   isValidDay: (day: number) => boolean;
+  showDismissed: boolean; // ← NOVO
 }
 
 export function useDashboardAnalytics({
@@ -44,9 +45,22 @@ export function useDashboardAnalytics({
   registroSearchTerm,
   isValidDay,
   vacations,
+  showDismissed, // ← NOVO
 }: UseDashboardAnalyticsParams) {
 
-  // ─── Limite de dias passados (não mostrar dias futuros) ───────────────────
+  // ─── Funcionários ativos (nunca inclui demitidos nos KPIs) ───────────────
+  const activeEmployees = useMemo(
+    () => employees.filter(emp => !emp.dismissed),
+    [employees]
+  );
+
+  // ─── Funcionários para exibição (respeita o toggle) ──────────────────────
+  const displayEmployees = useMemo(
+    () => showDismissed ? employees : activeEmployees,
+    [employees, activeEmployees, showDismissed]
+  );
+
+  // ─── Limite de dias passados ──────────────────────────────────────────────
   const todayLimitDay = useMemo(() => {
     const now = new Date();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
@@ -55,31 +69,35 @@ export function useDashboardAnalytics({
       : new Date(currentYear, currentMonth + 1, 0).getDate();
   }, [currentMonth, currentYear]);
 
-  // ─── KPIs Básicos ─────────────────────────────────────────────────────────
+  // ─── KPIs Básicos (sempre usa activeEmployees) ────────────────────────────
 
   const totalFaltasMes = useMemo(() => {
     let count = 0;
-    Object.values(attendance).forEach(empRecord => {
+    activeEmployees.forEach(emp => {
+      const empRecord = attendance[emp.id];
+      if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
         if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) count++;
       });
     });
     return count;
-  }, [attendance, currentMonth, currentYear]);
+  }, [attendance, activeEmployees, currentMonth, currentYear]);
 
   const faltasDoDia = useMemo(() => {
     if (selectedDay === 'all' || !isWorkDay(selectedDay, currentMonth, currentYear) || !isValidDay(selectedDay)) return 0;
     let count = 0;
-    Object.values(attendance).forEach(empRecord => {
-      if (empRecord[selectedDay] === 'F') count++;
+    activeEmployees.forEach(emp => {
+      if (attendance[emp.id]?.[selectedDay] === 'F') count++;
     });
     return count;
-  }, [attendance, selectedDay, currentMonth, currentYear, isValidDay]);
+  }, [attendance, activeEmployees, selectedDay, currentMonth, currentYear, isValidDay]);
 
   const taxaAbsenteismo = useMemo(() => {
     let totalFeriasEAfastamentos = 0;
-    Object.values(attendance).forEach(empRecord => {
+    activeEmployees.forEach(emp => {
+      const empRecord = attendance[emp.id];
+      if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
         if ((status === 'Fe' || status === 'A') && isWorkDay(day, currentMonth, currentYear) && isValidDay(day)) {
@@ -87,39 +105,39 @@ export function useDashboardAnalytics({
         }
       });
     });
-    const totalDiasTrabalho = (employees.length * VALID_WORK_DAYS.length) - totalFeriasEAfastamentos;
+    const totalDiasTrabalho = (activeEmployees.length * VALID_WORK_DAYS.length) - totalFeriasEAfastamentos;
     if (totalDiasTrabalho <= 0) return '0.0';
     return ((totalFaltasMes / totalDiasTrabalho) * 100).toFixed(1);
-  }, [totalFaltasMes, employees.length, attendance, VALID_WORK_DAYS.length, currentMonth, currentYear, isValidDay]);
+  }, [totalFaltasMes, activeEmployees, attendance, VALID_WORK_DAYS.length, currentMonth, currentYear, isValidDay]);
 
   // ─── Dados de Gráficos ────────────────────────────────────────────────────
 
   const dailyData = useMemo<DayData[]>(() => {
     if (selectedDay === 'all') {
-      // Filtra apenas dias que já ocorreram (não mostra dias futuros)
       return VALID_WORK_DAYS
         .filter(day => day <= todayLimitDay)
         .map(day => {
           let faltas = 0;
-          Object.values(attendance).forEach(empRecord => {
-            if (empRecord[day] === 'F') faltas++;
+          activeEmployees.forEach(emp => {
+            if (attendance[emp.id]?.[day] === 'F') faltas++;
           });
           return { day: day.toString(), faltas };
         });
     }
-    // Dia individual — só retorna se não for futuro
     if ((selectedDay as number) > todayLimitDay) return [];
     let faltas = 0;
-    Object.values(attendance).forEach(empRecord => {
-      if (empRecord[selectedDay] === 'F') faltas++;
+    activeEmployees.forEach(emp => {
+      if (attendance[emp.id]?.[selectedDay] === 'F') faltas++;
     });
     return [{ day: selectedDay.toString(), faltas }];
-  }, [attendance, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
+  }, [attendance, activeEmployees, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
 
   const weekdayData = useMemo<WeekdayData[]>(() => {
     const counts: Record<string, number> = { Dom: 0, Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, Sáb: 0 };
     const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    Object.values(attendance).forEach(empRecord => {
+    activeEmployees.forEach(emp => {
+      const empRecord = attendance[emp.id];
+      if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = parseInt(dayStr);
         if (status === 'F' && isWorkDay(day, currentMonth, currentYear) && (selectedDay === 'all' || day === selectedDay)) {
@@ -129,53 +147,45 @@ export function useDashboardAnalytics({
       });
     });
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(wd => ({ day: wd, faltas: counts[wd] }));
-  }, [attendance, selectedDay, currentMonth, currentYear]);
+  }, [attendance, activeEmployees, selectedDay, currentMonth, currentYear]);
 
-  // ─── Dados de Funcionários ─────────────────────────────────────────────────
+  // ─── Dados de Funcionários ────────────────────────────────────────────────
 
-  // No ficheiro src/hooks/useDashboardAnalytics.ts
+  const employeeData = useMemo<EmployeeWithStats[]>(() => {
+    const now = new Date();
+    const today = now.getDate();
+    const windowSize = 7;
+    const currentWindowStart = Math.max(1, today - windowSize + 1);
+    const previousWindowStart = Math.max(1, currentWindowStart - windowSize);
+    const previousWindowEnd = currentWindowStart - 1;
 
-const employeeData = useMemo<EmployeeWithStats[]>(() => {
-  const now = new Date();
-  const today = now.getDate();
-  
-  // Janela móvel: últimos 7 dias vs 7 dias anteriores
-  const windowSize = 7;
-  const currentWindowStart = Math.max(1, today - windowSize + 1);
-  const previousWindowStart = Math.max(1, currentWindowStart - windowSize);
-  const previousWindowEnd = currentWindowStart - 1;
+    return displayEmployees.map(emp => {
+      let totalFaltasMes = 0;
+      let faltasJanelaAtual = 0;
+      let faltasJanelaAnterior = 0;
 
-  return employees.map(emp => {
-    let totalFaltasMes = 0;
-    let faltasJanelaAtual = 0;
-    let faltasJanelaAnterior = 0;
-
-    if (attendance[emp.id]) {
-      Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
-        const day = Number(dayStr);
-        if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
-          totalFaltasMes++;
-          
-          if (day >= currentWindowStart && day <= today) {
-            faltasJanelaAtual++;
-          } else if (day >= previousWindowStart && day <= previousWindowEnd) {
-            faltasJanelaAnterior++;
+      if (attendance[emp.id]) {
+        Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
+          const day = Number(dayStr);
+          if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
+            totalFaltasMes++;
+            if (day >= currentWindowStart && day <= today) faltasJanelaAtual++;
+            else if (day >= previousWindowStart && day <= previousWindowEnd) faltasJanelaAnterior++;
           }
-        }
-      });
-    }
+        });
+      }
 
-    let trend: 'up' | 'down' | 'neutral' = 'neutral';
-    if (faltasJanelaAtual > faltasJanelaAnterior) trend = 'up';
-    else if (faltasJanelaAtual < faltasJanelaAnterior && faltasJanelaAnterior > 0) trend = 'down';
+      let trend: 'up' | 'down' | 'neutral' = 'neutral';
+      if (faltasJanelaAtual > faltasJanelaAnterior) trend = 'up';
+      else if (faltasJanelaAtual < faltasJanelaAnterior && faltasJanelaAnterior > 0) trend = 'down';
 
-    return {
-      ...emp,
-      faltas: selectedDay === 'all' ? totalFaltasMes : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
-      trend,
-    };
-  }).sort((a, b) => b.faltas - a.faltas);
-}, [attendance, employees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
+      return {
+        ...emp,
+        faltas: selectedDay === 'all' ? totalFaltasMes : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
+        trend,
+      };
+    }).sort((a, b) => b.faltas - a.faltas);
+  }, [attendance, displayEmployees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
 
   const filteredEmployees = useMemo(() => {
     let result = employeeData;
@@ -199,12 +209,13 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
   }, [searchTerm, statusFilter, sortOrder, employeeData]);
 
   const filteredRegistroEmployees = useMemo(() => {
-    let result = [...employees];
+    // Registro sempre usa apenas ativos
+    let result = activeEmployees.slice();
     if (registroSearchTerm) {
       result = result.filter(emp => emp.name.toLowerCase().includes(registroSearchTerm.toLowerCase()));
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [employees, registroSearchTerm]);
+  }, [activeEmployees, registroSearchTerm]);
 
   const topEmployees = useMemo(() => [...employeeData].slice(0, 10).reverse(), [employeeData]);
   const topEmployee = useMemo(() => (employeeData.length > 0 ? employeeData[0] : null), [employeeData]);
@@ -215,7 +226,7 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
     if (!isSupervision) return [];
     const shifts: ('A' | 'B' | 'C' | 'D')[] = ['A', 'B', 'C', 'D'];
     return shifts.map(s => {
-      const shiftEmps = globalEmployees.filter(e => e.shift === s);
+      const shiftEmps = globalEmployees.filter(e => e.shift === s && !e.dismissed);
       if (shiftEmps.length === 0) return { shift: `Turno ${s}`, rate: 0 };
       let totalPossible = 0;
       let totalPresent = 0;
@@ -250,6 +261,7 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
     }
 
     const criticalCount = globalEmployees.filter(emp => {
+      if (emp.dismissed) return false;
       const faltas = Object.values(globalAttendance[emp.id] || {}).filter(s => s === 'F').length;
       return faltas >= 5;
     }).length;
@@ -265,10 +277,10 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
     return newAlerts;
   }, [isSupervision, globalCompletions, globalEmployees, globalAttendance, currentMonth, currentYear]);
 
-  // ─── Analytics de Férias ───────────────────────────────────────────────────
+  // ─── Analytics de Férias ──────────────────────────────────────────────────
   const vacationStats = useMemo(() => {
-    return computeVacationStats(employees, vacations);
-  }, [employees, vacations]);
+    return computeVacationStats(activeEmployees, vacations);
+  }, [activeEmployees, vacations]);
 
   const vacationMonthlyBreakdown = useMemo(() => {
     const years = [2026, 2027, 2028];
@@ -292,9 +304,9 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
 
   const vacationOverlapAlerts = useMemo(() => {
     const result: string[] = [];
-    const roles = Array.from(new Set(employees.map(e => e.role).filter(Boolean)));
+    const roles = Array.from(new Set(activeEmployees.map(e => e.role).filter(Boolean)));
     roles.forEach(role => {
-      const roleEmps = employees.filter(e => e.role === role);
+      const roleEmps = activeEmployees.filter(e => e.role === role);
       if (roleEmps.length < 2) return;
       const onVacation = vacationStats.filter(s =>
         s.cargo === role && s.status === 'em_ferias_agora'
@@ -305,7 +317,7 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
       }
     });
     return result;
-  }, [employees, vacationStats]);
+  }, [activeEmployees, vacationStats]);
 
   const vacationHeatmap = useMemo(() => {
     const heatmap: Record<string, number> = {};
@@ -335,5 +347,6 @@ const employeeData = useMemo<EmployeeWithStats[]>(() => {
     vacationLiability,
     vacationOverlapAlerts,
     vacationHeatmap,
+    activeEmployees,
   };
 }
