@@ -1,7 +1,7 @@
 import React from 'react';
 import {
-  Search, Filter, ArrowUpDown, ArrowDown,
-  TrendingUp, TrendingDown, Minus, MessageSquare, Activity, MoveHorizontal, BrainCircuit, ChevronRight
+  Search, ArrowUpDown, ArrowDown,
+  TrendingUp, TrendingDown, Minus, MessageSquare, Activity, BrainCircuit, ChevronRight, EyeOff, Eye
 } from 'lucide-react';
 import type { EmployeeWithStats, AttendanceRecord, NotesRecord } from '../../types';
 import CustomDropdown from '../CustomDropdown';
@@ -35,6 +35,8 @@ interface EmployeeTableProps {
   getStatusForDay: (empId: string, day: number) => string;
   setSelectedEmployeeDetail: (emp: any) => void;
   getInitials: (name: string) => string;
+  showDismissed: boolean;       // ← NOVO
+  setShowDismissed: (v: boolean) => void; // ← NOVO
 }
 
 export default function EmployeeTable({
@@ -52,17 +54,18 @@ export default function EmployeeTable({
   getStatusForDay,
   setSelectedEmployeeDetail,
   getInitials,
+  showDismissed,
+  setShowDismissed,
 }: EmployeeTableProps) {
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
   return (
     <>
       <div className="bg-white rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col max-h-[500px] sm:max-h-[600px] lg:max-h-[700px] transition-all duration-300">
-        
+
         {/* ── Header / Filters ── */}
         <div className="p-5 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white flex flex-col gap-4 shrink-0">
-          
-          {/* Title row */}
+
           <div className="flex items-start sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2.5">
@@ -92,7 +95,7 @@ export default function EmployeeTable({
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-[13px] text-gray-900 placeholder:text-gray-400 outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <CustomDropdown
                 variant="light"
                 value={statusFilter}
@@ -105,6 +108,21 @@ export default function EmployeeTable({
                 ]}
                 className="w-full sm:w-[180px]"
               />
+              {/* ── Toggle Demitidos ── */}
+              <button
+                onClick={() => setShowDismissed(!showDismissed)}
+                title={showDismissed ? 'Ocultar funcionários demitidos' : 'Mostrar funcionários demitidos'}
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-[12px] font-semibold transition-all whitespace-nowrap ${
+                  showDismissed
+                    ? 'bg-gray-700 text-white border-gray-700 shadow-sm'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400 hover:text-gray-700'
+                }`}
+              >
+                {showDismissed
+                  ? <><EyeOff className="w-3.5 h-3.5" /> Ocultar demitidos</>
+                  : <><Eye className="w-3.5 h-3.5" /> Ver demitidos</>
+                }
+              </button>
             </div>
           </div>
         </div>
@@ -174,37 +192,45 @@ export default function EmployeeTable({
                   selectedDay !== 'all'
                     ? getStatusForDay(emp.id, selectedDay as number)
                     : null;
+                const isDismissed = emp.dismissed === true;
 
                 return (
                   <tr
                     key={emp.id}
                     className={`transition-colors duration-150 hover:bg-blue-50/40 ${
-                      isSupervision ? 'cursor-pointer' : ''
-                    }`}
+                      isDismissed ? 'opacity-50' : ''
+                    } ${isSupervision ? 'cursor-pointer' : ''}`}
                     onClick={() => isSupervision && setSelectedEmployeeDetail(emp)}
                   >
                     {/* Name */}
                     <td className="py-3.5 px-6">
                       <div className="flex items-center gap-3.5">
                         <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-transform duration-200 hover:scale-110 ${AVATAR_COLORS[idx % 4]}`}
+                          className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 transition-transform duration-200 hover:scale-110 ${
+                            isDismissed ? 'bg-gray-100 text-gray-400 ring-1 ring-gray-200' : AVATAR_COLORS[idx % 4]
+                          }`}
                         >
                           {getInitials(emp.name)}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2">
-                             <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
-                               {emp.name}
-                             </span>
-                             {/* ÍCONE DISCRETO APENAS NO DIA A DIA */}
-                             {selectedDay !== 'all' && emp.trend !== 'neutral' && (
-                               <div title={emp.trend === 'up' ? "Tendência de piora recente" : "Tendência de melhora recente"}>
-                                 {emp.trend === 'up' 
-                                   ? <TrendingUp className="w-3 h-3 text-red-500" /> 
-                                   : <TrendingDown className="w-3 h-3 text-emerald-500" />
-                                 }
-                               </div>
-                             )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
+                              {emp.name}
+                            </span>
+                            {/* Badge demitido */}
+                            {isDismissed && (
+                              <span className="text-[9px] font-bold bg-gray-100 text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
+                                Demitido
+                              </span>
+                            )}
+                            {selectedDay !== 'all' && emp.trend !== 'neutral' && !isDismissed && (
+                              <div title={emp.trend === 'up' ? 'Tendência de piora recente' : 'Tendência de melhora recente'}>
+                                {emp.trend === 'up'
+                                  ? <TrendingUp className="w-3 h-3 text-red-500" />
+                                  : <TrendingDown className="w-3 h-3 text-emerald-500" />
+                                }
+                              </div>
+                            )}
                           </div>
                           <span className="text-[10px] text-blue-500 font-bold uppercase tracking-wide mt-0.5">
                             {emp.role || 'Membro da Equipe'}
@@ -226,7 +252,9 @@ export default function EmployeeTable({
                         <div className="flex flex-col items-center gap-1.5">
                           <span
                             className={`text-xl font-bold tracking-tight font-mono ${
-                              emp.faltas > 3
+                              isDismissed
+                                ? 'text-gray-400'
+                                : emp.faltas > 3
                                 ? 'text-red-600'
                                 : emp.faltas > 0
                                 ? 'text-orange-500'
@@ -238,7 +266,9 @@ export default function EmployeeTable({
                           <div className="w-11 h-[3px] rounded-full overflow-hidden bg-gray-100">
                             <div
                               className={`h-full rounded-full transition-all duration-700 ${
-                                emp.faltas > 3
+                                isDismissed
+                                  ? 'bg-gray-300'
+                                  : emp.faltas > 3
                                   ? 'bg-red-500'
                                   : emp.faltas > 0
                                   ? 'bg-orange-400'
@@ -283,41 +313,28 @@ export default function EmployeeTable({
                     {/* Tendência */}
                     {selectedDay === 'all' && (
                       <td className="py-3.5 px-6 text-center">
-                        <div className="flex flex-col items-center gap-2">
+                        {isDismissed ? (
+                          <span className="text-[10px] text-gray-400 font-bold uppercase">—</span>
+                        ) : (
                           <div className="flex justify-center">
                             {emp.trend === 'up' ? (
-                              <div
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100 text-red-600 cursor-help transition-transform hover:scale-105"
-                                title="Piorando: Faltas aumentaram recentemente"
-                              >
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100 text-red-600 cursor-help transition-transform hover:scale-105" title="Piorando">
                                 <TrendingUp className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold uppercase tracking-wide">
-                                  Piorando
-                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide">Piorando</span>
                               </div>
                             ) : emp.trend === 'down' ? (
-                              <div
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 cursor-help transition-transform hover:scale-105"
-                                title="Melhorando: Faltas reduziram recentemente"
-                              >
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100 text-emerald-600 cursor-help transition-transform hover:scale-105" title="Melhorando">
                                 <TrendingDown className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold uppercase tracking-wide">
-                                  Melhor
-                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide">Melhor</span>
                               </div>
                             ) : (
-                              <div
-                                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 cursor-help transition-transform hover:scale-105"
-                                title="Estável: Sem alteração significativa"
-                              >
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-200 text-gray-500 cursor-help transition-transform hover:scale-105" title="Estável">
                                 <Minus className="w-3.5 h-3.5" />
-                                <span className="text-[10px] font-bold uppercase tracking-wide">
-                                  Estável
-                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-wide">Estável</span>
                               </div>
                             )}
                           </div>
-                        </div>
+                        )}
                       </td>
                     )}
 
@@ -347,27 +364,36 @@ export default function EmployeeTable({
                 ? getStatusForDay(emp.id, selectedDay as number)
                 : null;
             const isExpanded = expandedId === emp.id;
+            const isDismissed = emp.dismissed === true;
 
             return (
               <div
                 key={emp.id}
                 className={`bg-white border rounded-2xl shadow-sm transition-all duration-200 overflow-hidden ${
-                  isExpanded ? 'border-blue-200 ring-2 ring-blue-500/5' : 'border-gray-100'
-                }`}
+                  isDismissed ? 'opacity-50' : ''
+                } ${isExpanded ? 'border-blue-200 ring-2 ring-blue-500/5' : 'border-gray-100'}`}
               >
-                {/* Accordion Header */}
-                <div 
+                <div
                   onClick={() => setExpandedId(isExpanded ? null : emp.id)}
                   className="flex items-center justify-between p-3 cursor-pointer active:bg-gray-50"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${AVATAR_COLORS[idx % 4]}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                      isDismissed ? 'bg-gray-100 text-gray-400' : AVATAR_COLORS[idx % 4]
+                    }`}>
                       {getInitials(emp.name)}
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-black text-gray-900 leading-tight uppercase truncate max-w-[140px]">
-                        {emp.name}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-black text-gray-900 leading-tight uppercase truncate max-w-[120px]">
+                          {emp.name}
+                        </span>
+                        {isDismissed && (
+                          <span className="text-[8px] font-bold bg-gray-100 text-gray-400 border border-gray-200 px-1 py-0.5 rounded-full uppercase tracking-wide shrink-0">
+                            Demitido
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wide">
                         {emp.role || 'Equipe'}
                       </span>
@@ -377,13 +403,11 @@ export default function EmployeeTable({
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="flex flex-col items-end">
                       {selectedDay === 'all' ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className={`text-sm font-black font-mono ${
-                            emp.faltas > 3 ? 'text-red-600' : emp.faltas > 0 ? 'text-orange-500' : 'text-emerald-500'
-                          }`}>
-                            {emp.faltas}f
-                          </span>
-                        </div>
+                        <span className={`text-sm font-black font-mono ${
+                          isDismissed ? 'text-gray-400' : emp.faltas > 3 ? 'text-red-600' : emp.faltas > 0 ? 'text-orange-500' : 'text-emerald-500'
+                        }`}>
+                          {emp.faltas}f
+                        </span>
                       ) : (
                         <div className={`w-2 h-2 rounded-full ${
                           status === 'P' ? 'bg-emerald-500' : status === 'F' ? 'bg-red-500' : status === 'Fe' ? 'bg-blue-500' : 'bg-amber-500'
@@ -394,7 +418,6 @@ export default function EmployeeTable({
                   </div>
                 </div>
 
-                {/* Accordion Content */}
                 {isExpanded && (
                   <div className="px-4 pb-4 pt-1 animate-in slide-in-from-top-2 duration-200">
                     <div className="grid grid-cols-2 gap-4 py-3 border-t border-gray-50">
@@ -408,14 +431,14 @@ export default function EmployeeTable({
                           {selectedDay === 'all' ? 'Tendência' : 'Status Completo'}
                         </span>
                         {selectedDay === 'all' ? (
-                          <div className="flex items-center gap-1">
-                            {emp.trend === 'up' ? <TrendingUp className="w-3 h-3 text-red-500" /> : emp.trend === 'down' ? <TrendingDown className="w-3 h-3 text-emerald-500" /> : <Minus className="w-3 h-3 text-gray-400" />}
-                            <span className={`text-[10px] font-black uppercase ${
-                              emp.trend === 'up' ? 'text-red-600' : emp.trend === 'down' ? 'text-emerald-600' : 'text-gray-500'
-                            }`}>
-                              {emp.trend === 'up' ? 'Piorando' : emp.trend === 'down' ? 'Melhor' : 'Estável'}
-                            </span>
-                          </div>
+                          isDismissed ? <span className="text-[10px] text-gray-400">—</span> : (
+                            <div className="flex items-center gap-1">
+                              {emp.trend === 'up' ? <TrendingUp className="w-3 h-3 text-red-500" /> : emp.trend === 'down' ? <TrendingDown className="w-3 h-3 text-emerald-500" /> : <Minus className="w-3 h-3 text-gray-400" />}
+                              <span className={`text-[10px] font-black uppercase ${emp.trend === 'up' ? 'text-red-600' : emp.trend === 'down' ? 'text-emerald-600' : 'text-gray-500'}`}>
+                                {emp.trend === 'up' ? 'Piorando' : emp.trend === 'down' ? 'Melhor' : 'Estável'}
+                              </span>
+                            </div>
+                          )
                         ) : (
                           <span className="text-[10px] font-black text-gray-700 uppercase">
                             {status ? STATUS_LABELS[status] || status : '—'}
@@ -434,13 +457,9 @@ export default function EmployeeTable({
                       </div>
                     </div>
 
-                    {/* Action Footer */}
-                    {isSupervision && (
+                    {isSupervision && !isDismissed && (
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedEmployeeDetail(emp);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedEmployeeDetail(emp); }}
                         className="w-full flex items-center justify-between p-3 mt-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md active:scale-[0.97]"
                       >
                         <div className="flex items-center gap-2">
@@ -481,6 +500,4 @@ export default function EmployeeTable({
           )}
         </div>
       </div>
-    </>
-  );
-}
+    
