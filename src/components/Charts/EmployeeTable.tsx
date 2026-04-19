@@ -35,8 +35,8 @@ interface EmployeeTableProps {
   getStatusForDay: (empId: string, day: number) => string;
   setSelectedEmployeeDetail: (emp: any) => void;
   getInitials: (name: string) => string;
-  showDismissed: boolean;       // ← NOVO
-  setShowDismissed: (v: boolean) => void; // ← NOVO
+  showDismissed: boolean;
+  setShowDismissed: (v: boolean) => void;
 }
 
 export default function EmployeeTable({
@@ -65,7 +65,6 @@ export default function EmployeeTable({
 
         {/* ── Header / Filters ── */}
         <div className="p-5 sm:p-6 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white flex flex-col gap-4 shrink-0">
-
           <div className="flex items-start sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2.5">
@@ -104,7 +103,7 @@ export default function EmployeeTable({
                   { value: 'all', label: 'Todos os Status' },
                   { value: 'regular', label: 'Regular (0)' },
                   { value: 'atencao', label: 'Atenção (1-3)' },
-                  { value: 'critico', label: 'Crítico (4+)' }
+                  { value: 'critico', label: 'Crítico (4+)' },
                 ]}
                 className="w-full sm:w-[180px]"
               />
@@ -134,20 +133,16 @@ export default function EmployeeTable({
               <tr>
                 <th className="py-3.5 px-6 text-[10px] font-bold text-gray-400 uppercase tracking-[0.13em] border-b border-gray-100">
                   <button
-                    onClick={() =>
-                      setSortOrder(sortOrder === 'asc_name' ? 'desc_name' : 'asc_name')
-                    }
+                    onClick={() => setSortOrder(sortOrder === 'asc_name' ? 'desc_name' : 'asc_name')}
                     className="flex items-center gap-2 hover:text-blue-600 transition-colors group"
                   >
                     Funcionário
                     <ArrowUpDown className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                   </button>
                 </th>
-
                 <th className="py-3.5 px-6 text-[10px] font-bold text-gray-400 uppercase tracking-[0.13em] border-b border-gray-100 text-center">
                   ID
                 </th>
-
                 <th className="py-3.5 px-6 text-[10px] font-bold text-gray-400 uppercase tracking-[0.13em] border-b border-gray-100 text-center">
                   {selectedDay === 'all' ? (
                     <button
@@ -167,7 +162,6 @@ export default function EmployeeTable({
                     'Status do Dia'
                   )}
                 </th>
-
                 {selectedDay === 'all' && (
                   <th
                     title="Compara as faltas da 2ª quinzena com a 1ª quinzena"
@@ -177,7 +171,6 @@ export default function EmployeeTable({
                     <span className="text-gray-400 text-[9px] not-uppercase">ⓘ</span>
                   </th>
                 )}
-
                 {selectedDay !== 'all' && (
                   <th className="py-3.5 px-6 text-[10px] font-bold text-gray-400 uppercase tracking-[0.13em] border-b border-gray-100">
                     Observações
@@ -217,7 +210,6 @@ export default function EmployeeTable({
                             <span className="text-[13px] font-semibold text-gray-900 truncate tracking-tight">
                               {emp.name}
                             </span>
-                            {/* Badge demitido */}
                             {isDismissed && (
                               <span className="text-[9px] font-bold bg-gray-100 text-gray-400 border border-gray-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide shrink-0">
                                 Demitido
@@ -431,10 +423,19 @@ export default function EmployeeTable({
                           {selectedDay === 'all' ? 'Tendência' : 'Status Completo'}
                         </span>
                         {selectedDay === 'all' ? (
-                          isDismissed ? <span className="text-[10px] text-gray-400">—</span> : (
+                          isDismissed ? (
+                            <span className="text-[10px] text-gray-400">—</span>
+                          ) : (
                             <div className="flex items-center gap-1">
-                              {emp.trend === 'up' ? <TrendingUp className="w-3 h-3 text-red-500" /> : emp.trend === 'down' ? <TrendingDown className="w-3 h-3 text-emerald-500" /> : <Minus className="w-3 h-3 text-gray-400" />}
-                              <span className={`text-[10px] font-black uppercase ${emp.trend === 'up' ? 'text-red-600' : emp.trend === 'down' ? 'text-emerald-600' : 'text-gray-500'}`}>
+                              {emp.trend === 'up'
+                                ? <TrendingUp className="w-3 h-3 text-red-500" />
+                                : emp.trend === 'down'
+                                ? <TrendingDown className="w-3 h-3 text-emerald-500" />
+                                : <Minus className="w-3 h-3 text-gray-400" />
+                              }
+                              <span className={`text-[10px] font-black uppercase ${
+                                emp.trend === 'up' ? 'text-red-600' : emp.trend === 'down' ? 'text-emerald-600' : 'text-gray-500'
+                              }`}>
                                 {emp.trend === 'up' ? 'Piorando' : emp.trend === 'down' ? 'Melhor' : 'Estável'}
                               </span>
                             </div>
@@ -481,7 +482,6 @@ export default function EmployeeTable({
           <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">
             Total: {filteredEmployees.length} Funcionários
           </span>
-
           {selectedDay === 'all' && (
             <div className="flex items-center gap-4">
               {[
@@ -500,4 +500,6 @@ export default function EmployeeTable({
           )}
         </div>
       </div>
-    
+    </>
+  );
+}
