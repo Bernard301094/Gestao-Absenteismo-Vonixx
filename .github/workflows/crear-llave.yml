@@ -1,0 +1,21 @@
+name: Generar Llave Automatica
+on: workflow_dispatch
+
+jobs:
+  crear-llave:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generar Keystore
+        run: |
+          keytool -genkey -v -keystore vonixx.jks -keyalg RSA -keysize 2048 -validity 10000 -alias vonixx -storepass vonixx123 -keypass vonixx123 -dname "CN=Vonixx, OU=App, O=Vonixx, L=Fortaleza, S=Ceara, C=BR"
+      
+      - name: Convertir a Base64
+        run: |
+          base64 -w 0 vonixx.jks > llave_lista_para_github.txt
+      
+      - name: Entregar archivo para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: Llave-Base64
+          path: llave_lista_para_github.txt
+          retention-days: 1
