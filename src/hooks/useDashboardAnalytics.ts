@@ -25,7 +25,7 @@ interface UseDashboardAnalyticsParams {
   sortOrder: 'desc_faltas' | 'asc_name' | 'desc_name';
   registroSearchTerm: string;
   isValidDay: (day: number) => boolean;
-  showDismissed: boolean; // ← NOVO
+  showDismissed: boolean;
 }
 
 export function useDashboardAnalytics({
@@ -45,7 +45,7 @@ export function useDashboardAnalytics({
   registroSearchTerm,
   isValidDay,
   vacations,
-  showDismissed, // ← NOVO
+  showDismissed,
 }: UseDashboardAnalyticsParams) {
 
   // ─── Funcionários ativos (nunca inclui demitidos nos KPIs) ───────────────
@@ -209,7 +209,6 @@ export function useDashboardAnalytics({
   }, [searchTerm, statusFilter, sortOrder, employeeData]);
 
   const filteredRegistroEmployees = useMemo(() => {
-    // Registro sempre usa apenas ativos
     let result = activeEmployees.slice();
     if (registroSearchTerm) {
       result = result.filter(emp => emp.name.toLowerCase().includes(registroSearchTerm.toLowerCase()));
