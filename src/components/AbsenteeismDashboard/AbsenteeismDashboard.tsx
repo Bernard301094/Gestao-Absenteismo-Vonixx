@@ -16,8 +16,6 @@ import EmployeeTable from '../Charts/EmployeeTable';
 import DailyTable from '../Charts/DailyTable';
 import AIInsightsPanel from './AIInsightsPanel';
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-
 interface DashboardProps {
   handleExportExcel: () => void;
   isSupervision: boolean;
@@ -45,15 +43,14 @@ interface DashboardProps {
   notes: NotesRecord;
   setSelectedEmployeeDetail: (emp: any) => void;
   getInitials: (name: string) => string;
-  
-  // ── Props for AIInsightsPanel ──
   currentShift: string | null;
   lockedDays: Record<number, boolean>;
   validWorkDays: number[];
   vacations: Vacation[];
+  activeEmployeesCount: number;   // ← NOVO
+  showDismissed: boolean;         // ← NOVO
+  setShowDismissed: (v: boolean) => void; // ← NOVO
 }
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Dashboard({
   handleExportExcel,
@@ -86,6 +83,9 @@ export default function Dashboard({
   lockedDays,
   validWorkDays,
   vacations,
+  activeEmployeesCount,
+  showDismissed,
+  setShowDismissed,
 }: DashboardProps) {
 
   const handleExportPDF = () => {
@@ -116,7 +116,7 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ── AI Reports Panel (monthly + weekly) ─────────────────────────────── */}
+      {/* ── AI Reports Panel ─────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <AIInsightsPanel
           shift={currentShift}
@@ -162,7 +162,7 @@ export default function Dashboard({
           <div className="text-3xl sm:text-4xl font-extrabold text-red-600">
             {selectedDay === 'all'
               ? totalFaltasMes
-              : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'F').length}
+              : employees.filter(emp => !emp.dismissed && getStatusForDay(emp.id, selectedDay as number) === 'F').length}
           </div>
         </div>
 
@@ -173,13 +173,14 @@ export default function Dashboard({
           <div className="text-3xl sm:text-4xl font-extrabold text-orange-600">
             {selectedDay === 'all'
               ? `${taxaAbsenteismo}%`
-              : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'P').length}
+              : employees.filter(emp => !emp.dismissed && getStatusForDay(emp.id, selectedDay as number) === 'P').length}
           </div>
         </div>
 
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">Funcionários</h3>
-          <div className="text-3xl sm:text-4xl font-extrabold text-blue-600">{employees.length}</div>
+          {/* Mostra só ativos no KPI */}
+          <div className="text-3xl sm:text-4xl font-extrabold text-blue-600">{activeEmployeesCount}</div>
         </div>
 
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
@@ -189,7 +190,7 @@ export default function Dashboard({
           <div className="text-sm sm:text-lg font-bold text-green-700 leading-tight uppercase">
             {selectedDay === 'all'
               ? (topEmployee?.name ?? '-')
-              : employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length}
+              : employees.filter(emp => !emp.dismissed && ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length}
           </div>
           {selectedDay === 'all' && topEmployee && (
             <div className="text-xs sm:text-sm font-bold text-green-600">({topEmployee.faltas} Faltas no mês)</div>
@@ -253,6 +254,8 @@ export default function Dashboard({
           getStatusForDay={getStatusForDay}
           setSelectedEmployeeDetail={setSelectedEmployeeDetail}
           getInitials={getInitials}
+          showDismissed={showDismissed}
+          setShowDismissed={setShowDismissed}
         />
       </div>
     </div>
