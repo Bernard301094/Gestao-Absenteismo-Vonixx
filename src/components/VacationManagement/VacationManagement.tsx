@@ -290,7 +290,7 @@ export default function VacationManagement({
         diasVendidos: sold,
         status,
         isHistorical: isPast ? editHistoricalConfirmed : false,
-        historicalReason: isPast ? editHistoricalReason : undefined,
+        historicalReason: isPast ? (editHistoricalReason || undefined) : undefined,
       });
     } else if (dates) {
       await handleAddVacation({
@@ -303,7 +303,7 @@ export default function VacationManagement({
         vendeuFerias: editVendeuFerias,
         diasVendidos: sold,
         isHistorical: isPast ? editHistoricalConfirmed : false,
-        historicalReason: isPast ? editHistoricalReason : undefined,
+        historicalReason: isPast ? (editHistoricalReason || undefined) : undefined,
       });
     }
     setShowEditModal(false);
@@ -354,7 +354,7 @@ export default function VacationManagement({
       vendeuFerias,
       diasVendidos: sold,
       isHistorical: isPast ? addHistoricalConfirmed : false,
-      historicalReason: isPast ? addHistoricalReason : undefined,
+      historicalReason: isPast ? (addHistoricalReason || undefined) : undefined,
     });
 
     setShowAddModal(false);

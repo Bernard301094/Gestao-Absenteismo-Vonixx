@@ -1,101 +1,342 @@
-import React from 'react';
-import { X, Calendar, User, Briefcase, Clock, FileText } from 'lucide-react';
-import { getWeekdayName } from '../../utils/dateUtils';
+import React, { useMemo } from 'react';
+import {
+  CalendarDays, Palmtree, AlertCircle, CheckCircle2,
+  Clock, Activity, BarChart3, AlertTriangle, ShieldAlert,
+  ChevronRight, Users, Info
+} from 'lucide-react';
+import { MONTH_NAMES } from '../../utils/constants';
+import type { VacationStats, Employee, Vacation } from '../../types';
 
-interface EmployeeDetailModalProps {
-  selectedEmployeeDetail: any;
-  setSelectedEmployeeDetail: (emp: any) => void;
-  getInitials: (name: string) => string;
-  globalAttendance: any;
-  VALID_WORK_DAYS: number[];
-  employeeData: any;
-  daysInMonth: number;
-  currentMonth: number;
+// ─── Props ────────────────────────────────────────────────────────────────────
+
+interface VacationAnalyticsProps {
+  vacationStats: VacationStats[];
+  vacationMonthlyBreakdown: Record<number, number[]>;
+  vacationLiability: number;
+  vacationOverlapAlerts: string[];
+  vacationHeatmap: Record<string, number>;
+  currentShift: string;
+  allVacations: Vacation[];
+  allEmployees: Employee[];
   currentYear: number;
 }
 
-export default function EmployeeDetailModal({
-  selectedEmployeeDetail: emp,
-  setSelectedEmployeeDetail,
-  getInitials,
-  globalAttendance,
-  VALID_WORK_DAYS,
-  currentMonth,
+export default function VacationAnalytics({
+  vacationStats,
+  vacationMonthlyBreakdown,
+  vacationLiability,
+  vacationOverlapAlerts,
+  currentShift,
   currentYear,
-}: EmployeeDetailModalProps) {
+  allVacations,
+}: VacationAnalyticsProps) {
   
-  const attendance = globalAttendance[emp.id] || {};
+  // ─── Data Aggregations ────────────────────────────────────────────────────
+  const today = new Date();
+  const todayTime = today.getTime();
+
+  const emFerias = vacationStats.filter(s => s.status === 'em_ferias_agora').map(s => {
+    let diasRestantes = Number(s.diasRestantes) || 0;
+    if (s.dataFimFerias) {
+      const end = new Date(s.dataFimFerias + 'T12:00:00').getTime();
+      diasRestantes = Math.max(0, Math.ceil((end - todayTime) / (1000 * 60 * 60 * 24)));
+    }
+    return { ...s, sortValue: diasRestantes, labelRestante: `Faltam ${diasRestantes} dias` };
+  });
+
+  const agendadas = vacationStats.filter(s => s.status === 'ferias_agendadas').map(s => {
+    let diasParaInicio = 9999;
+    if (s.dataInicioFerias) {
+      const start = new Date(s.dataInicioFerias + 'T12:00:00').getTime();
+      diasParaInicio = Math.max(0, Math.ceil((start - todayTime) / (1000 * 60 * 60 * 24)));
+    }
+    return { ...s, sortValue: diasParaInicio, labelRestante: `Daqui a ${diasParaInicio} dias` };
+  }).sort((a, b) => a.sortValue - b.sortValue);
+
+  const criticos = vacationStats.filter(s => s.status === 'critico_vencido');
+  const concluidas = vacationStats.filter(s => s.status === 'ferias_concluidas');
+
+  // Manual chart data calculation from allVacations
+  const chartData = Array(12).fill(0);
+  allVacations.forEach(v => {
+    if (!v.startDate || v.status === 'taken' || v.isHistorical) return; // or include taken? let's include all for the year
+    const start = new Date(v.startDate + 'T12:00:00');
+    if (start.getFullYear() === currentYear) {
+      chartData[start.getMonth()]++;
+    }
+  });
+  
+  const maxMonthlyVacations = Math.max(...chartData, 1);
+
+  // Combine Em Férias and Agendadas for the timeline
+  const timelineEvents = [...emFerias, ...agendadas].slice(0, 10);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-200">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
+      
+      {/* ── SaaS Hero Header ────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 shadow-sm flex flex-col md:flex-row justify-between gap-6">
+        <div className="flex items-center gap-5">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 flex flex-col items-center justify-center shrink-0">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                Analytics de Férias
+              </h2>
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
+                Visão {currentYear}
+              </span>
+            </div>
+            <p className="text-gray-500 text-sm font-medium">
+              Monitoramento inteligente, previsão de conflitos e passivo. Turno {currentShift}.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ── KPI Grid ────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* KPI: Em Férias */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group hover:border-emerald-200 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2.5 bg-emerald-50 rounded-xl">
+              <Palmtree className="w-5 h-5 text-emerald-600" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md">Ativos</span>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-900 leading-none">{emFerias.length}</p>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">Em Férias Agora</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-emerald-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        {/* KPI: Agendadas */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group hover:border-blue-200 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2.5 bg-blue-50 rounded-xl">
+              <CalendarDays className="w-5 h-5 text-blue-600" />
+            </div>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-900 leading-none">{agendadas.length}</p>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">Agendadas</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-blue-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        {/* KPI: Críticos */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group hover:border-rose-200 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2.5 bg-rose-50 rounded-xl">
+              <AlertTriangle className="w-5 h-5 text-rose-600" />
+            </div>
+            {criticos.length > 0 && <span className="absolute top-4 right-4 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />}
+          </div>
+          <div>
+            <p className={`text-3xl font-black leading-none ${criticos.length > 0 ? 'text-rose-600' : 'text-gray-900'}`}>{criticos.length}</p>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">Vencendo / Vencidos</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-rose-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+
+        {/* KPI: Passivo de Férias */}
+        <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group hover:border-amber-200 transition-colors">
+          <div className="flex justify-between items-start mb-4">
+            <div className="p-2.5 bg-amber-50 rounded-xl">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+          <div>
+            <p className="text-3xl font-black text-gray-900 leading-none">{vacationLiability} <span className="text-sm text-gray-400">dias</span></p>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-1">Passivo de Férias</p>
+          </div>
+          <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-amber-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </div>
+
+      {/* ── Main Dashboard Grid ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Header com Avatar */}
-        <div className="bg-slate-900 p-6 text-white relative">
-          <button 
-            onClick={() => setSelectedEmployeeDetail(null)}
-            className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors"
-          >
-            <X size={20} />
-          </button>
+        {/* Left Column: Chart & Timeline (span 2) */}
+        <div className="lg:col-span-2 space-y-6">
           
-          <div className="flex items-center gap-5">
-            <div className="w-16 h-16 rounded-2xl bg-sky-500 flex items-center justify-center text-2xl font-black text-white shadow-lg shadow-sky-500/20">
-              {getInitials(emp.name)}
-            </div>
-            <div>
-              <h2 className="text-xl font-black uppercase tracking-tight">{emp.name}</h2>
-              <div className="flex items-center gap-3 mt-1 opacity-70">
-                <span className="text-[10px] font-bold uppercase tracking-widest bg-white/10 px-2 py-0.5 rounded">ID #{emp.id.padStart(3, '0')}</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest">{emp.role}</span>
+          {/* Chart: Distribuição Anual */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-blue-50 rounded-lg">
+                <Activity className="w-4 h-4 text-blue-600" />
               </div>
+              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Distribuição de Férias ({currentYear})</h3>
             </div>
+            
+            <div className="h-48 flex items-end justify-between gap-2 px-2">
+              {chartData.map((count, index) => {
+                const heightPct = count === 0 ? 0 : (count / maxMonthlyVacations) * 100;
+                return (
+                  <div key={index} className="flex flex-col items-center gap-2 flex-1 group">
+                    {/* Tooltip / Counter */}
+                    <div className="text-[10px] font-bold text-gray-400 group-hover:text-blue-600 transition-colors h-4">
+                      {count > 0 ? count : ''}
+                    </div>
+                    {/* Bar */}
+                    <div className="w-full max-w-[32px] bg-gray-50 rounded-t-sm border-b-2 border-gray-100 relative overflow-hidden group-hover:bg-blue-50 transition-colors h-full flex items-end">
+                      <div 
+                        className="w-full bg-blue-500 rounded-t-sm transition-all duration-1000 ease-out" 
+                        style={{ height: `${heightPct}%` }}
+                      />
+                    </div>
+                    {/* Month Label */}
+                    <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1 group-hover:text-gray-900">
+                      {MONTH_NAMES[index].substring(0,3)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center mt-4 pt-4 border-t border-gray-50">
+              Volume de funcionários programados por mês
+            </p>
+          </div>
+
+          {/* Timeline: Férias Atuais e Próximas */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-emerald-50 rounded-lg">
+                <CalendarDays className="w-4 h-4 text-emerald-600" />
+              </div>
+              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Timeline de Férias</h3>
+            </div>
+
+            {timelineEvents.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm font-medium">
+                Nenhuma férias em andamento ou agendada.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {timelineEvents.map((ev, i) => (
+                  <div key={i} className={`p-4 rounded-xl border flex items-center justify-between gap-4 transition-colors ${ev.status === 'em_ferias_agora' ? 'bg-emerald-50/30 border-emerald-100 hover:border-emerald-300' : 'bg-gray-50/50 border-gray-100 hover:border-gray-300'}`}>
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div className={`w-10 h-10 rounded-full flex flex-col items-center justify-center shrink-0 border ${ev.status === 'em_ferias_agora' ? 'bg-emerald-100 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-600'}`}>
+                        {ev.status === 'em_ferias_agora' ? <Palmtree className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-900 truncate">{ev.employeeName}</p>
+                        <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">{ev.cargo}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col items-end shrink-0">
+                      {ev.status === 'em_ferias_agora' ? (
+                        <>
+                          <span className="text-[10px] font-black uppercase text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-md mb-1">Em Férias</span>
+                          <span className="text-xs font-bold text-gray-600">{ev.labelRestante}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md mb-1">{ev.labelRestante}</span>
+                          <span className="text-xs font-bold text-gray-600 text-right max-w-[120px] truncate">
+                            {ev.dataInicioFerias ? new Date(ev.dataInicioFerias + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : 'N/A'}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Conteúdo: Histórico de Presença */}
-        <div className="p-6 max-h-[70vh] overflow-y-auto custom-scrollbar bg-slate-50">
-          <div className="flex items-center gap-2 mb-4">
-            <Calendar size={16} className="text-slate-400" />
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">Histórico de Escala (12x36)</h3>
-          </div>
+        {/* Right Column: AI Alerts & Critical (span 1) */}
+        <div className="space-y-6">
+          
+          {/* AI Intelligence Center */}
+          <div className="bg-gray-900 rounded-2xl border border-gray-800 p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-10">
+              <ShieldAlert className="w-32 h-32 text-white" />
+            </div>
+            
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-blue-500/20 rounded-lg backdrop-blur-md border border-blue-500/30">
+                  <AlertCircle className="w-4 h-4 text-blue-400" />
+                </div>
+                <h3 className="text-sm font-black text-white uppercase tracking-wide">Centro de Alertas</h3>
+              </div>
 
-          <div className="grid grid-cols-1 gap-2">
-            {VALID_WORK_DAYS.map(day => {
-              const status = attendance[day];
-              const date = new Date(currentYear, currentMonth, day);
-              
-              return (
-                <div key={day} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl hover:border-sky-200 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="text-center min-w-[40px]">
-                      <p className="text-[10px] font-black text-slate-400 uppercase leading-none">{getWeekdayName(date).slice(0, 3)}</p>
-                      <p className="text-sm font-black text-slate-800 leading-none mt-1">{day}</p>
-                    </div>
-                    <div className="h-6 w-px bg-slate-100" />
-                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded ${
-                      status === 'P' ? 'bg-emerald-500/10 text-emerald-600' :
-                      status === 'F' ? 'bg-red-500/10 text-red-600' :
-                      status === 'Fe' ? 'bg-sky-500/10 text-sky-600' :
-                      'bg-slate-100 text-slate-400'
-                    }`}>
-                      {status === 'P' ? 'Presente' : status === 'F' ? 'Falta' : status === 'Fe' ? 'Férias' : 'N/A'}
-                    </span>
+              {vacationOverlapAlerts.length === 0 ? (
+                <div className="bg-white/5 border border-white/10 p-4 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <p className="text-xs font-medium text-gray-300 leading-relaxed">
+                      Nenhuma sobreposição de férias detectada para o mesmo cargo. A cobertura da equipe parece adequada.
+                    </p>
                   </div>
                 </div>
-              );
-            })}
+              ) : (
+                <div className="space-y-3">
+                  {vacationOverlapAlerts.map((alert, i) => (
+                    <div key={i} className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-xl">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                        <div>
+                          <p className="text-xs font-bold text-rose-300 mb-1">Risco de Cobertura</p>
+                          <p className="text-xs font-medium text-gray-300 leading-relaxed">{alert}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Fake AI Recommendation based on alerts */}
+                  <div className="mt-4 bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl">
+                    <div className="flex items-start gap-2 mb-2">
+                      <Info className="w-4 h-4 text-blue-400 shrink-0" />
+                      <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Recomendação do Sistema</span>
+                    </div>
+                    <p className="text-xs text-gray-300 leading-relaxed">Considere aprovar as próximas solicitações com pelo menos 1 semana de defasagem para evitar déficit na operação.</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-slate-100 bg-white flex justify-end">
-          <button 
-            onClick={() => setSelectedEmployeeDetail(null)}
-            className="px-6 py-2 bg-slate-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95"
-          >
-            Fechar Registro
-          </button>
+          {/* Critical Employees */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-rose-50 rounded-lg">
+                  <Users className="w-4 h-4 text-rose-600" />
+                </div>
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Férias Críticas</h3>
+              </div>
+              <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{criticos.length}</span>
+            </div>
+
+            {criticos.length === 0 ? (
+              <p className="text-xs text-gray-500 font-medium text-center py-4">Nenhum funcionário com férias vencendo.</p>
+            ) : (
+              <div className="space-y-3">
+                {criticos.map((c, i) => (
+                  <div key={i} className="p-3 bg-white border border-rose-100 rounded-xl hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-xs font-bold text-gray-900">{c.employeeName}</p>
+                      <span className="text-[9px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100 uppercase">Atenção</span>
+                    </div>
+                    <p className="text-[10px] text-gray-500 font-medium leading-tight mb-2">Período limite aproxima-se rapidamente. Agende as férias para evitar multas trabalhistas.</p>
+                    {c.diasRestantes !== undefined && (
+                      <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">
+                        {Number(c.diasRestantes) > 0 ? `Vence em ${c.diasRestantes} dias` : 'Vencido'}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
     </div>

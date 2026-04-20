@@ -3,7 +3,7 @@ import {
   CalendarX, UserPlus, CheckCircle2, Search,
   Edit2, Trash2, XCircle, Palmtree, Stethoscope,
   MessageSquare, Activity, CalendarDays, Lock, Unlock,
-  ShieldCheck, FileText
+  ShieldCheck, FileText, Clock
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { generateStatsImage } from '../../utils/generateStatsImage';
@@ -37,6 +37,7 @@ interface AttendanceRegistryProps {
   setLockedDays: React.Dispatch<React.SetStateAction<LockedDaysRecord>>;
   handleSave: () => void;
   isSaving: boolean;
+  currentShift: string | null;
 }
 
 // ─── Status Config ────────────────────────────────────────────────────────────
@@ -45,73 +46,41 @@ type StatusCfg = {
   label: string;
   short: string;
   icon: React.ComponentType<{ className?: string }>;
-  activePill: string;
-  stripBorder: string;
-  badgeBg: string;
-  badgeText: string;
-  iconRing: string;
-  iconColor: string;
+  activeClass: string;
+  inactiveClass: string;
+  badgeClass: string;
   barColor: string;
   kpiLabel: string;
-  kpiAccent: string;
 };
 
 const STATUS_CONFIG: Record<Status, StatusCfg> = {
   P: {
-    label: 'Presente',
-    short: 'P',
-    icon: CheckCircle2,
-    activePill:  'bg-emerald-600 text-white shadow-lg shadow-emerald-500/25',
-    stripBorder: 'border-l-emerald-500',
-    badgeBg:     'bg-emerald-50',
-    badgeText:   'text-emerald-700',
-    iconRing:    'bg-emerald-100 ring-1 ring-emerald-200',
-    iconColor:   'text-emerald-600',
-    barColor:    'bg-emerald-500',
-    kpiLabel:    'Presentes',
-    kpiAccent:   'border-t-emerald-500',
+    label: 'Presente', short: 'P', icon: CheckCircle2,
+    activeClass: 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30',
+    inactiveClass: 'text-gray-400 hover:text-emerald-600 hover:bg-emerald-50',
+    badgeClass: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    barColor: 'bg-emerald-500', kpiLabel: 'Presentes',
   },
   F: {
-    label: 'Falta',
-    short: 'F',
-    icon: XCircle,
-    activePill:  'bg-rose-600 text-white shadow-lg shadow-rose-500/25',
-    stripBorder: 'border-l-rose-500',
-    badgeBg:     'bg-rose-50',
-    badgeText:   'text-rose-700',
-    iconRing:    'bg-rose-100 ring-1 ring-rose-200',
-    iconColor:   'text-rose-600',
-    barColor:    'bg-rose-500',
-    kpiLabel:    'Faltas',
-    kpiAccent:   'border-t-rose-500',
+    label: 'Falta', short: 'F', icon: XCircle,
+    activeClass: 'bg-rose-500 text-white shadow-sm shadow-rose-500/30',
+    inactiveClass: 'text-gray-400 hover:text-rose-600 hover:bg-rose-50',
+    badgeClass: 'bg-rose-50 text-rose-700 ring-rose-200',
+    barColor: 'bg-rose-500', kpiLabel: 'Faltas',
   },
   Fe: {
-    label: 'Férias',
-    short: 'Fe',
-    icon: Palmtree,
-    activePill:  'bg-blue-600 text-white shadow-lg shadow-blue-500/25',
-    stripBorder: 'border-l-blue-500',
-    badgeBg:     'bg-blue-50',
-    badgeText:   'text-blue-700',
-    iconRing:    'bg-blue-100 ring-1 ring-blue-200',
-    iconColor:   'text-blue-600',
-    barColor:    'bg-blue-500',
-    kpiLabel:    'Férias',
-    kpiAccent:   'border-t-blue-500',
+    label: 'Férias', short: 'Fe', icon: Palmtree,
+    activeClass: 'bg-blue-500 text-white shadow-sm shadow-blue-500/30',
+    inactiveClass: 'text-gray-400 hover:text-blue-600 hover:bg-blue-50',
+    badgeClass: 'bg-blue-50 text-blue-700 ring-blue-200',
+    barColor: 'bg-blue-500', kpiLabel: 'Férias',
   },
   A: {
-    label: 'Afastamento',
-    short: 'A',
-    icon: Stethoscope,
-    activePill:  'bg-amber-500 text-white shadow-lg shadow-amber-500/25',
-    stripBorder: 'border-l-amber-500',
-    badgeBg:     'bg-amber-50',
-    badgeText:   'text-amber-700',
-    iconRing:    'bg-amber-100 ring-1 ring-amber-200',
-    iconColor:   'text-amber-600',
-    barColor:    'bg-amber-500',
-    kpiLabel:    'Afastados',
-    kpiAccent:   'border-t-amber-500',
+    label: 'Afastamento', short: 'A', icon: Stethoscope,
+    activeClass: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
+    inactiveClass: 'text-gray-400 hover:text-amber-600 hover:bg-amber-50',
+    badgeClass: 'bg-amber-50 text-amber-700 ring-amber-200',
+    barColor: 'bg-amber-500', kpiLabel: 'Afastados',
   },
 };
 
@@ -145,6 +114,7 @@ export default function AttendanceRegistry({
   setLockedDays,
   handleSave,
   isSaving,
+  currentShift,
 }: AttendanceRegistryProps) {
   const dayNum    = selectedDay === 'all' ? currentDayOfMonth : (selectedDay as number);
   const isLocked  = !!lockedDays[dayNum];
@@ -183,478 +153,332 @@ export default function AttendanceRegistry({
       faltas: listF,
       afastamentos: listA,
       ferias: listFe,
-      percentual
+      percentual,
+      title: 'Relatório Diário de Frequência',
+      subtitle: `Produção Vonixx • Turno ${currentShift || 'A'}`,
+      shift: currentShift || 'A'
     });
   };
 
+  // Helper function to extract initials from name
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(' ');
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
 
-      {/* ── Command Header ──────────────────────────────────────────────────── */}
-      <div className="relative bg-gradient-to-r from-blue-900 via-blue-800 to-blue-900 rounded-2xl overflow-hidden shadow-xl shadow-blue-900/30">
-
-        {/* Subtle grid texture */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.06]"
-          style={{
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.4) 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-        {/* Top-right radial glow */}
-        <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full bg-blue-400/10 blur-3xl pointer-events-none" />
-
-        <div className="relative px-5 sm:px-7 py-5 flex flex-col xl:flex-row xl:items-center gap-5">
-
-          {/* Left: day badge + title */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="w-[62px] h-[62px] sm:w-[70px] sm:h-[70px] rounded-2xl bg-white/10 border border-white/20 backdrop-blur-sm flex flex-col items-center justify-center shrink-0 shadow-inner">
+      {/* ── SaaS Hero Header ──────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-7 shadow-sm">
+        <div className="flex flex-col lg:flex-row justify-between gap-6">
+          
+          {/* Title & Info */}
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shrink-0">
               {selectedDay !== 'all' ? (
                 <>
-                  <span className="text-[34px] sm:text-[38px] font-black text-white leading-none tabular-nums tracking-tight">
+                  <span className="text-2xl sm:text-3xl font-black text-gray-900 leading-none tabular-nums tracking-tight">
                     {selectedDay}
                   </span>
-                  <span className="text-[7px] font-extrabold text-blue-200/60 uppercase tracking-[0.3em] mt-0.5">dia</span>
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{MONTH_NAMES[currentMonth].substring(0, 3)}</span>
                 </>
               ) : (
-                <CalendarDays className="w-7 h-7 text-white/40" />
+                <CalendarDays className="w-6 h-6 text-gray-400" />
               )}
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight leading-none">
-                  Lançamento de Frequência
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                  Registro Diário
                 </h2>
                 {isHoliday && (
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-black bg-sky-400/20 text-sky-200 border border-sky-400/30 uppercase tracking-[0.15em] shrink-0">
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-600 border border-sky-100 uppercase tracking-wider">
                     Folga 12×36
                   </span>
                 )}
                 {isLocked && !isHoliday && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black bg-amber-400/20 text-amber-200 border border-amber-400/30 uppercase tracking-[0.12em] shrink-0">
-                    <Lock className="w-2.5 h-2.5" /> Bloqueado
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-gray-50 text-gray-500 border border-gray-200 uppercase tracking-wider flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Salvo
                   </span>
                 )}
               </div>
-              <p className="mt-1.5 text-blue-200/70 text-xs sm:text-sm font-medium">
-                {MONTH_NAMES[currentMonth]} {currentYear}
-                {selectedDay !== 'all' && (
-                  <span className="text-blue-200/40 ml-1">
-                    · {activeEmployees.length} ativo{activeEmployees.length !== 1 ? 's' : ''}
-                  </span>
-                )}
+              <p className="text-gray-500 text-sm font-medium">
+                Turno {currentShift || 'A'} · {activeEmployees.length} colaboradores
               </p>
             </div>
           </div>
 
-          {/* Right: KPI tiles */}
+          {/* Action Buttons */}
           {!isHoliday && selectedDay !== 'all' && (
-            <div className="grid grid-cols-4 gap-2 shrink-0">
-              {kpiCounts.map(({ key, count }) => {
-                const cfg = STATUS_CONFIG[key as Status];
-                const pct = activeEmployees.length > 0
-                  ? Math.round((count / activeEmployees.length) * 100)
-                  : 0;
-                return (
-                  <div
-                    key={key}
-                    className="flex flex-col items-center bg-white/[0.07] hover:bg-white/[0.12] transition-all duration-200 rounded-xl px-3 sm:px-4 py-3 border border-white/10 min-w-[58px] cursor-default"
-                  >
-                    <span className="text-2xl sm:text-3xl font-black text-white tabular-nums leading-none">
-                      {count}
-                    </span>
-                    <span className="text-[7px] font-black text-white/40 uppercase tracking-[0.18em] mt-1">
-                      {cfg.kpiLabel}
-                    </span>
-                    <div className="w-full h-[2px] bg-white/10 rounded-full mt-2 overflow-hidden">
-                      <div
-                        className={`h-full ${cfg.barColor} rounded-full transition-all duration-700`}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <span className="text-[7px] font-bold text-white/25 mt-1 tabular-nums">{pct}%</span>
-                  </div>
-                );
-              })}
+            <div className="flex items-center gap-2 flex-wrap lg:justify-end">
+              <button
+                onClick={() => setShowAddEmployeeModal(true)}
+                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors"
+              >
+                <UserPlus className="w-3.5 h-3.5" /> Colaborador
+              </button>
+              <button
+                onClick={handleMarkAllPresent}
+                className="inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-emerald-100"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" /> Todos Presentes
+              </button>
+              <button
+                onClick={handleGeneratePDF}
+                className="inline-flex items-center gap-2 bg-gray-50 hover:bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-gray-200"
+              >
+                <FileText className="w-3.5 h-3.5" /> Exportar PDF
+              </button>
             </div>
           )}
         </div>
-      </div>
 
-      {/* ── Action Bar ───────────────────────────────────────────────────────── */}
-      {!isHoliday && selectedDay !== 'all' && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-
-            <button
-              onClick={() => setShowAddEmployeeModal(true)}
-              className="inline-flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 shadow-md shadow-blue-700/30 border border-blue-600"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              Novo Colaborador
-            </button>
-
-            <button
-              onClick={handleMarkAllPresent}
-              className="inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 border border-emerald-200"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              Todos Presentes
-            </button>
-
-            <button
-              onClick={handleGeneratePDF}
-              className="inline-flex items-center gap-2 bg-violet-50 hover:bg-violet-100 text-violet-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 border border-violet-200"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              Exportar Resumo (PDF)
-            </button>
-
-            {isLocked && (
-              <button
-                onClick={() => setLockedDays(prev => ({ ...prev, [dayNum]: false }))}
-                className="inline-flex items-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-[0.1em] transition-all active:scale-95 border border-amber-200"
-              >
-                <Unlock className="w-3.5 h-3.5" />
-                Desbloquear
-              </button>
-            )}
-          </div>
-
-          {/* Search */}
-          <div className="relative flex-1 sm:max-w-xs ml-auto">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Filtrar colaborador..."
-              value={registroSearchTerm}
-              onChange={e => setRegistroSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-400 transition-all placeholder:text-gray-300 font-medium text-gray-700 shadow-sm"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── Column Headers (desktop) ─────────────────────────────────────────── */}
-      {!isHoliday && selectedDay !== 'all' && filteredRegistroEmployees.length > 0 && (
-        <div className="hidden lg:grid grid-cols-[1fr_220px_1fr_80px] items-center px-4 gap-0">
-          <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] pl-11">Colaborador</span>
-          <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] text-center">Status</span>
-          <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] pl-4">Observação</span>
-          <span />
-        </div>
-      )}
-
-      {/* ── Main Content ─────────────────────────────────────────────────────── */}
-      {isHoliday ? (
-
-        /* ── Holiday Empty State ── */
-        <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center shadow-sm">
-          <div className="relative w-20 h-20 mx-auto mb-5">
-            <div className="w-full h-full bg-blue-50 border border-blue-100 rounded-2xl flex items-center justify-center shadow-sm">
-              <CalendarX className="w-9 h-9 text-blue-300" />
-            </div>
-            <span className="absolute -bottom-1.5 -right-1.5 w-8 h-8 bg-white border border-gray-100 rounded-full flex items-center justify-center shadow-sm text-[11px] font-black text-gray-400">
-              {selectedDay}
-            </span>
-          </div>
-          <h3 className="text-sm font-black text-gray-700 uppercase tracking-wider mb-2">Dia de Folga Geral</h3>
-          <p className="text-gray-400 text-sm max-w-xs mx-auto leading-relaxed">
-            Escala 12×36: sem expediente neste dia para este turno.
-          </p>
-        </div>
-
-      ) : (
-        <div className="space-y-2">
-
-          {/* Employee rows */}
-          {filteredRegistroEmployees.map((emp, index) => {
-            const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
-            const currentNote   = pendingNotes[emp.id]?.[dayNum] ?? notes[emp.id]?.[dayNum] ?? '';
-            const isModified    = pendingAttendance[emp.id]?.[dayNum] !== undefined || pendingNotes[emp.id]?.[dayNum] !== undefined;
-
-            let isNotYetHired = false;
-            if (emp.admissionDate) {
-              const [y, m, d] = emp.admissionDate.split('-').map(Number);
-              const admDate    = new Date(y, m - 1, d);
-              const targetDate = new Date(currentYear, currentMonth, dayNum);
-              isNotYetHired = targetDate < admDate;
-            }
-
-            const cfg        = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
-            const StatusIcon = cfg.icon;
-            const isDayLocked = (isLocked && !isModified) || isNotYetHired;
-
-            return (
-              <div
-                key={emp.id}
-                className={[
-                  'group relative bg-white rounded-xl border-l-[3px] transition-all duration-200',
-                  cfg.stripBorder,
-                  isModified
-                    ? 'shadow-md shadow-blue-100/80 ring-1 ring-blue-200/60 border border-blue-100'
-                    : 'border border-gray-100 hover:border-gray-200 hover:shadow-sm',
-                ].join(' ')}
-                style={{ animationDelay: `${index * 20}ms` }}
-              >
-                {/* ── Desktop Row ─────────────────────────────────────────── */}
-                <div className="hidden lg:grid grid-cols-[1fr_220px_1fr_80px] items-center gap-0 px-4 py-3 min-h-[64px]">
-
-                  {/* Employee info */}
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${cfg.iconRing}`}>
-                      <StatusIcon className={`w-4 h-4 ${cfg.iconColor}`} />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[13px] font-black text-gray-900 uppercase tracking-tight truncate">
-                          {emp.name}
-                        </span>
-                        {isNotYetHired && (
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-gray-100 text-gray-400 uppercase tracking-wider shrink-0">
-                            Pré-Admissão
-                          </span>
-                        )}
-                        {isModified && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-100 text-blue-600 uppercase tracking-wider shrink-0">
-                            <span className="w-1 h-1 bg-blue-500 rounded-full animate-pulse inline-block" />
-                            Pendente
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] font-bold text-gray-300 font-mono">#{emp.id.padStart(3,'0')}</span>
-                        <span className="text-gray-200 text-xs">·</span>
-                        <span className="text-[10px] font-semibold text-blue-500 uppercase tracking-wide">{emp.role || 'Sem Cargo'}</span>
-                        <span className="text-gray-200 text-xs">·</span>
-                        <span className={`text-[10px] font-semibold uppercase tracking-wide ${cfg.badgeText}`}>{cfg.label}</span>
-                      </div>
-                    </div>
+        {/* Compact KPIs */}
+        {!isHoliday && selectedDay !== 'all' && (
+          <div className="mt-8 pt-6 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {kpiCounts.map(({ key, count }) => {
+              const cfg = STATUS_CONFIG[key as Status];
+              const pct = activeEmployees.length > 0 ? Math.round((count / activeEmployees.length) * 100) : 0;
+              return (
+                <div key={key} className="flex flex-col gap-1">
+                  <div className="flex justify-between items-end">
+                    <span className="text-xs font-bold text-gray-500">{cfg.kpiLabel}</span>
+                    <span className="text-lg font-black text-gray-900 tabular-nums leading-none">{count}</span>
                   </div>
-
-                  {/* Status control */}
-                  <div className="flex items-center justify-center">
-                    <div className="inline-flex items-center bg-gray-50 rounded-xl p-[3px] border border-gray-200 gap-[2px]">
-                      {STATUS_ORDER.map(key => {
-                        const s    = STATUS_CONFIG[key];
-                        const Icon = s.icon;
-                        const isActive = currentStatus === key;
-                        return (
-                          <button
-                            key={key}
-                            onClick={() => !isDayLocked && setStatus(emp.id, dayNum, key)}
-                            disabled={isDayLocked}
-                            title={s.label}
-                            className={[
-                              'flex items-center gap-1.5 px-3 py-2 rounded-[9px]',
-                              'text-[9px] font-black uppercase tracking-[0.1em]',
-                              'transition-all duration-150',
-                              isActive
-                                ? s.activePill
-                                : 'text-gray-400 hover:text-gray-700 hover:bg-white',
-                              isDayLocked ? 'cursor-not-allowed opacity-40' : 'active:scale-95 cursor-pointer',
-                            ].join(' ')}
-                          >
-                            <Icon className="w-3.5 h-3.5 shrink-0" />
-                            <span>{s.short}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Note */}
-                  <div className="pl-4 relative group/note">
-                    <MessageSquare className="absolute left-7 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 group-focus-within/note:text-blue-500 transition-colors pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Observação..."
-                      value={currentNote}
-                      readOnly={isDayLocked}
-                      onChange={e => setNote(emp.id, dayNum, e.target.value)}
-                      className={[
-                        'w-full pl-7 pr-3 py-2 text-[11px] font-medium',
-                        'bg-gray-50 border border-transparent rounded-lg',
-                        'focus:bg-white focus:border-blue-200 focus:ring-2 focus:ring-blue-50 focus:outline-none',
-                        'transition-all placeholder:text-gray-300 text-gray-600',
-                        isDayLocked ? 'cursor-not-allowed opacity-50' : '',
-                      ].join(' ')}
-                    />
-                  </div>
-
-                  {/* Edit / Delete */}
-                  <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150 pr-1">
-                    <button
-                      onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }}
-                      className="p-2 rounded-lg text-gray-300 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                      title="Editar"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteEmployee(emp.id)}
-                      className="p-2 rounded-lg text-gray-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
-                      title="Excluir"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div className={`h-full ${cfg.barColor} rounded-full`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-                {/* ── Mobile Card ─────────────────────────────────────────── */}
-                <div className="lg:hidden p-3.5 space-y-3">
-                  {/* Top: avatar + name + badges */}
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${cfg.iconRing}`}>
-                      <StatusIcon className={`w-4.5 h-4.5 ${cfg.iconColor}`} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[13px] font-black text-gray-900 uppercase tracking-tight truncate leading-tight">
-                          {emp.name}
-                        </span>
-                        {isNotYetHired && (
-                          <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-gray-100 text-gray-400 uppercase tracking-wider shrink-0">Pré-Admissão</span>
-                        )}
-                        {isModified && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black bg-blue-100 text-blue-600 uppercase tracking-wider shrink-0">
-                            <span className="w-1 h-1 bg-blue-500 rounded-full animate-pulse inline-block" />
-                            Pendente
-                          </span>
-                        )}
+      {/* ── Search Bar ───────────────────────────────────────────────────────── */}
+      {!isHoliday && selectedDay !== 'all' && (
+        <div className="relative max-w-md">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar colaborador..."
+            value={registroSearchTerm}
+            onChange={e => setRegistroSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-700 shadow-sm"
+          />
+        </div>
+      )}
+
+      {/* ── Main Content (Table/List) ────────────────────────────────────────── */}
+      {isHoliday ? (
+        <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center shadow-sm">
+          <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <CalendarX className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider mb-2">Dia de Folga Geral</h3>
+          <p className="text-gray-500 text-sm max-w-xs mx-auto">Escala 12×36: sem expediente neste dia para o turno {currentShift}.</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+          
+          {/* Table Header (Desktop) */}
+          {filteredRegistroEmployees.length > 0 && (
+            <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3 border-b border-gray-100 bg-gray-50/50">
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-12">Colaborador</span>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Status</span>
+              <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-2">Observação</span>
+              <span />
+            </div>
+          )}
+
+          {/* Rows */}
+          <div className="divide-y divide-gray-50">
+            {filteredRegistroEmployees.map((emp) => {
+              const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
+              const currentNote   = pendingNotes[emp.id]?.[dayNum] ?? notes[emp.id]?.[dayNum] ?? '';
+              const isModified    = pendingAttendance[emp.id]?.[dayNum] !== undefined || pendingNotes[emp.id]?.[dayNum] !== undefined;
+
+              let isNotYetHired = false;
+              if (emp.admissionDate) {
+                const [y, m, d] = emp.admissionDate.split('-').map(Number);
+                const admDate    = new Date(y, m - 1, d);
+                const targetDate = new Date(currentYear, currentMonth, dayNum);
+                isNotYetHired = targetDate < admDate;
+              }
+
+              const cfg = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
+              
+              // El bloqueo es sólo si no está contratado aún. Quitamos la restricción manual de isLocked
+              const isRowDisabled = isNotYetHired;
+
+              return (
+                <div key={emp.id} className={`group relative transition-colors ${isModified ? 'bg-blue-50/30' : 'hover:bg-gray-50/50'}`}>
+                  
+                  {isModified && (
+                     <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
+                  )}
+
+                  {/* Desktop Row */}
+                  <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3.5 items-center">
+                    
+                    {/* Employee Info */}
+                    <div className="flex items-center gap-3 min-w-0 pl-1">
+                      <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-black shrink-0 border border-gray-200">
+                        {getInitials(emp.name)}
                       </div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <span className="text-[10px] font-bold text-gray-300 font-mono">#{emp.id.padStart(3,'0')}</span>
-                        <span className="text-gray-200 text-xs">·</span>
-                        <span className="text-[10px] font-semibold text-blue-500 uppercase">{emp.role || 'Sem Cargo'}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-gray-900 truncate">{emp.name}</span>
+                          {isNotYetHired && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-500 uppercase">Pré-Admissão</span>}
+                          {isModified && <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Modificado</span>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[11px] text-gray-400 font-mono">#{emp.id.padStart(3,'0')}</span>
+                          <span className="text-gray-300 text-[10px]">•</span>
+                          <span className="text-[11px] text-gray-500 font-medium">{emp.role || 'Sem Cargo'}</span>
+                        </div>
                       </div>
                     </div>
-                    {/* Mobile edit/delete */}
-                    <div className="flex gap-1 shrink-0">
-                      <button
-                        onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }}
-                        className="p-2 rounded-lg text-gray-300 hover:text-blue-600 hover:bg-blue-50 transition-all"
-                      >
+
+                    {/* Status Toggle (Segmented Control) */}
+                    <div className="flex justify-center">
+                      <div className={`flex items-center bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {STATUS_ORDER.map(key => {
+                          const s = STATUS_CONFIG[key];
+                          const Icon = s.icon;
+                          const isActive = currentStatus === key;
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => !isRowDisabled && setStatus(emp.id, dayNum, key)}
+                              title={s.label}
+                              className={[
+                                'flex items-center justify-center w-12 h-8 rounded-lg transition-all duration-200',
+                                isActive ? s.activeClass : s.inactiveClass
+                              ].join(' ')}
+                            >
+                              <Icon className={`w-4 h-4 ${isActive ? '' : 'opacity-70'}`} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Note Input */}
+                    <div className="relative group/note pr-4">
+                      <MessageSquare className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 transition-colors ${currentNote ? 'text-blue-500' : 'text-gray-400 group-focus-within/note:text-gray-900'}`} />
+                      <input
+                        type="text"
+                        placeholder="Adicionar observação..."
+                        value={currentNote}
+                        readOnly={isRowDisabled}
+                        onChange={e => setNote(emp.id, dayNum, e.target.value)}
+                        className={`w-full pl-9 pr-3 py-2 text-xs font-medium bg-transparent border border-transparent hover:border-gray-200 hover:bg-white focus:bg-white focus:border-gray-300 focus:ring-0 focus:outline-none rounded-xl transition-all placeholder:text-gray-400 text-gray-700 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors" title="Editar">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button
-                        onClick={() => handleDeleteEmployee(emp.id)}
-                        className="p-2 rounded-lg text-gray-300 hover:text-rose-600 hover:bg-rose-50 transition-all"
-                      >
+                      <button onClick={() => handleDeleteEmployee(emp.id)} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors" title="Excluir">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
 
-                  {/* Status control - bigger for touch */}
-                  <div className="flex items-center">
-                    <div className="inline-flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 gap-1 w-full justify-between">
+                  {/* Mobile Row */}
+                  <div className="lg:hidden p-4 space-y-4">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-sm font-black shrink-0 border border-gray-200">
+                          {getInitials(emp.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-bold text-gray-900 block truncate">{emp.name}</span>
+                          <span className="text-[11px] text-gray-500 block">{emp.role}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }} className="p-2 text-gray-400 hover:text-gray-900">
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className={`grid grid-cols-4 bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
                       {STATUS_ORDER.map(key => {
-                        const s    = STATUS_CONFIG[key];
+                        const s = STATUS_CONFIG[key];
                         const Icon = s.icon;
                         const isActive = currentStatus === key;
                         return (
                           <button
                             key={key}
-                            onClick={() => !isDayLocked && setStatus(emp.id, dayNum, key)}
-                            disabled={isDayLocked}
-                            title={s.label}
-                            className={[
-                              'flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-lg',
-                              'text-[10px] font-black uppercase tracking-[0.08em]',
-                              'transition-all duration-150 min-h-[42px]',
-                              isActive
-                                ? s.activePill
-                                : 'text-gray-400 hover:text-gray-700 hover:bg-white',
-                              isDayLocked ? 'cursor-not-allowed opacity-40' : 'active:scale-95 cursor-pointer',
-                            ].join(' ')}
+                            onClick={() => !isRowDisabled && setStatus(emp.id, dayNum, key)}
+                            className={['flex flex-col items-center gap-1 py-2 rounded-lg transition-all', isActive ? s.activeClass : s.inactiveClass].join(' ')}
                           >
-                            <Icon className="w-4 h-4 shrink-0" />
-                            <span>{s.short}</span>
+                            <Icon className="w-4 h-4" />
+                            <span className="text-[9px] font-bold uppercase">{s.short}</span>
                           </button>
                         );
                       })}
                     </div>
+
+                    <div className="relative">
+                      <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Observação..."
+                        value={currentNote}
+                        readOnly={isRowDisabled}
+                        onChange={e => setNote(emp.id, dayNum, e.target.value)}
+                        className="w-full pl-9 pr-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-gray-400 focus:outline-none transition-all text-gray-700"
+                      />
+                    </div>
                   </div>
 
-                  {/* Note input */}
-                  <div className="relative">
-                    <MessageSquare className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-300 pointer-events-none" />
-                    <input
-                      type="text"
-                      placeholder="Observação..."
-                      value={currentNote}
-                      readOnly={isDayLocked}
-                      onChange={e => setNote(emp.id, dayNum, e.target.value)}
-                      className={[
-                        'w-full pl-9 pr-3 py-2.5 text-sm font-medium',
-                        'bg-gray-50 border border-gray-200 rounded-xl',
-                        'focus:bg-white focus:border-blue-300 focus:ring-2 focus:ring-blue-50 focus:outline-none',
-                        'transition-all placeholder:text-gray-300 text-gray-600',
-                        isDayLocked ? 'cursor-not-allowed opacity-50' : '',
-                      ].join(' ')}
-                    />
-                  </div>
                 </div>
+              );
+            })}
+
+            {filteredRegistroEmployees.length === 0 && (
+              <div className="p-12 text-center">
+                <Search className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-500">Nenhum colaborador encontrado.</p>
               </div>
-            );
-          })}
-
-          {/* Empty search */}
-          {filteredRegistroEmployees.length === 0 && (
-            <div className="bg-white border border-gray-100 rounded-2xl p-12 text-center shadow-sm">
-              <Search className="w-8 h-8 text-gray-200 mx-auto mb-3" />
-              <p className="text-sm font-bold text-gray-400">
-                Nenhum colaborador encontrado para "{registroSearchTerm}".
-              </p>
-            </div>
-          )}
-
-          {/* Count footer */}
-          {filteredRegistroEmployees.length > 0 && (
-            <p className="text-center text-[10px] font-bold text-gray-300 uppercase tracking-widest pt-1">
-              {filteredRegistroEmployees.length} colaborador{filteredRegistroEmployees.length !== 1 ? 'es' : ''}
-            </p>
-          )}
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Floating Save Bar ────────────────────────────────────────────────── */}
       {!isHoliday && selectedDay !== 'all' && (
-        <div className="sticky bottom-4 z-10 flex justify-center pt-2">
-          <div className="bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-gray-100 shadow-2xl shadow-gray-400/20 flex items-center gap-3">
-
-            {pendingCount > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 rounded-xl border border-blue-100">
-                <span className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
-                <span className="text-[10px] font-black text-blue-700 uppercase tracking-[0.12em]">
-                  {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'} pendente{pendingCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-            )}
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform ${pendingCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+          <div className="bg-gray-900 text-white px-4 py-3 rounded-2xl shadow-2xl shadow-gray-900/20 flex items-center gap-4">
+            
+            <div className="flex items-center gap-2 pl-2 border-r border-gray-700 pr-4">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+              </span>
+              <span className="text-xs font-bold tracking-wide">
+                {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'}
+              </span>
+            </div>
 
             <button
               onClick={handleSave}
-              disabled={isSaving || pendingCount === 0}
-              className={[
-                'flex items-center gap-2 px-8 sm:px-12 py-3 rounded-xl',
-                'text-[11px] font-black uppercase tracking-[0.12em] transition-all',
-                isSaving || pendingCount === 0
-                  ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
-                  : 'bg-blue-700 hover:bg-blue-600 text-white hover:scale-[1.03] active:scale-95 shadow-lg shadow-blue-700/30',
-              ].join(' ')}
+              disabled={isSaving}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
             >
               {isSaving ? (
-                <>
-                  <Activity className="w-3.5 h-3.5 animate-spin" />
-                  Salvando...
-                </>
+                <><Activity className="w-4 h-4 animate-spin" /> Salvando...</>
               ) : (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  Salvar{pendingCount > 0 ? ` ${pendingCount} alteraç${pendingCount === 1 ? 'ão' : 'ões'}` : ''}
-                </>
+                <><CheckCircle2 className="w-4 h-4" /> Salvar Alterações</>
               )}
             </button>
           </div>

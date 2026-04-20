@@ -41,7 +41,7 @@ export default function App() {
   const [currentYear, setCurrentYear]   = useState(new Date().getFullYear());
   const [selectedDay, setSelectedDay]   = useState<number | 'all'>('all');
   const [searchTerm, setSearchTerm]     = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'critico' | 'atencao' | 'regular'>('all');
   const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
   const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<'A' | 'B' | 'C' | 'D'>('A');
@@ -183,6 +183,7 @@ export default function App() {
           currentMonth={currentMonth}
           setCurrentMonth={setCurrentMonth}
           currentYear={currentYear}
+          setCurrentYear={setCurrentYear}
           supervisionShiftFilter={supervisionShiftFilter}
           setSupervisionShiftFilter={setSupervisionShiftFilter}
           activeTab={activeTab}
@@ -275,6 +276,7 @@ export default function App() {
                   setLockedDays={data.setLockedDays}
                   handleSave={data.handleSave}
                   isSaving={data.isSaving}
+                  currentShift={auth.currentShift}
                 />
               </Suspense>
             )}

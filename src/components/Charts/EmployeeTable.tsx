@@ -458,7 +458,7 @@ export default function EmployeeTable({
                       </div>
                     </div>
 
-                    {isSupervision && !isDismissed && (
+                    {isSupervision && (
                       <button
                         onClick={(e) => { e.stopPropagation(); setSelectedEmployeeDetail(emp); }}
                         className="w-full flex items-center justify-between p-3 mt-1 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-md active:scale-[0.97]"
