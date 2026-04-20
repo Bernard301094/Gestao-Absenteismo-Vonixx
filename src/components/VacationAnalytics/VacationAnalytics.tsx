@@ -164,41 +164,57 @@ export default function VacationAnalytics({
         <div className="lg:col-span-2 space-y-6">
           
           {/* Chart: Distribuição Anual */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-blue-50 rounded-lg">
-                <Activity className="w-4 h-4 text-blue-600" />
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 sm:p-8 shadow-sm">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200/50">
+                  <Activity className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-gray-900 tracking-tight">Distribuição de Férias</h3>
+                  <p className="text-xs text-gray-500 font-medium">Projeção anual de saídas ({currentYear})</p>
+                </div>
               </div>
-              <h3 className="text-sm font-black text-gray-900 uppercase tracking-wide">Distribuição de Férias ({currentYear})</h3>
             </div>
             
-            <div className="h-48 flex items-end justify-between gap-2 px-2">
+            <div className="h-56 flex items-end justify-between gap-1 sm:gap-2 px-1 relative">
+              {/* Background Grid Lines */}
+              <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-8">
+                 <div className="w-full border-t border-dashed border-gray-200"></div>
+                 <div className="w-full border-t border-dashed border-gray-200"></div>
+                 <div className="w-full border-t border-dashed border-gray-200"></div>
+                 <div className="w-full border-t border-solid border-gray-200"></div>
+              </div>
+
               {chartData.map((count, index) => {
                 const heightPct = count === 0 ? 0 : (count / maxMonthlyVacations) * 100;
+                const hasData = count > 0;
                 return (
-                  <div key={index} className="flex flex-col items-center gap-2 flex-1 group">
+                  <div key={index} className="flex flex-col items-center flex-1 group z-10">
                     {/* Tooltip / Counter */}
-                    <div className="text-[10px] font-bold text-gray-400 group-hover:text-blue-600 transition-colors h-4">
-                      {count > 0 ? count : ''}
+                    <div className={`mb-2 transition-all duration-300 ${hasData ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                      <span className="text-[10px] font-black bg-gray-900 text-white px-2.5 py-1 rounded-md shadow-sm group-hover:bg-blue-600 transition-colors">
+                        {count}
+                      </span>
                     </div>
-                    {/* Bar */}
-                    <div className="w-full max-w-[32px] bg-gray-50 rounded-t-sm border-b-2 border-gray-100 relative overflow-hidden group-hover:bg-blue-50 transition-colors h-full flex items-end">
+                    {/* Bar Container */}
+                    <div className="w-full max-w-[40px] bg-gray-50/80 rounded-t-xl relative overflow-hidden h-40 flex items-end group-hover:bg-gray-100 transition-colors border-x border-t border-gray-100/50">
+                      {/* Active Bar */}
                       <div 
-                        className="w-full bg-blue-500 rounded-t-sm transition-all duration-1000 ease-out" 
+                        className={`w-full rounded-t-xl transition-all duration-1000 ease-out relative overflow-hidden ${hasData ? 'bg-gradient-to-t from-blue-600 to-blue-400 group-hover:from-blue-500 group-hover:to-blue-300 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)]' : 'bg-transparent'}`} 
                         style={{ height: `${heightPct}%` }}
-                      />
+                      >
+                         {hasData && <div className="absolute top-0 left-0 right-0 h-1 bg-white/30"></div>}
+                      </div>
                     </div>
                     {/* Month Label */}
-                    <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-1 group-hover:text-gray-900">
+                    <div className={`text-[10px] font-bold uppercase tracking-wider mt-3 transition-colors ${hasData ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`}>
                       {MONTH_NAMES[index].substring(0,3)}
                     </div>
                   </div>
                 );
               })}
             </div>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest text-center mt-4 pt-4 border-t border-gray-50">
-              Volume de funcionários programados por mês
-            </p>
           </div>
 
           {/* Timeline: Férias Atuais e Próximas */}
