@@ -90,12 +90,26 @@ export default function DistributionChart({ employees, getStatusForDay, selected
         </div>
       </div>
 
-      {/* Chart */}
+      {/* Chart - Responsive adjustments made here */}
       <div style={{ height: '300px', width: '100%', maxWidth: '420px', position: 'relative', minWidth: 0 }}>
         {mounted && (
-          <ResponsiveContainer width="99%" height="100%">
+          <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" innerRadius={82} outerRadius={118} paddingAngle={5} cornerRadius={8} dataKey="value" stroke="none" animationBegin={0} animationDuration={700} animationEasing="ease-out">
+              {/* Uso de porcentajes en lugar de pixeles para los radios */}
+              <Pie 
+                data={pieData} 
+                cx="50%" 
+                cy="50%" 
+                innerRadius="65%" 
+                outerRadius="90%" 
+                paddingAngle={5} 
+                cornerRadius={8} 
+                dataKey="value" 
+                stroke="none" 
+                animationBegin={0} 
+                animationDuration={700} 
+                animationEasing="ease-out"
+              >
                 {pieData.map((_, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index]} />)}
               </Pie>
               <Tooltip content={<CustomTooltip />} cursor={false} />
@@ -124,7 +138,7 @@ export default function DistributionChart({ employees, getStatusForDay, selected
           const pal = PALETTE[colorKey];
           const pct = total > 0 ? Math.round((entry.value / total) * 100) : 0;
           return (
-            <div key={entry.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px 14px', background: pal.light, border: `1.5px solid ${pal.border}`, borderRadius: '12px', minWidth: '80px' }}>
+            <div key={entry.name} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '8px 14px', background: pal.light, border: `1.5px solid ${pal.border}`, borderRadius: '12px', minWidth: '80px', flex: '1 1 auto' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: PIE_COLORS[index], display: 'inline-block', flexShrink: 0 }} />
                 <span style={{ fontSize: '11px', fontWeight: 600, color: pal.text }}>{entry.name}</span>

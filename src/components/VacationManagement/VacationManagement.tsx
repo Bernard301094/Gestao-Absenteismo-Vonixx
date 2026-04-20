@@ -14,6 +14,7 @@ import {
   Briefcase,
   Sparkles,
   History,
+  FilterX
 } from 'lucide-react';
 import type { Employee, Vacation, VacationStats, HistoricalVacationReason } from '../../types';
 import { calcVacationDates } from '../../hooks/useVacationStats';
@@ -28,8 +29,6 @@ interface VacationManagementProps {
   handleUpdateVacation: (id: string, vacation: Partial<Vacation>) => Promise<void>;
   updateEmployeeData: (id: string, data: Partial<Employee>) => Promise<void>;
 }
-
-const MONTHS_PT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 function fmtDate(iso?: string) {
   if (!iso) return '—';
@@ -127,7 +126,6 @@ function PreviewBlock({ preview, vendeuFerias, diasVendidos }: {
         <DetailCell label="Abono" value={vendeuFerias ? `${diasVendidos} dias` : 'Não'} />
       </div>
       
-      {/* Alerta de Ajuste 12x36 */}
       {preview.returnDateAdjusted && (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-blue-100/50 border border-blue-200 p-3">
           <span className="text-lg leading-none mt-0.5">💡</span>
@@ -209,10 +207,12 @@ export default function VacationManagement({
   handleUpdateVacation,
   updateEmployeeData,
 }: VacationManagementProps) {
-  // ── Guards contra undefined/null durante loading ─────────────────────────
   const employees: Employee[] = employeesProp ?? [];
   const vacationStats: VacationStats[] = vacationStatsProp ?? [];
 
+  // NUEVO: Estado para el filtro rápido desde las tarjetas
+  const [activeFilter, setActiveFilter] = useState<'all' | 'em_ferias' | 'agendadas' | 'criticos'>('all');
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -315,16 +315,28 @@ export default function VacationManagement({
     a_vencer: 5, em_per_aquisitivo: 6, ferias_concluidas: 7, aguardando_dados: 8,
   };
 
-  const filteredStats = useMemo(() =>
-    vacationStats
+  // NUEVO: Lógica de filtrado combinada (Search + Botones KPI)
+  const filteredStats = useMemo(() => {
+    let result = vacationStats;
+
+    // 1. Filtrar por Botones KPI
+    if (activeFilter === 'em_ferias') {
+      result = result.filter(s => s.status === 'em_ferias_agora');
+    } else if (activeFilter === 'agendadas') {
+      result = result.filter(s => s.status === 'ferias_agendadas');
+    } else if (activeFilter === 'criticos') {
+      result = result.filter(s => s.diasParaVencer < 60 && !['em_ferias_agora','em_per_aquisitivo','aguardando_dados'].includes(s.status));
+    }
+
+    // 2. Filtrar por Buscador y Ordenar
+    return result
       .filter(s => s.employeeName.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => {
         const pa = priorityOrder[a.status] ?? 99, pb = priorityOrder[b.status] ?? 99;
         if (pa !== pb) return pa - pb;
         return a.diasParaVencer - b.diasParaVencer;
-      }),
-    [vacationStats, searchTerm],
-  );
+      });
+  }, [vacationStats, searchTerm, activeFilter]);
 
   const countNow       = vacationStats.filter(s => s.status === 'em_ferias_agora').length;
   const countScheduled = vacationStats.filter(s => s.status === 'ferias_agendadas').length;
@@ -367,7 +379,6 @@ export default function VacationManagement({
     setAddHistoricalReason('');
   };
 
-  // ── Loading skeleton mientras no hay datos ───────────────────────────────
   if (!vacationStatsProp) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -383,6 +394,8 @@ export default function VacationManagement({
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Alerta de datos faltantes (Se mantiene aquí porque es Operacional) */}
       {employeesMissingAdmission.length > 0 && (
         <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 flex items-start gap-3">
           <div className="w-10 h-10 rounded-2xl bg-orange-100 flex items-center justify-center shrink-0">
@@ -395,23 +408,60 @@ export default function VacationManagement({
         </div>
       )}
 
+      {/* NUEVO: Tarjetas como botones de filtro */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Filtros Rápidos</h3>
+        {activeFilter !== 'all' && (
+          <button onClick={() => setActiveFilter('all')} className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors">
+            <FilterX className="w-3.5 h-3.5" /> Limpar filtro
+          </button>
+        )}
+      </div>
+      
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
-          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-emerald-100 flex items-center justify-center"><Umbrella className="w-5 h-5 text-emerald-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-emerald-600">Em férias agora</p><p className="text-3xl font-black text-emerald-900">{countNow}</p></div></div>
-        </div>
-        <div className="rounded-3xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
-          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-blue-100 flex items-center justify-center"><CalendarClock className="w-5 h-5 text-blue-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-blue-600">Agendadas</p><p className="text-3xl font-black text-blue-900">{countScheduled}</p></div></div>
-        </div>
-        <div className="rounded-3xl border border-red-100 bg-red-50 p-4 shadow-sm">
-          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-red-100 flex items-center justify-center"><Clock3 className="w-5 h-5 text-red-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-red-600">Prioridade</p><p className="text-3xl font-black text-red-900">{countUrgent}</p></div></div>
-        </div>
+        <button 
+          onClick={() => setActiveFilter(activeFilter === 'em_ferias' ? 'all' : 'em_ferias')}
+          className={`text-left rounded-3xl p-4 transition-all duration-200 border ${
+            activeFilter === 'em_ferias' 
+              ? 'bg-emerald-100 border-emerald-300 ring-2 ring-emerald-500 shadow-md' 
+              : 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100/50 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-white/60 flex items-center justify-center"><Umbrella className="w-5 h-5 text-emerald-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-emerald-600">Em férias agora</p><p className="text-3xl font-black text-emerald-900">{countNow}</p></div></div>
+        </button>
+
+        <button 
+          onClick={() => setActiveFilter(activeFilter === 'agendadas' ? 'all' : 'agendadas')}
+          className={`text-left rounded-3xl p-4 transition-all duration-200 border ${
+            activeFilter === 'agendadas' 
+              ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-500 shadow-md' 
+              : 'bg-blue-50 border-blue-100 hover:bg-blue-100/50 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-white/60 flex items-center justify-center"><CalendarClock className="w-5 h-5 text-blue-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-blue-600">Agendadas</p><p className="text-3xl font-black text-blue-900">{countScheduled}</p></div></div>
+        </button>
+
+        <button 
+          onClick={() => setActiveFilter(activeFilter === 'criticos' ? 'all' : 'criticos')}
+          className={`text-left rounded-3xl p-4 transition-all duration-200 border ${
+            activeFilter === 'criticos' 
+              ? 'bg-red-100 border-red-300 ring-2 ring-red-500 shadow-md' 
+              : 'bg-red-50 border-red-100 hover:bg-red-100/50 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center gap-3"><div className="w-11 h-11 rounded-2xl bg-white/60 flex items-center justify-center"><Clock3 className="w-5 h-5 text-red-700" /></div><div><p className="text-[11px] font-black uppercase tracking-wider text-red-600">Prioridade</p><p className="text-3xl font-black text-red-900">{countUrgent}</p></div></div>
+        </button>
       </div>
 
-      <div className="rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+      <div className="rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden mt-2">
         <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
           <div>
-            <h2 className="text-lg sm:text-xl font-black text-gray-900">Gestão de Férias</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Cadastre, edite e acompanhe o status das férias com validação histórica.</p>
+            <h2 className="text-lg sm:text-xl font-black text-gray-900">Tabela de Controle</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {activeFilter !== 'all' 
+                ? <span className="font-bold text-blue-600">Exibindo resultados filtrados.</span> 
+                : 'Cadastre, edite e acompanhe o status das férias.'}
+            </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Buscar colaborador..." className={`${inputCls} sm:w-72`} />
@@ -458,7 +508,7 @@ export default function VacationManagement({
                 </div>
               </motion.div>
             )) : (
-              <div className="p-8 text-center text-sm text-gray-500">Nenhum colaborador encontrado.</div>
+              <div className="p-8 text-center text-sm text-gray-500">Nenhum colaborador encontrado com este filtro.</div>
             )}
           </AnimatePresence>
         </div>
