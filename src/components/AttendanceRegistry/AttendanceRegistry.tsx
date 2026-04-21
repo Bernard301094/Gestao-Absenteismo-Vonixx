@@ -112,9 +112,9 @@ export default function AttendanceRegistry({
   const isLocked  = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
+  // ESTADO PARA EL FILTRO DE STATUS
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
 
-  // CRÍTICO: Ignorar funcionários demitidos nos cálculos e KPIs
   const activeEmployees = employees.filter(emp => {
     if (emp.dismissed) return false;
     if (!emp.admissionDate) return true;
@@ -162,7 +162,7 @@ export default function AttendanceRegistry({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // CRÍTICO: Filtragem combinada (Busca + Filtro de Status + Ocultar Demitidos)
+  // LÓGICA DE FILTRADO COMBINADO (Búsqueda + Filtro + Ignorar Demitidos)
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
     if (emp.dismissed) return false; 
     if (localStatusFilter === 'all') return true;
@@ -246,6 +246,7 @@ export default function AttendanceRegistry({
         )}
       </div>
 
+      {/* BARRA DE BÚSQUEDA Y BOTONES DE FILTRO */}
       {!isHoliday && selectedDay !== 'all' && (
         <div className="flex flex-col lg:flex-row gap-3">
           <div className="relative flex-1 max-w-md">
