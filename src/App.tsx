@@ -47,8 +47,9 @@ export default function App() {
   useEffect(() => {
     if (auth.user && prevUserRef.current === null) {
       // User just logged in
+      const isMobile = window.innerWidth < 1024;
       const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
-      if (enabled) setIsLocked(true);
+      if (enabled && isMobile) setIsLocked(true);
     }
     prevUserRef.current = auth.user;
   }, [auth.user]);
@@ -57,8 +58,9 @@ export default function App() {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && auth.user) {
+        const isMobile = window.innerWidth < 1024;
         const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
-        if (enabled) setIsLocked(true);
+        if (enabled && isMobile) setIsLocked(true);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
