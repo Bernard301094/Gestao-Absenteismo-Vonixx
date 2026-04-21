@@ -120,6 +120,9 @@ export default function AttendanceRegistry({
   const isLocked  = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
+  // Estado local para o Filtro de Status
+  const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
+
   const activeEmployees = employees.filter(emp => {
     if (!emp.admissionDate) return true;
     const [y, m, d] = emp.admissionDate.split('-').map(Number);
@@ -160,12 +163,18 @@ export default function AttendanceRegistry({
     });
   };
 
-  // Helper function to extract initials from name
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ');
     if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
+
+  // Filtragem combinada (Busca + Filtro de Status)
+  const finalEmployees = filteredRegistroEmployees.filter(emp => {
+    if (localStatusFilter === 'all') return true;
+    const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
+    return currentStatus === localStatusFilter;
+  });
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
@@ -174,7 +183,6 @@ export default function AttendanceRegistry({
       <div className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-7 shadow-sm">
         <div className="flex flex-col lg:flex-row justify-between gap-6">
           
-          {/* Title & Info */}
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shrink-0">
               {selectedDay !== 'all' ? (
@@ -211,7 +219,6 @@ export default function AttendanceRegistry({
             </div>
           </div>
 
-          {/* Action Buttons */}
           {!isHoliday && selectedDay !== 'all' && (
             <div className="flex items-center gap-2 flex-wrap lg:justify-end">
               <button
@@ -236,7 +243,6 @@ export default function AttendanceRegistry({
           )}
         </div>
 
-        {/* Compact KPIs */}
         {!isHoliday && selectedDay !== 'all' && (
           <div className="mt-8 pt-6 border-t border-gray-100 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {kpiCounts.map(({ key, count }) => {
@@ -258,17 +264,27 @@ export default function AttendanceRegistry({
         )}
       </div>
 
-      {/* ── Search Bar ───────────────────────────────────────────────────────── */}
+      {/* ── Search Bar & Status Filter ───────────────────────────────────────── */}
       {!isHoliday && selectedDay !== 'all' && (
-        <div className="relative max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Buscar colaborador..."
-            value={registroSearchTerm}
-            onChange={e => setRegistroSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-700 shadow-sm"
-          />
+        <div className="flex flex-col lg:flex-row gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar colaborador..."
+              value={registroSearchTerm}
+              onChange={e => setRegistroSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-700 shadow-sm"
+            />
+          </div>
+          
+          <div className="flex flex-wrap items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm shrink-0">
+            <button onClick={() => setLocalStatusFilter('all')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>Todos</button>
+            <button onClick={() => setLocalStatusFilter('P')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'P' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:bg-gray-100'}`}>Presentes</button>
+            <button onClick={() => setLocalStatusFilter('F')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'F' ? 'bg-rose-100 text-rose-700' : 'text-gray-500 hover:bg-gray-100'}`}>Faltas</button>
+            <button onClick={() => setLocalStatusFilter('Fe')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'Fe' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>Férias</button>
+            <button onClick={() => setLocalStatusFilter('A')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'A' ? 'bg-amber-100 text-amber-700' : 'text-gray-500 hover:bg-gray-100'}`}>Afastados</button>
+          </div>
         </div>
       )}
 
@@ -284,8 +300,7 @@ export default function AttendanceRegistry({
       ) : (
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
           
-          {/* Table Header (Desktop) */}
-          {filteredRegistroEmployees.length > 0 && (
+          {finalEmployees.length > 0 && (
             <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3 border-b border-gray-100 bg-gray-50/50">
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-12">Colaborador</span>
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest text-center">Status</span>
@@ -294,9 +309,8 @@ export default function AttendanceRegistry({
             </div>
           )}
 
-          {/* Rows */}
           <div className="divide-y divide-gray-50">
-            {filteredRegistroEmployees.map((emp) => {
+            {finalEmployees.map((emp) => {
               const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
               const currentNote   = pendingNotes[emp.id]?.[dayNum] ?? notes[emp.id]?.[dayNum] ?? '';
               const isModified    = pendingAttendance[emp.id]?.[dayNum] !== undefined || pendingNotes[emp.id]?.[dayNum] !== undefined;
@@ -310,8 +324,6 @@ export default function AttendanceRegistry({
               }
 
               const cfg = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
-              
-              // El bloqueo es sólo si no está contratado aún. Quitamos la restricción manual de isLocked
               const isRowDisabled = isNotYetHired;
 
               return (
@@ -321,10 +333,7 @@ export default function AttendanceRegistry({
                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
                   )}
 
-                  {/* Desktop Row */}
                   <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3.5 items-center">
-                    
-                    {/* Employee Info */}
                     <div className="flex items-center gap-3 min-w-0 pl-1">
                       <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs font-black shrink-0 border border-gray-200">
                         {getInitials(emp.name)}
@@ -343,7 +352,6 @@ export default function AttendanceRegistry({
                       </div>
                     </div>
 
-                    {/* Status Toggle (Segmented Control) */}
                     <div className="flex justify-center">
                       <div className={`flex items-center bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
                         {STATUS_ORDER.map(key => {
@@ -367,7 +375,6 @@ export default function AttendanceRegistry({
                       </div>
                     </div>
 
-                    {/* Note Input */}
                     <div className="relative group/note pr-4">
                       <MessageSquare className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 transition-colors ${currentNote ? 'text-blue-500' : 'text-gray-400 group-focus-within/note:text-gray-900'}`} />
                       <input
@@ -380,7 +387,6 @@ export default function AttendanceRegistry({
                       />
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors" title="Editar">
                         <Edit2 className="w-4 h-4" />
@@ -391,7 +397,6 @@ export default function AttendanceRegistry({
                     </div>
                   </div>
 
-                  {/* Mobile Row */}
                   <div className="lg:hidden p-4 space-y-4">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3 min-w-0">
@@ -445,10 +450,10 @@ export default function AttendanceRegistry({
               );
             })}
 
-            {filteredRegistroEmployees.length === 0 && (
+            {finalEmployees.length === 0 && (
               <div className="p-12 text-center">
                 <Search className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm font-medium text-gray-500">Nenhum colaborador encontrado.</p>
+                <p className="text-sm font-medium text-gray-500">Nenhum colaborador encontrado para este filtro.</p>
               </div>
             )}
           </div>
