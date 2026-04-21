@@ -99,16 +99,13 @@ export default function Dashboard({
     );
   };
 
-  // ─── LÓGICA INTELIGENTE DE ATESTADOS ───
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
 
     if (selectedDay === 'all') {
-      // Se estiver na Visão do Mês, rastreia todos os atestados do mês inteiro
       const todosAtestados: { day: number, name: string, note: string }[] = [];
-      
       employees.forEach(emp => {
-        if (emp.dismissed) return;
+        if (emp.dismissed) return; // ← IGNORA DEMITIDOS NO ALERTA
         const empNotes = notes[emp.id];
         if (!empNotes) return;
         
@@ -119,10 +116,8 @@ export default function Dashboard({
         });
       });
 
-      // Ordena do mais recente para o mais antigo
       todosAtestados.sort((a, b) => b.day - a.day);
 
-      // Mostra os 4 mais recentes para manter o design limpo
       todosAtestados.slice(0, 4).forEach(at => {
         newAlerts.push({
           type: 'warning',
@@ -131,7 +126,6 @@ export default function Dashboard({
         });
       });
 
-      // Se houver muitos, adiciona um card aglomerador
       if (todosAtestados.length > 4) {
          newAlerts.push({
            type: 'warning',
@@ -139,9 +133,7 @@ export default function Dashboard({
            message: `Existem mais ${todosAtestados.length - 4} atestados registrados neste mês.`
          });
       }
-
     } else {
-      // Se estiver num dia específico, mostra apenas os daquele dia
       const withAtestado = employees.filter(emp => {
         if (emp.dismissed) return false;
         const note = notes[emp.id]?.[selectedDay as number] || '';
@@ -154,31 +146,22 @@ export default function Dashboard({
         message: `Atestado Médico: ${emp.name} possui um atestado registrado neste dia.`
       }));
     }
-
     return newAlerts as Alert[];
   }, [employees, notes, selectedDay]);
 
-  // Junta os alertas da supervisão com os alertas de atestado computados agora
   const combinedAlerts = [...(isSupervision ? alerts : []), ...atestadoAlerts];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
         <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
-          <button
-            onClick={handleExportPDF}
-            className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
-          >
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            Exportar PDF
+          <button onClick={handleExportPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95">
+            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Exportar PDF
           </button>
         </div>
       </div>
 
-      {/* ── AI Reports Panel ─────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <AIInsightsPanel
           shift={currentShift}
@@ -194,18 +177,10 @@ export default function Dashboard({
         />
       )}
 
-      {/* ── Alerts & Warnings ─────────────────────────────────────────────────── */}
       {combinedAlerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
           {combinedAlerts.map((alert, idx) => (
-            <div
-              key={idx}
-              className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${
-                alert.type === 'critical'
-                  ? 'bg-red-50 border-red-100 text-red-800'
-                  : 'bg-amber-50 border-amber-200 text-amber-900'
-              }`}
-            >
+            <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${alert.type === 'critical' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
               <div className={`p-2 rounded-xl ${alert.type === 'critical' ? 'bg-red-100' : 'bg-amber-100 text-amber-700'}`}>
                 <alert.icon className="w-5 h-5" />
               </div>
@@ -215,7 +190,6 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── KPI Cards ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
@@ -259,7 +233,6 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ── Evolução do Mês ──────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Evolução do Mês</p>
@@ -274,7 +247,6 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── Análise Detalhada ─────────────────────────────────────────────────── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Análise Detalhada</p>
@@ -288,16 +260,14 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── Distribuição do Dia ───────────────────────────────────────────────── */}
       {selectedDay !== 'all' && (
         <DistributionChart
-          employees={employees}
+          employees={employees.filter(emp => !emp.dismissed)} // ← CRÍTICO: Ignora demitidos no Gráfico Pizza
           getStatusForDay={getStatusForDay}
           selectedDay={selectedDay as number}
         />
       )}
 
-      {/* ── Detalhamento por Funcionário ──────────────────────────────────────── */}
       <div>
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Detalhamento por Funcionário</p>
         <EmployeeTable
