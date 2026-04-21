@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import type { Employee, Vacation, VacationStats, VacationStatusType } from '../types';
 import { isWorkDay } from '../utils/dateUtils';
 
@@ -295,8 +295,23 @@ export function useVacationStats(
   employees: Employee[],
   vacations: Vacation[],
 ): VacationStats[] {
+  // Criamos um estado contendo a data/hora atual
+  const [today, setToday] = useState(new Date());
+
+  useEffect(() => {
+    // Um intervalo que atualiza o "today" a cada 1 minuto (60000 ms).
+    // Isso garante que se o aplicativo ficar aberto durante a virada da meia-noite, 
+    // os dias restantes e os dias para vencer se atualizem instantaneamente e ao vivo na interface.
+    const interval = setInterval(() => {
+      setToday(new Date());
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   return useMemo(
-    () => computeVacationStats(employees, vacations),
-    [employees, vacations],
+    // Agora passamos a variável `today` reativa para a engine de cálculo
+    () => computeVacationStats(employees, vacations, today),
+    [employees, vacations, today],
   );
 }
