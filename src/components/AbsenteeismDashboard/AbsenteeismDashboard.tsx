@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Download, FileWarning } from 'lucide-react';
+import { Download, FileWarning, UserMinus } from 'lucide-react';
 import { exportToPDF } from '../../utils/exportPDF';
 import type {
   Employee, AttendanceRecord, NotesRecord,
@@ -99,14 +99,14 @@ export default function Dashboard({
     );
   };
 
-  // LÓGICA DE ATESTADOS (Ignorando demitidos y manejando "Visión Mes" vs "Visión Día")
+  // ─── 1. LÓGICA DE ATESTADOS (Ignorando demitidos) ───
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
 
     if (selectedDay === 'all') {
       const todosAtestados: { day: number, name: string, note: string }[] = [];
       employees.forEach(emp => {
-        if (emp.dismissed) return; // ← PREVENCIÓN: IGNORA DEMITIDOS
+        if (emp.dismissed) return; // Ignora demitidos no alerta de atestado
         const empNotes = notes[emp.id];
         if (!empNotes) return;
         
@@ -150,10 +150,28 @@ export default function Dashboard({
     return newAlerts as Alert[];
   }, [employees, notes, selectedDay]);
 
-  const combinedAlerts = [...(isSupervision ? alerts : []), ...atestadoAlerts];
+  // ─── 2. LÓGICA DE FUNCIONÁRIOS DEMITIDOS ───
+  const dismissedAlerts = useMemo(() => {
+    const dismissed = employees.filter(emp => emp.dismissed);
+    if (dismissed.length === 0) return [];
+
+    const names = dismissed.slice(0, 3).map(e => e.name).join(', ');
+    const extra = dismissed.length > 3 ? ` e mais ${dismissed.length - 3}` : '';
+
+    return [{
+      type: 'info',
+      icon: UserMinus,
+      message: `Observação: ${dismissed.length} funcionário(s) constam como demitidos (${names}${extra}). Eles estão ocultos e não afetam os indicadores ativos.`
+    }];
+  }, [employees]);
+
+  // ─── JUNÇÃO DE TODOS OS ALERTAS ───
+  const combinedAlerts = [...(isSupervision ? alerts : []), ...atestadoAlerts, ...dismissedAlerts];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* ── Header ── */}
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
         <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
@@ -178,19 +196,39 @@ export default function Dashboard({
         />
       )}
 
+      {/* ── Alerts & Warnings Rendering ── */}
       {combinedAlerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
-          {combinedAlerts.map((alert, idx) => (
-            <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${alert.type === 'critical' ? 'bg-red-50 border-red-100 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
-              <div className={`p-2 rounded-xl ${alert.type === 'critical' ? 'bg-red-100' : 'bg-amber-100 text-amber-700'}`}>
-                <alert.icon className="w-5 h-5" />
+          {combinedAlerts.map((alert, idx) => {
+            
+            // Configuração visual dinâmica baseada no tipo de alerta
+            let bgClass = 'bg-gray-50 border-gray-200 text-gray-700';
+            let iconBgClass = 'bg-gray-200 text-gray-600';
+
+            if (alert.type === 'critical') {
+              bgClass = 'bg-red-50 border-red-100 text-red-800';
+              iconBgClass = 'bg-red-100 text-red-600';
+            } else if (alert.type === 'warning') {
+              bgClass = 'bg-amber-50 border-amber-200 text-amber-900';
+              iconBgClass = 'bg-amber-100 text-amber-700';
+            } else if (alert.type === 'info') {
+              bgClass = 'bg-slate-50 border-slate-200 text-slate-700';
+              iconBgClass = 'bg-slate-200 text-slate-600';
+            }
+
+            return (
+              <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${bgClass}`}>
+                <div className={`p-2 rounded-xl ${iconBgClass}`}>
+                  <alert.icon className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-bold leading-tight flex-1">{alert.message}</p>
               </div>
-              <p className="text-sm font-bold leading-tight flex-1">{alert.message}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
+      {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
@@ -234,6 +272,7 @@ export default function Dashboard({
         </div>
       </div>
 
+      {/* ── Gráficos e Tabelas ── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Evolução do Mês</p>
@@ -263,7 +302,7 @@ export default function Dashboard({
 
       {selectedDay !== 'all' && (
         <DistributionChart
-          employees={employees.filter(emp => !emp.dismissed)} // ← PREVENCIÓN EN EL GRÁFICO DEL DÍA
+          employees={employees.filter(emp => !emp.dismissed)}
           getStatusForDay={getStatusForDay}
           selectedDay={selectedDay as number}
         />
