@@ -40,21 +40,14 @@ export default function App() {
   const auth = useAuth();
 
   // ─── Biometric Lock ─────────────────────────────────────────────────────────
-  const [isLocked, setIsLocked] = useState(false);
+  // 1. INICIALIZACIÓN SÍNCRONA: Lee el bloqueo en el milisegundo cero sin esperar a Firebase
+  const [isLocked, setIsLocked] = useState(() => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
+    const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
+    return isMobile && enabled;
+  });
 
-  // On login success → lock if biometric is enabled
-  const prevUserRef = React.useRef<typeof auth.user>(null);
-  useEffect(() => {
-    if (auth.user && prevUserRef.current === null) {
-      // User just logged in
-      const isMobile = window.innerWidth < 1024;
-      const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
-      if (enabled && isMobile) setIsLocked(true);
-    }
-    prevUserRef.current = auth.user;
-  }, [auth.user]);
-
-  // Lock when app comes back from background
+  // 2. Bloqueo al regresar de segundo plano
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && auth.user) {
@@ -79,7 +72,7 @@ export default function App() {
   const [sortOrder, setSortOrder]       = useState<'desc_faltas' | 'asc_name' | 'desc_name'>('desc_faltas');
   const [registroSearchTerm, setRegistroSearchTerm] = useState('');
   const [supervisionShiftFilter, setSupervisionShiftFilter] = useState<'A' | 'B' | 'C' | 'D'>('A');
-  const [showDismissed, setShowDismissed] = useState(false); // ← NOVO
+  const [showDismissed, setShowDismissed] = useState(false);
 
   const daysInMonth = useMemo(
     () => getDaysInMonth(currentMonth, currentYear),
@@ -144,7 +137,7 @@ export default function App() {
     sortOrder,
     registroSearchTerm,
     isValidDay,
-    showDismissed, // ← NOVO
+    showDismissed,
   });
 
   useEffect(() => {
@@ -193,6 +186,28 @@ export default function App() {
     testConnection();
   }, []);
 
+  // ----------------------------------------------------------------------
+  // 🔥 JERARQUÍA DE RENDERIZADO: LA HUELLA TIENE PRIORIDAD ABSOLUTA 🔥
+  // ----------------------------------------------------------------------
+
+  // PRIORIDAD 1: Si la pantalla está bloqueada, mostrar Inmediatamente el LockScreen
+  if (isLocked) {
+    return <LockScreen onUnlock={handleUnlock} />;
+  }
+
+  // PRIORIDAD 2: Solo si NO está bloqueada, mostramos el Loading de Firebase
+  if (auth.authLoading) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4" />
+        <p className="text-blue-500/50 text-xs font-bold uppercase tracking-widest animate-pulse">
+          Validando acesso...
+        </p>
+      </div>
+    );
+  }
+
+  // PRIORIDAD 3: Si Firebase cargó y no hay usuario, mostrar el Login
   if (!auth.user) {
     return (
       <ErrorBoundary>
@@ -208,10 +223,7 @@ export default function App() {
     );
   }
 
-  if (isLocked) {
-    return <LockScreen onUnlock={handleUnlock} />;
-  }
-
+  // PRIORIDAD 4: Mostrar el App Principal
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 font-sans pb-16 overflow-x-hidden">
       <ErrorBoundary>
