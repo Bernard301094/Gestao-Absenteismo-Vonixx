@@ -99,13 +99,14 @@ export default function Dashboard({
     );
   };
 
+  // LÓGICA DE ATESTADOS (Ignorando demitidos y manejando "Visión Mes" vs "Visión Día")
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
 
     if (selectedDay === 'all') {
       const todosAtestados: { day: number, name: string, note: string }[] = [];
       employees.forEach(emp => {
-        if (emp.dismissed) return; // ← IGNORA DEMITIDOS NO ALERTA
+        if (emp.dismissed) return; // ← PREVENCIÓN: IGNORA DEMITIDOS
         const empNotes = notes[emp.id];
         if (!empNotes) return;
         
@@ -262,7 +263,7 @@ export default function Dashboard({
 
       {selectedDay !== 'all' && (
         <DistributionChart
-          employees={employees.filter(emp => !emp.dismissed)} // ← CRÍTICO: Ignora demitidos no Gráfico Pizza
+          employees={employees.filter(emp => !emp.dismissed)} // ← PREVENCIÓN EN EL GRÁFICO DEL DÍA
           getStatusForDay={getStatusForDay}
           selectedDay={selectedDay as number}
         />
