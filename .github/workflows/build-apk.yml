@@ -75,6 +75,10 @@ jobs:
       - name: Capacitor sync Android
         run: npx cap sync android
 
+      # 9.5. Gerar icones nativos do Android (Capacitor Assets)
+      - name: Gerar icones nativos
+        run: npx capacitor-assets generate --android
+
       # 10. Atualizar versionCode e versionName
       - name: Bump Version Code
         run: |
