@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   CalendarDays, Palmtree, AlertCircle, CheckCircle2,
   Clock, Activity, BarChart3, AlertTriangle, ShieldAlert,
@@ -29,14 +29,26 @@ export default function VacationAnalytics({
   allVacations,
 }: VacationAnalyticsProps) {
   
-  const today = new Date();
-  const todayTime = today.getTime();
+  // 1. Reloj en tiempo real para el Dashboard
+  const [today, setToday] = useState(new Date());
+
+  useEffect(() => {
+    // Actualiza la hora cada 10 segundos para asegurar que el cambio de día se refleje casi al instante a medianoche
+    const interval = setInterval(() => setToday(new Date()), 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 2. Normalizamos el día actual al "mediodía" para evitar que las horas de la tarde afecten el cálculo de días
+  const currentMidday = useMemo(() => {
+    return new Date(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}T12:00:00`).getTime();
+  }, [today.getDate()]); // Solo se recalcula si cambia el día real
 
   const emFerias = vacationStats.filter(s => s.status === 'em_ferias_agora').map(s => {
     let diasRestantes = Number(s.diasRestantes) || 0;
     if (s.dataFimFerias) {
       const end = new Date(s.dataFimFerias + 'T12:00:00').getTime();
-      diasRestantes = Math.max(0, Math.ceil((end - todayTime) / (1000 * 60 * 60 * 24)));
+      // Math.round asegura que 3.9 o 4.1 sean exactamente 4 días. Sumamos +1 porque el último día de vacaciones aún cuenta como día restante.
+      diasRestantes = Math.max(0, Math.round((end - currentMidday) / (1000 * 60 * 60 * 24)) + 1);
     }
     return { ...s, sortValue: diasRestantes, labelRestante: `Faltam ${diasRestantes} dias` };
   });
@@ -45,7 +57,7 @@ export default function VacationAnalytics({
     let diasParaInicio = 9999;
     if (s.dataInicioFerias) {
       const start = new Date(s.dataInicioFerias + 'T12:00:00').getTime();
-      diasParaInicio = Math.max(0, Math.ceil((start - todayTime) / (1000 * 60 * 60 * 24)));
+      diasParaInicio = Math.max(0, Math.round((start - currentMidday) / (1000 * 60 * 60 * 24)));
     }
     return { ...s, sortValue: diasParaInicio, labelRestante: `Daqui a ${diasParaInicio} dias` };
   }).sort((a, b) => a.sortValue - b.sortValue);
@@ -146,7 +158,7 @@ export default function VacationAnalytics({
         {/* Left Column: Chart & Timeline */}
         <div className="lg:col-span-2 space-y-6 w-full min-w-0">
           
-          {/* Chart: Distribuição Anual (100% Adaptativo sin Scroll) */}
+          {/* Chart: Distribuição Anual */}
           <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-8 shadow-sm w-full">
             <div className="flex items-center justify-between mb-6 sm:mb-8">
               <div className="flex items-center gap-3">
@@ -160,9 +172,7 @@ export default function VacationAnalytics({
               </div>
             </div>
             
-            {/* Contenedor Flex adaptativo al 100% */}
             <div className="h-48 sm:h-56 w-full flex items-end justify-between gap-0.5 sm:gap-2 relative">
-              {/* Background Grid Lines */}
               <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6 sm:pb-8">
                  <div className="w-full border-t border-dashed border-gray-200"></div>
                  <div className="w-full border-t border-dashed border-gray-200"></div>
