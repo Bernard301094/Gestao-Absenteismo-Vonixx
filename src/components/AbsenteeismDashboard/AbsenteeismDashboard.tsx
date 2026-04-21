@@ -1,5 +1,5 @@
-import React from 'react';
-import { Download } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Download, FileWarning } from 'lucide-react';
 import { exportToPDF } from '../../utils/exportPDF';
 import type {
   Employee, AttendanceRecord, NotesRecord,
@@ -47,9 +47,9 @@ interface DashboardProps {
   lockedDays: Record<number, boolean>;
   validWorkDays: number[];
   vacations: Vacation[];
-  activeEmployeesCount: number;   // ← NOVO
-  showDismissed: boolean;         // ← NOVO
-  setShowDismissed: (v: boolean) => void; // ← NOVO
+  activeEmployeesCount: number;
+  showDismissed: boolean;
+  setShowDismissed: (v: boolean) => void;
 }
 
 export default function Dashboard({
@@ -99,6 +99,68 @@ export default function Dashboard({
     );
   };
 
+  // ─── LÓGICA INTELIGENTE DE ATESTADOS ───
+  const atestadoAlerts = useMemo(() => {
+    let newAlerts: any[] = [];
+
+    if (selectedDay === 'all') {
+      // Se estiver na Visão do Mês, rastreia todos os atestados do mês inteiro
+      const todosAtestados: { day: number, name: string, note: string }[] = [];
+      
+      employees.forEach(emp => {
+        if (emp.dismissed) return;
+        const empNotes = notes[emp.id];
+        if (!empNotes) return;
+        
+        Object.entries(empNotes).forEach(([d, note]) => {
+          if (note.toLowerCase().includes('atestado')) {
+            todosAtestados.push({ day: Number(d), name: emp.name, note });
+          }
+        });
+      });
+
+      // Ordena do mais recente para o mais antigo
+      todosAtestados.sort((a, b) => b.day - a.day);
+
+      // Mostra os 4 mais recentes para manter o design limpo
+      todosAtestados.slice(0, 4).forEach(at => {
+        newAlerts.push({
+          type: 'warning',
+          icon: FileWarning,
+          message: `Atestado (Dia ${at.day}): ${at.name} - ${at.note}`
+        });
+      });
+
+      // Se houver muitos, adiciona um card aglomerador
+      if (todosAtestados.length > 4) {
+         newAlerts.push({
+           type: 'warning',
+           icon: FileWarning,
+           message: `Existem mais ${todosAtestados.length - 4} atestados registrados neste mês.`
+         });
+      }
+
+    } else {
+      // Se estiver num dia específico, mostra apenas os daquele dia
+      const withAtestado = employees.filter(emp => {
+        if (emp.dismissed) return false;
+        const note = notes[emp.id]?.[selectedDay as number] || '';
+        return note.toLowerCase().includes('atestado');
+      });
+
+      newAlerts = withAtestado.map(emp => ({
+        type: 'warning',
+        icon: FileWarning,
+        message: `Atestado Médico: ${emp.name} possui um atestado registrado neste dia.`
+      }));
+    }
+
+    return newAlerts as Alert[];
+  }, [employees, notes, selectedDay]);
+
+  // Junta os alertas da supervisão com os alertas de atestado computados agora
+  const combinedAlerts = [...(isSupervision ? alerts : []), ...atestadoAlerts];
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -132,19 +194,19 @@ export default function Dashboard({
         />
       )}
 
-      {/* ── Alerts ──────────────────────────────────────────────────────────── */}
-      {isSupervision && alerts.length > 0 && (
+      {/* ── Alerts & Warnings ─────────────────────────────────────────────────── */}
+      {combinedAlerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
-          {alerts.map((alert, idx) => (
+          {combinedAlerts.map((alert, idx) => (
             <div
               key={idx}
               className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${
                 alert.type === 'critical'
                   ? 'bg-red-50 border-red-100 text-red-800'
-                  : 'bg-amber-50 border-amber-100 text-amber-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-900'
               }`}
             >
-              <div className={`p-2 rounded-xl ${alert.type === 'critical' ? 'bg-red-100' : 'bg-amber-100'}`}>
+              <div className={`p-2 rounded-xl ${alert.type === 'critical' ? 'bg-red-100' : 'bg-amber-100 text-amber-700'}`}>
                 <alert.icon className="w-5 h-5" />
               </div>
               <p className="text-sm font-bold leading-tight flex-1">{alert.message}</p>
@@ -179,7 +241,6 @@ export default function Dashboard({
 
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">Funcionários</h3>
-          {/* Mostra só ativos no KPI */}
           <div className="text-3xl sm:text-4xl font-extrabold text-blue-600">{activeEmployeesCount}</div>
         </div>
 
