@@ -2,14 +2,11 @@ import React from 'react';
 import {
   CalendarX, UserPlus, CheckCircle2, Search,
   Edit2, Trash2, XCircle, Palmtree, Stethoscope,
-  MessageSquare, Activity, CalendarDays, Lock, Unlock,
-  ShieldCheck, FileText, Clock
+  MessageSquare, Activity, CalendarDays, ShieldCheck, FileText
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { generateStatsImage } from '../../utils/generateStatsImage';
 import type { Employee, Status, AttendanceRecord, NotesRecord, LockedDaysRecord } from '../../types';
-
-// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface AttendanceRegistryProps {
   selectedDay: number | 'all';
@@ -39,8 +36,6 @@ interface AttendanceRegistryProps {
   isSaving: boolean;
   currentShift: string | null;
 }
-
-// ─── Status Config ────────────────────────────────────────────────────────────
 
 type StatusCfg = {
   label: string;
@@ -86,8 +81,6 @@ const STATUS_CONFIG: Record<Status, StatusCfg> = {
 
 const STATUS_ORDER: Status[] = ['P', 'F', 'Fe', 'A'];
 
-// ─── Component ────────────────────────────────────────────────────────────────
-
 export default function AttendanceRegistry({
   selectedDay,
   currentDayOfMonth,
@@ -111,7 +104,6 @@ export default function AttendanceRegistry({
   setStatus,
   lockedDays,
   setNote,
-  setLockedDays,
   handleSave,
   isSaving,
   currentShift,
@@ -120,10 +112,11 @@ export default function AttendanceRegistry({
   const isLocked  = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
-  // Estado local para o Filtro de Status
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
 
+  // CRÍTICO: Ignorar funcionários demitidos nos cálculos e KPIs
   const activeEmployees = employees.filter(emp => {
+    if (emp.dismissed) return false;
     if (!emp.admissionDate) return true;
     const [y, m, d] = emp.admissionDate.split('-').map(Number);
     const admDate    = new Date(y, m - 1, d);
@@ -169,8 +162,9 @@ export default function AttendanceRegistry({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Filtragem combinada (Busca + Filtro de Status)
+  // CRÍTICO: Filtragem combinada (Busca + Filtro de Status + Ocultar Demitidos)
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
+    if (emp.dismissed) return false; 
     if (localStatusFilter === 'all') return true;
     const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
     return currentStatus === localStatusFilter;
@@ -179,10 +173,8 @@ export default function AttendanceRegistry({
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
 
-      {/* ── SaaS Hero Header ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5 sm:p-7 shadow-sm">
         <div className="flex flex-col lg:flex-row justify-between gap-6">
-          
           <div className="flex items-center gap-5">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shrink-0">
               {selectedDay !== 'all' ? (
@@ -196,7 +188,6 @@ export default function AttendanceRegistry({
                 <CalendarDays className="w-6 h-6 text-gray-400" />
               )}
             </div>
-
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
@@ -221,22 +212,13 @@ export default function AttendanceRegistry({
 
           {!isHoliday && selectedDay !== 'all' && (
             <div className="flex items-center gap-2 flex-wrap lg:justify-end">
-              <button
-                onClick={() => setShowAddEmployeeModal(true)}
-                className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors"
-              >
+              <button onClick={() => setShowAddEmployeeModal(true)} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors">
                 <UserPlus className="w-3.5 h-3.5" /> Colaborador
               </button>
-              <button
-                onClick={handleMarkAllPresent}
-                className="inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-emerald-100"
-              >
+              <button onClick={handleMarkAllPresent} className="inline-flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-emerald-100">
                 <ShieldCheck className="w-3.5 h-3.5" /> Todos Presentes
               </button>
-              <button
-                onClick={handleGeneratePDF}
-                className="inline-flex items-center gap-2 bg-gray-50 hover:bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-gray-200"
-              >
+              <button onClick={handleGeneratePDF} className="inline-flex items-center gap-2 bg-gray-50 hover:bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors border border-gray-200">
                 <FileText className="w-3.5 h-3.5" /> Exportar PDF
               </button>
             </div>
@@ -264,7 +246,6 @@ export default function AttendanceRegistry({
         )}
       </div>
 
-      {/* ── Search Bar & Status Filter ───────────────────────────────────────── */}
       {!isHoliday && selectedDay !== 'all' && (
         <div className="flex flex-col lg:flex-row gap-3">
           <div className="relative flex-1 max-w-md">
@@ -288,7 +269,6 @@ export default function AttendanceRegistry({
         </div>
       )}
 
-      {/* ── Main Content (Table/List) ────────────────────────────────────────── */}
       {isHoliday ? (
         <div className="bg-white border border-gray-100 rounded-2xl p-16 text-center shadow-sm">
           <div className="w-16 h-16 bg-gray-50 border border-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -299,7 +279,6 @@ export default function AttendanceRegistry({
         </div>
       ) : (
         <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-          
           {finalEmployees.length > 0 && (
             <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3 border-b border-gray-100 bg-gray-50/50">
               <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-12">Colaborador</span>
@@ -328,7 +307,6 @@ export default function AttendanceRegistry({
 
               return (
                 <div key={emp.id} className={`group relative transition-colors ${isModified ? 'bg-blue-50/30' : 'hover:bg-gray-50/50'}`}>
-                  
                   {isModified && (
                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
                   )}
@@ -363,10 +341,7 @@ export default function AttendanceRegistry({
                               key={key}
                               onClick={() => !isRowDisabled && setStatus(emp.id, dayNum, key)}
                               title={s.label}
-                              className={[
-                                'flex items-center justify-center w-12 h-8 rounded-lg transition-all duration-200',
-                                isActive ? s.activeClass : s.inactiveClass
-                              ].join(' ')}
+                              className={['flex items-center justify-center w-12 h-8 rounded-lg transition-all duration-200', isActive ? s.activeClass : s.inactiveClass].join(' ')}
                             >
                               <Icon className={`w-4 h-4 ${isActive ? '' : 'opacity-70'}`} />
                             </button>
@@ -445,7 +420,6 @@ export default function AttendanceRegistry({
                       />
                     </div>
                   </div>
-
                 </div>
               );
             })}
@@ -460,11 +434,9 @@ export default function AttendanceRegistry({
         </div>
       )}
 
-      {/* ── Floating Save Bar ────────────────────────────────────────────────── */}
       {!isHoliday && selectedDay !== 'all' && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform ${pendingCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
           <div className="bg-gray-900 text-white px-4 py-3 rounded-2xl shadow-2xl shadow-gray-900/20 flex items-center gap-4">
-            
             <div className="flex items-center gap-2 pl-2 border-r border-gray-700 pr-4">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
@@ -474,17 +446,8 @@ export default function AttendanceRegistry({
                 {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'}
               </span>
             </div>
-
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95"
-            >
-              {isSaving ? (
-                <><Activity className="w-4 h-4 animate-spin" /> Salvando...</>
-              ) : (
-                <><CheckCircle2 className="w-4 h-4" /> Salvar Alterações</>
-              )}
+            <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95">
+              {isSaving ? <><Activity className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Alterações</>}
             </button>
           </div>
         </div>
