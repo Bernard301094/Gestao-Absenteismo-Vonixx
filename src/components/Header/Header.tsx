@@ -11,10 +11,11 @@ import React, { useState } from 'react';
 import {
   LogOut, ChevronLeft, ChevronRight,
   LayoutDashboard, ClipboardList, Calendar,
-  RefreshCw, Settings, Download, FileText,
+  RefreshCw, Settings, Download, FileText, Fingerprint,
 } from 'lucide-react';
 import { MONTH_NAMES, now } from '../../utils/constants';
 import SettingsModal from '../Settings/SettingsModal';
+import BiometricToggleModal from '../BiometricToggle/BiometricToggleModal';
 import CustomDropdown from '../CustomDropdown';
 
 interface HeaderProps {
@@ -156,6 +157,7 @@ export default function Header({
   onExportPDF,
 }: HeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isBiometricOpen, setIsBiometricOpen] = useState(false);
 
   // ── Options ────────────────────────────────────────────────────────────────
 
@@ -286,6 +288,18 @@ export default function Header({
                 <FileText className="w-4 h-4" />
               </button>
             )}
+
+            {/* Biometric lock toggle (mobile & tablet only) */}
+            <button
+              onClick={() => setIsBiometricOpen(true)}
+              title="Bloqueio por huella dactilar"
+              className="lg:hidden p-2 text-white/60 hover:text-white hover:bg-white/10 rounded-xl transition-all active:scale-90 flex items-center gap-1.5"
+            >
+              <Fingerprint className="w-4 h-4" />
+              <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest">
+                Huella
+              </span>
+            </button>
 
             {/* Settings (admin only) */}
             {isAdmin && (
@@ -439,6 +453,7 @@ export default function Header({
       </div>
 
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <BiometricToggleModal isOpen={isBiometricOpen} onClose={() => setIsBiometricOpen(false)} />
     </header>
   );
 }

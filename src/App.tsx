@@ -9,6 +9,9 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 // ─── Static Components ────────────────────────────────────────────────────────
 import Login from './components/Login/Login';
 import Header from './components/Header/Header';
+import LockScreen from './components/LockScreen/LockScreen';
+
+const BIOMETRIC_KEY = 'vonixx_biometric_enabled';
 
 // ─── Code-Split Views ─────────────────────────────────────────────────────────
 const AbsenteeismDashboard = lazy(() => import('./components/AbsenteeismDashboard/AbsenteeismDashboard'));
@@ -35,6 +38,35 @@ const APP_START_DAY   = 3;
 
 export default function App() {
   const auth = useAuth();
+
+  // ─── Biometric Lock ─────────────────────────────────────────────────────────
+  const [isLocked, setIsLocked] = useState(false);
+
+  // On login success → lock if biometric is enabled
+  const prevUserRef = React.useRef<typeof auth.user>(null);
+  useEffect(() => {
+    if (auth.user && prevUserRef.current === null) {
+      // User just logged in
+      const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
+      if (enabled) setIsLocked(true);
+    }
+    prevUserRef.current = auth.user;
+  }, [auth.user]);
+
+  // Lock when app comes back from background
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && auth.user) {
+        const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
+        if (enabled) setIsLocked(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [auth.user]);
+
+  const handleUnlock = useCallback(() => setIsLocked(false), []);
+  // ────────────────────────────────────────────────────────────────────────────
 
   const [activeTab, setActiveTab]   = useState<'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard'>('dashboard');
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -172,6 +204,10 @@ export default function App() {
         />
       </ErrorBoundary>
     );
+  }
+
+  if (isLocked) {
+    return <LockScreen onUnlock={handleUnlock} />;
   }
 
   return (

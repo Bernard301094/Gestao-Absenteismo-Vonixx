@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Database, BrainCircuit, Save, Loader2, Key } from 'lucide-react';
+import { X, Settings, Database, BrainCircuit, Save, Loader2, Key, Fingerprint, ShieldCheck, ShieldOff } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 
@@ -7,6 +7,8 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+const BIOMETRIC_KEY = 'vonixx_biometric_enabled';
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [config, setConfig] = useState({
@@ -17,10 +19,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
       loadConfig();
+      // Load biometric preference from localStorage
+      const stored = localStorage.getItem(BIOMETRIC_KEY);
+      setBiometricEnabled(stored === 'true');
     }
   }, [isOpen]);
 
@@ -62,6 +68,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
   };
 
+  const handleBiometricToggle = () => {
+    const newValue = !biometricEnabled;
+    setBiometricEnabled(newValue);
+    localStorage.setItem(BIOMETRIC_KEY, String(newValue));
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -85,6 +97,67 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
         {/* Body */}
         <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh] custom-scrollbar">
+
+          {/* ── Segurança Biométrica ─────────────────────────────────────────── */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Fingerprint className="w-4 h-4 text-indigo-600" />
+              <h3 className="text-xs font-black text-gray-900 uppercase tracking-widest">Segurança Biométrica</h3>
+            </div>
+
+            <div
+              className="flex items-center justify-between p-4 rounded-2xl border transition-all duration-200"
+              style={{
+                background: biometricEnabled ? 'linear-gradient(135deg, #eef2ff, #f5f3ff)' : '#f9fafb',
+                borderColor: biometricEnabled ? '#c7d2fe' : '#e5e7eb',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors"
+                  style={{ background: biometricEnabled ? '#4f46e5' : '#e5e7eb' }}
+                >
+                  {biometricEnabled
+                    ? <ShieldCheck className="w-5 h-5 text-white" />
+                    : <ShieldOff className="w-5 h-5 text-gray-400" />
+                  }
+                </div>
+                <div>
+                  <p className="text-sm font-black text-gray-900">Bloqueio por Huella</p>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mt-0.5">
+                    {biometricEnabled ? 'Ativo — requer impressão digital' : 'Desativado'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle Switch */}
+              <button
+                onClick={handleBiometricToggle}
+                role="switch"
+                aria-checked={biometricEnabled}
+                className="relative shrink-0 focus:outline-none"
+                style={{ width: '52px', height: '28px' }}
+              >
+                <div
+                  className="w-full h-full rounded-full transition-all duration-300"
+                  style={{ background: biometricEnabled ? '#4f46e5' : '#d1d5db' }}
+                />
+                <div
+                  className="absolute top-1 transition-all duration-300 w-5 h-5 rounded-full bg-white shadow-md"
+                  style={{ left: biometricEnabled ? '28px' : '4px' }}
+                />
+              </button>
+            </div>
+
+            <p className="text-[11px] text-gray-400 font-medium leading-relaxed px-1">
+              Quando ativado, o app solicitará sua impressão digital ao abrir ou retornar do plano de fundo.
+              A preferência fica salva neste dispositivo.
+            </p>
+          </div>
+
+          <div className="border-t border-gray-100" />
+
+          {/* ── Inteligência Artificial ──────────────────────────────────────── */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-2">
               <BrainCircuit className="w-4 h-4 text-blue-600" />
