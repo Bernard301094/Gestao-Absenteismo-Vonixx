@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../firebase'; // 👈 Certifique-se de que o caminho para o firebase.ts está correto
+import { db } from '../firebase';
 import { generateMonthlyInsight, generateWeeklyInsight } from '../services/aiService';
 import { getDaysInMonth, isWorkDay } from '../utils/dateUtils';
 import type { Employee, AttendanceRecord, NotesRecord, Vacation } from '../types';
@@ -68,48 +68,33 @@ export function useAIInsights({
     return { start: weekDays[0] || 1, end: weekDays[weekDays.length - 1] || 7, days: weekDays };
   }, [fullMonthWorkDays]);
 
-  // ─── 1. CARREGAR HISTÓRICO DO FIREBASE AO INICIAR (SOBREVIVE AO F5) ───
+  // ─── Carrega histórico do Firebase ao iniciar ───────────────────────────────
   useEffect(() => {
     if (!shift) return;
-
     const fetchInsights = async () => {
       setIsLoadingHistory(true);
       try {
-        // Carregar Mensal
         const monthId = `monthly_${shift}_${currentYear}_${currentMonth}`;
-        const monthRef = doc(db, 'ai_insights', monthId);
-        const monthSnap = await getDoc(monthRef);
-        
-        if (monthSnap.exists()) {
-          setMonthlyInsight(monthSnap.data() as AIInsight);
-        } else {
-          setMonthlyInsight(null);
-        }
+        const monthSnap = await getDoc(doc(db, 'ai_insights', monthId));
+        setMonthlyInsight(monthSnap.exists() ? (monthSnap.data() as AIInsight) : null);
 
-        // Carregar Semanais
         const loadedWeeks: AIInsight[] = [];
         for (let w = 1; w <= 4; w++) {
-          const weekId = `weekly_${shift}_${currentYear}_${currentMonth}_W${w}`;
-          const weekRef = doc(db, 'ai_insights', weekId);
-          const weekSnap = await getDoc(weekRef);
-          if (weekSnap.exists()) {
-            loadedWeeks.push(weekSnap.data() as AIInsight);
-          }
+          const weekSnap = await getDoc(doc(db, 'ai_insights', `weekly_${shift}_${currentYear}_${currentMonth}_W${w}`));
+          if (weekSnap.exists()) loadedWeeks.push(weekSnap.data() as AIInsight);
         }
         setWeeklyInsights(loadedWeeks.sort((a, b) => (b.weekNumber || 0) - (a.weekNumber || 0)));
       } catch (error) {
-        console.error("Erro ao carregar insights do Firebase:", error);
+        console.error('Erro ao carregar insights do Firebase:', error);
       } finally {
         setIsLoadingHistory(false);
       }
     };
-
     fetchInsights();
   }, [shift, currentYear, currentMonth]);
 
-  // ─── 2. BLOQUEIOS DE GERAÇÃO (SÓ PERMITE SE NÃO EXISTIR NA BD) ───
+  // ─── Bloqueios de geração ───────────────────────────────────────────────────
   const canGenerateMonthly = useCallback(() => {
-    // Só gera se: (1) O último dia está fechado E (2) Ainda NÃO existe um relatório gerado
     return !!lockedDays[getLastWorkDayOfMonth()] && monthlyInsight === null;
   }, [lockedDays, getLastWorkDayOfMonth, monthlyInsight]);
 
@@ -117,18 +102,15 @@ export function useAIInsights({
     const { days } = getWeekRange(weekNum);
     if (days.length === 0) return false;
     const lastDayOfWeek = days[days.length - 1];
-    
-    // Verifica se já existe relatório para esta semana
     const alreadyGenerated = weeklyInsights.some(w => w.weekNumber === weekNum);
-    
-    // Só gera se o último dia da semana está fechado E não foi gerado ainda
     return !!lockedDays[lastDayOfWeek] && !alreadyGenerated;
   }, [getWeekRange, lockedDays, weeklyInsights]);
 
-  // Payload Builder...
-  const buildConsolidatedPayload = (daysToInclude: number[]) => {
-    const destaquesPositivos: any[] = [];
-    const pontosAtencao: any[] = [];
+  // ─── Builder de payload sanitizado ─────────────────────────────────────────
+  // Envia APENAS os campos necessários para a IA — sem metadados internos do React
+  const buildConsolidatedPayload = useCallback((daysToInclude: number[]) => {
+    const destaquesPositivos: { nome: string; cargo: string }[] = [];
+    const pontosAtencao: { nome: string; cargo: string; totalFaltas: number; justificativas: string[] }[] = [];
 
     employees.forEach(emp => {
       let faltasNoPeriodo = 0;
@@ -138,21 +120,15 @@ export function useAIInsights({
         const status = attendance[emp.id]?.[day];
         if (status === 'F') {
           faltasNoPeriodo++;
-          if (notes[emp.id]?.[day]) {
-            justificativas.push(`Dia ${day}: ${notes[emp.id][day]}`);
-          }
+          const nota = notes[emp.id]?.[day];
+          if (nota) justificativas.push(`Dia ${day}: ${nota}`);
         }
       });
 
       if (faltasNoPeriodo === 0) {
         destaquesPositivos.push({ nome: emp.name, cargo: emp.role });
       } else {
-        pontosAtencao.push({
-          nome: emp.name,
-          cargo: emp.role,
-          totalFaltas: faltasNoPeriodo,
-          justificativas
-        });
+        pontosAtencao.push({ nome: emp.name, cargo: emp.role, totalFaltas: faltasNoPeriodo, justificativas });
       }
     });
 
@@ -162,11 +138,27 @@ export function useAIInsights({
       periodo: { inicio: daysToInclude[0], fim: daysToInclude[daysToInclude.length - 1] },
       destaquesPositivos,
       pontosAtencao,
-      feriasAtivas: vacations.filter(v => v.status === 'taken').length
+      feriasAtivas: vacations.filter(v => v.status === 'taken').length,
     };
-  };
+  }, [employees, attendance, notes, vacations, shift]);
 
-  // ─── 3. GERAR E GUARDAR NO FIREBASE ───
+  // ─── Resumo curto do histórico semanal (máx. 300 chars por semana) ──────────
+  // Evita inflar o contexto e fazer o truncateMessages cortar os dados reais
+  const buildHistorySummary = useCallback((upToWeek: number): string => {
+    const MAX_CHARS_PER_WEEK = 300;
+    return weeklyInsights
+      .filter(w => (w.weekNumber || 0) < upToWeek)
+      .sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0))
+      .map(w => {
+        const truncated = w.content.length > MAX_CHARS_PER_WEEK
+          ? w.content.slice(0, MAX_CHARS_PER_WEEK) + '...'
+          : w.content;
+        return `[Semana ${w.weekNumber}]: ${truncated}`;
+      })
+      .join('\n---\n');
+  }, [weeklyInsights]);
+
+  // ─── Gerar mensal ───────────────────────────────────────────────────────────
   const handleGenerateMonthly = async () => {
     if (!canGenerateMonthly() || !shift) return;
     setIsGeneratingMonthly(true);
@@ -174,63 +166,44 @@ export function useAIInsights({
     try {
       const payload = buildConsolidatedPayload(validWorkDays);
       const content = await generateMonthlyInsight(payload);
-      
-      const newInsight: AIInsight = {
-        content,
-        generatedAt: new Date().toISOString(),
-        isAutoGenerated: false
-      };
-
-      // Guardar na Base de Dados
-      const monthId = `monthly_${shift}_${currentYear}_${currentMonth}`;
-      await setDoc(doc(db, 'ai_insights', monthId), newInsight);
-      
+      const newInsight: AIInsight = { content, generatedAt: new Date().toISOString(), isAutoGenerated: false };
+      await setDoc(doc(db, 'ai_insights', `monthly_${shift}_${currentYear}_${currentMonth}`), newInsight);
       setMonthlyInsight(newInsight);
-    } catch (err: any) { 
-      setMonthlyError(err.message); 
-    } finally { 
-      setIsGeneratingMonthly(false); 
+    } catch (err: any) {
+      setMonthlyError(err.message);
+    } finally {
+      setIsGeneratingMonthly(false);
     }
   };
 
+  // ─── Gerar semanal ──────────────────────────────────────────────────────────
   const handleGenerateWeekly = async (weekNum: number) => {
     if (!canGenerateWeekly(weekNum) || !shift) return;
     setIsGeneratingWeekly(weekNum);
     setWeeklyError(null);
-
     try {
       const { days, start, end } = getWeekRange(weekNum);
       const payload = buildConsolidatedPayload(days);
 
-      // ─── BUSCAR CONTEXTO DAS SEMANAS ANTERIORES ───
-      // Filtramos apenas as semanas menores que a atual que já possuem conteúdo
-      const historyContext = weeklyInsights
-        .filter(w => (w.weekNumber || 0) < weekNum)
-        .sort((a, b) => (a.weekNumber || 0) - (b.weekNumber || 0))
-        .map(w => `RESUMO SEMANA ${w.weekNumber}:\n${w.content}`)
-        .join('\n\n---\n\n');
+      // Histórico resumido — máx. 300 chars/semana para não cortar os dados reais
+      const historySummary = buildHistorySummary(weekNum);
 
-      // Enviamos o historyContext para o serviço de IA
-      const content = await generateWeeklyInsight(payload, weekNum, start, end, historyContext);
-      
+      const content = await generateWeeklyInsight(payload, weekNum, start, end, historySummary);
       const newInsight: AIInsight = {
         content,
         generatedAt: new Date().toISOString(),
         isAutoGenerated: false,
-        weekNumber: weekNum
+        weekNumber: weekNum,
       };
-
-      const weekId = `weekly_${shift}_${currentYear}_${currentMonth}_W${weekNum}`;
-      await setDoc(doc(db, 'ai_insights', weekId), newInsight);
-
-      setWeeklyInsights(prev => {
-        const other = prev.filter(w => w.weekNumber !== weekNum);
-        return [...other, newInsight].sort((a, b) => (b.weekNumber || 0) - (a.weekNumber || 0));
-      });
-    } catch (err: any) { 
-      setWeeklyError(err.message); 
-    } finally { 
-      setIsGeneratingWeekly(null); 
+      await setDoc(doc(db, 'ai_insights', `weekly_${shift}_${currentYear}_${currentMonth}_W${weekNum}`), newInsight);
+      setWeeklyInsights(prev =>
+        [...prev.filter(w => w.weekNumber !== weekNum), newInsight]
+          .sort((a, b) => (b.weekNumber || 0) - (a.weekNumber || 0))
+      );
+    } catch (err: any) {
+      setWeeklyError(err.message);
+    } finally {
+      setIsGeneratingWeekly(null);
     }
   };
 
@@ -239,9 +212,9 @@ export function useAIInsights({
     monthlyError, weeklyError, setMonthlyError, setWeeklyError,
     handleGenerateMonthly, handleGenerateWeekly,
     canGenerateMonthly, canGenerateWeekly,
-    getAvailableWeeks: () => [1, 2, 3, 4], 
-    getWeekRange, 
+    getAvailableWeeks: () => [1, 2, 3, 4],
+    getWeekRange,
     getLastWorkDayOfMonth,
-    isLoadingHistory // 👈 Adicionado para evitar flashes no ecrã enquanto carrega
+    isLoadingHistory,
   };
 }
