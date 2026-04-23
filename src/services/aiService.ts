@@ -6,6 +6,14 @@ export type AIProvider = 'openrouter' | 'groq';
 
 const MAX_MONTHLY_CALLS = 200;
 
+// Converte YYYY-MM-DD → DD/MM/YYYY para exibição no relatório
+function formatDateBR(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
 async function checkAndIncrementQuota(): Promise<void> {
   const now = new Date();
   const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
@@ -68,7 +76,6 @@ function truncateMessages(
   return result;
 }
 
-// Regras anti-alucinação + formatação Markdown obrigatória
 const BASE_RULES = `
 ⚠️ REGRAS ABSOLUTAS:
 1. Use SOMENTE os dados do JSON fornecido. PROIBIDO inventar nomes, números ou situações.
@@ -200,7 +207,7 @@ export async function generateWeeklyInsight(
   prevSnapshots: WeekSnapshot[] = [],
   provider: AIProvider = 'groq'
 ) {
-  // Monta tabela comparativa no código — não deixa para o modelo formatar
+  // Tabela comparativa montada no código
   let comparativo = '';
   if (prevSnapshots.length > 0) {
     const rows = prevSnapshots
@@ -214,19 +221,24 @@ ${rows}
 ${atual}`;
   }
 
-  // Lista de ausentes por férias extraída do payload — pronta para colar
+  // Férias com datas em DD/MM/YYYY
   const feriasDetalhe = payload.ferias?.detalhe ?? [];
   const feriasTexto = feriasDetalhe.length > 0
-    ? feriasDetalhe.map((f: any) => `- **${f.nome}** (${f.cargo}) — Férias: ${f.inicioFerias} a ${f.fimFerias}${f.retorno ? `, retorno ${f.retorno}` : ''}`).join('\n')
+    ? feriasDetalhe.map((f: any) => {
+        const ini = formatDateBR(f.inicioFerias);
+        const fim = formatDateBR(f.fimFerias);
+        const ret = f.retorno ? `, retorno ${formatDateBR(f.retorno)}` : '';
+        return `- **${f.nome}** (${f.cargo}) — Férias: ${ini} a ${fim}${ret}`;
+      }).join('\n')
     : '- Nenhum funcionário em férias neste período.';
 
-  // Faltas sem justificativa — extraídas e prontas
+  // Faltas sem justificativa
   const semJustTexto = payload.rankingFaltas
     ?.filter((f: any) => f.semJustificativa > 0)
     .map((f: any) => `- **${f.nome}** — ${f.semJustificativa} falta(s) sem justificativa`)
     .join('\n') || '- Todas as faltas foram justificadas.';
 
-  // Top 3 absenteístas — extraídos e prontos
+  // Top 3 absenteístas
   const top3Texto = payload.rankingFaltas?.length > 0
     ? payload.rankingFaltas.slice(0, 3)
         .map((f: any) => {
@@ -279,7 +291,7 @@ export async function generateMonthlyInsight(
   weekSnapshots: WeekSnapshot[] = [],
   provider: AIProvider = 'openrouter'
 ) {
-  // Tabela de evolução semanal — montada no código
+  // Tabela de evolução semanal
   let tabelaEvolucao = '';
   if (weekSnapshots.length > 0) {
     const rows = weekSnapshots
@@ -291,13 +303,18 @@ export async function generateMonthlyInsight(
 ${rows}`;
   }
 
-  // Férias no mês — prontas
+  // Férias com datas em DD/MM/YYYY
   const feriasDetalhe = payload.ferias?.detalhe ?? [];
   const feriasTexto = feriasDetalhe.length > 0
-    ? feriasDetalhe.map((f: any) => `- **${f.nome}** (${f.cargo}) — ${f.inicioFerias} a ${f.fimFerias}${f.retorno ? `, retorno ${f.retorno}` : ''}`).join('\n')
+    ? feriasDetalhe.map((f: any) => {
+        const ini = formatDateBR(f.inicioFerias);
+        const fim = formatDateBR(f.fimFerias);
+        const ret = f.retorno ? `, retorno ${formatDateBR(f.retorno)}` : '';
+        return `- **${f.nome}** (${f.cargo}) — ${ini} a ${fim}${ret}`;
+      }).join('\n')
     : '- Nenhum funcionário em férias no período.';
 
-  // Top absenteístas — prontos
+  // Top absenteístas
   const topAbsTexto = payload.rankingFaltas?.length > 0
     ? payload.rankingFaltas.slice(0, 5)
         .map((f: any) => {

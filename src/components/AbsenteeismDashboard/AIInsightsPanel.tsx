@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Sparkles, Loader2, Calendar, CalendarDays,
   ChevronDown, ChevronUp, Clock, CheckCircle2, AlertTriangle
@@ -8,27 +9,83 @@ import { MONTH_NAMES } from '../../utils/constants';
 import { useAIInsights, type AIInsight } from '../../hooks/useAIInsights';
 import type { Employee, AttendanceRecord, NotesRecord, Vacation } from '../../types';
 
-// ─── Markdown renderer (Dark / Discreet Theme) ──────────────────────────────
+// ─── Markdown renderer ────────────────────────────────────────────────────────
 
 function AIMarkdown({ content }: { content: string }) {
   return (
     <div style={{ color: '#cbd5e1', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => <h1 className="text-white font-bold text-base mt-5 mb-2 border-b border-slate-700 pb-2">{children}</h1>,
-          h2: ({ children }) => <h2 className="text-slate-100 font-semibold text-sm mt-4 mb-2">{children}</h2>,
-          h3: ({ children }) => <h3 className="text-sky-400 font-semibold text-xs mt-4 mb-1 uppercase tracking-wider">{children}</h3>,
-          p: ({ children }) => <p className="text-slate-300 mb-3 leading-relaxed">{children}</p>,
-          strong: ({ children }) => <strong className="text-white font-bold">{children}</strong>,
-          ul: ({ children }) => <ul className="space-y-1.5 mb-3 list-none pl-1">{children}</ul>,
-          ol: ({ children }) => <ol className="space-y-1.5 mb-3 list-decimal pl-5 text-slate-300">{children}</ol>,
+          h1: ({ children }) => (
+            <h1 className="text-white font-bold text-base mt-5 mb-2 border-b border-slate-700 pb-2">
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-slate-100 font-semibold text-sm mt-4 mb-2">
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-sky-400 font-semibold text-xs mt-4 mb-2 uppercase tracking-wider">
+              {children}
+            </h3>
+          ),
+          p: ({ children }) => (
+            <p className="text-slate-300 mb-3 leading-relaxed">{children}</p>
+          ),
+          strong: ({ children }) => (
+            <strong className="text-white font-bold">{children}</strong>
+          ),
+          em: ({ children }) => (
+            <em className="text-slate-400 italic">{children}</em>
+          ),
+          ul: ({ children }) => (
+            <ul className="space-y-1.5 mb-3 list-none pl-1">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="space-y-1.5 mb-3 list-decimal pl-5 text-slate-300">{children}</ol>
+          ),
           li: ({ children }) => (
             <li className="text-slate-300 relative pl-4">
-              <span className="absolute left-0 top-[0.5em] w-1 h-1 bg-sky-500 rounded-full"></span>
+              <span className="absolute left-0 top-[0.5em] w-1 h-1 bg-sky-500 rounded-full" />
               {children}
             </li>
           ),
           hr: () => <hr className="border-slate-700/50 my-5" />,
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-slate-600 pl-3 my-3 text-slate-400 italic text-xs">
+              {children}
+            </blockquote>
+          ),
+          // ── Tabela estilizada ──────────────────────────────────────────
+          table: ({ children }) => (
+            <div className="overflow-x-auto my-4 rounded-lg border border-slate-700/60">
+              <table className="w-full text-xs border-collapse">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-slate-700/60">{children}</thead>
+          ),
+          tbody: ({ children }) => (
+            <tbody className="divide-y divide-slate-700/40">{children}</tbody>
+          ),
+          tr: ({ children }) => (
+            <tr className="hover:bg-slate-700/20 transition-colors">{children}</tr>
+          ),
+          th: ({ children }) => (
+            <th className="px-3 py-2 text-left text-slate-300 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
+              {children}
+            </td>
+          ),
         }}
       >
         {content}
@@ -52,7 +109,7 @@ function formatTimestamp(ts: any): string {
   }
 }
 
-// ─── InsightCard (Discreto e Oficial) ─────────────────────────────────────────
+// ─── InsightCard ──────────────────────────────────────────────────────────────
 
 interface InsightCardProps {
   insight: AIInsight;
@@ -74,8 +131,14 @@ function InsightCard({ insight, label }: InsightCardProps) {
           <span className="text-slate-200 font-semibold text-sm">{label}</span>
         </div>
         <div className="flex items-center gap-3">
-          {ts && <span className="text-slate-500 text-[10px] uppercase tracking-wider font-medium hidden sm:block">{ts}</span>}
-          {expanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          {ts && (
+            <span className="text-slate-500 text-[10px] uppercase tracking-wider font-medium hidden sm:block">
+              {ts}
+            </span>
+          )}
+          {expanded
+            ? <ChevronUp className="w-4 h-4 text-slate-500" />
+            : <ChevronDown className="w-4 h-4 text-slate-500" />}
         </div>
       </button>
 
@@ -93,7 +156,7 @@ function InsightCard({ insight, label }: InsightCardProps) {
   );
 }
 
-// ─── GenerateButton (Apenas para geração primária) ────────────────────────────
+// ─── GenerateButton ───────────────────────────────────────────────────────────
 
 interface GenerateButtonProps {
   onClick: () => void;
@@ -150,14 +213,14 @@ export default function AIInsightsPanel({
     handleGenerateMonthly, handleGenerateWeekly,
     canGenerateMonthly, canGenerateWeekly,
     getAvailableWeeks, getWeekRange, getLastWorkDayOfMonth,
-    isLoadingHistory
+    isLoadingHistory,
   } = useAIInsights({
     shift, employees, attendance, notes, vacations,
     lockedDays, currentMonth, currentYear, validWorkDays, isSupervision,
   });
 
   const availableWeeks = getAvailableWeeks();
-  const lastWorkDay = getLastWorkDayOfMonth();
+  const lastWorkDay    = getLastWorkDayOfMonth();
   const monthlyUnlocked = canGenerateMonthly();
   const monthLabel = MONTH_NAMES?.[currentMonth] ?? `Mês ${currentMonth + 1}`;
 
@@ -172,8 +235,8 @@ export default function AIInsightsPanel({
   return (
     <div className="bg-[#0f1e36] rounded-2xl border border-slate-700/50 overflow-hidden shadow-lg">
       <div className="p-5 sm:p-6">
-        
-        {/* ── Header ──────────────────────────────────────────────────────── */}
+
+        {/* ── Header ─────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0">
@@ -185,12 +248,14 @@ export default function AIInsightsPanel({
             </div>
           </div>
 
-          {/* ── Tabs ──────────────────────────────────────────────────────── */}
+          {/* ── Tabs ──────────────────────────────────────────────────── */}
           <div className="flex bg-slate-800/80 p-1 rounded-lg self-start sm:self-auto border border-slate-700/50">
             <button
               onClick={() => setActiveTab('monthly')}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === 'monthly' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                activeTab === 'monthly'
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" /> Mensal
@@ -198,7 +263,9 @@ export default function AIInsightsPanel({
             <button
               onClick={() => setActiveTab('weekly')}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${
-                activeTab === 'weekly' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                activeTab === 'weekly'
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <CalendarDays className="w-3.5 h-3.5" /> Semanal
@@ -206,23 +273,24 @@ export default function AIInsightsPanel({
           </div>
         </div>
 
-        {/* ════════════════════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════════════════
             TAB: MONTHLY
-        ════════════════════════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'monthly' && (
           <div className="animate-in fade-in duration-300">
-            
-            {/* Bloco de Controle Mensal - Só mostra o botão se NÃO existir insight */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-5 p-4 rounded-xl bg-slate-800/40 border border-slate-700/50">
               <div>
-                <p className="text-slate-200 font-semibold text-sm">Fechamento Gerencial — {monthLabel}</p>
+                <p className="text-slate-200 font-semibold text-sm">
+                  Fechamento Gerencial — {monthLabel}
+                </p>
                 <p className="text-slate-400 text-xs mt-1">
-                  {monthlyInsight ? 'Dossiê emitido e arquivado definitivamente.' :
-                   monthlyUnlocked ? `Lista do dia ${lastWorkDay} fechada. Pronto para emissão.` :
-                   `Emissão requer o fechamento do dia ${lastWorkDay}.`}
+                  {monthlyInsight
+                    ? 'Dossiê emitido e arquivado definitivamente.'
+                    : monthlyUnlocked
+                      ? `Lista do dia ${lastWorkDay} fechada. Pronto para emissão.`
+                      : `Emissão requer o fechamento do dia ${lastWorkDay}.`}
                 </p>
               </div>
-              
               {!monthlyInsight && (
                 <GenerateButton
                   onClick={() => { setMonthlyError(null); handleGenerateMonthly(); }}
@@ -252,9 +320,9 @@ export default function AIInsightsPanel({
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════════════════
+        {/* ══════════════════════════════════════════════════════════════════
             TAB: WEEKLY
-        ════════════════════════════════════════════════════════════════════ */}
+        ══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'weekly' && (
           <div className="animate-in fade-in duration-300">
             {weeklyError && (
@@ -273,23 +341,23 @@ export default function AIInsightsPanel({
                 {availableWeeks.map(weekNum => {
                   const { start, end, days } = getWeekRange(weekNum);
                   const existingInsight = weeklyInsights.find(w => w.weekNumber === weekNum);
-                  const unlocked = canGenerateWeekly(weekNum);
+                  const unlocked   = canGenerateWeekly(weekNum);
                   const isGenerating = isGeneratingWeekly === weekNum;
 
                   return (
                     <div key={weekNum}>
-                      {/* Se o Relatório JÁ EXISTE, mostra apenas o Card. O botão some. */}
                       {existingInsight && !isGenerating ? (
-                        <InsightCard insight={existingInsight} label={`Semana ${weekNum} (Dias ${start} a ${end})`} />
+                        <InsightCard
+                          insight={existingInsight}
+                          label={`Semana ${weekNum} (Dias ${start} a ${end})`}
+                        />
                       ) : (
-                        /* Se NÃO EXISTE, mostra a área de geração com o botão */
                         days.length > 0 && (
                           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-3 px-4 rounded-xl bg-slate-800/40 border border-slate-700/50">
                             <div>
                               <p className="text-slate-200 font-semibold text-sm">Semana {weekNum}</p>
                               <p className="text-slate-400 text-xs mt-0.5">Dias {start} a {end}</p>
                             </div>
-                            
                             <div className="flex items-center gap-3 w-full sm:w-auto">
                               {!unlocked && (
                                 <span className="text-slate-500 text-xs flex items-center gap-1">
@@ -300,7 +368,7 @@ export default function AIInsightsPanel({
                                 onClick={() => { setWeeklyError(null); handleGenerateWeekly(weekNum); }}
                                 isLoading={isGenerating}
                                 disabled={!unlocked || (isGeneratingWeekly !== null && !isGenerating)}
-                                label={`Gerar Auditoria`}
+                                label="Gerar Auditoria"
                               />
                             </div>
                           </div>
