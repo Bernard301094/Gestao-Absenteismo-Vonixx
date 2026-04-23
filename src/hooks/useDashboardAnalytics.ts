@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { AlertCircle, XCircle } from 'lucide-react';
 import { isWorkDay } from '../utils/dateUtils';
 import { computeVacationStats } from './useVacationStats';
@@ -17,6 +17,21 @@ interface UseDashboardAnalyticsParams {
   registroSearchTerm: string; isValidDay: (day: number) => boolean; showDismissed: boolean;
 }
 
+// Retorna true se o colaborador estava ativo em um dia específico do mês/ano
+function wasActiveOnDay(
+  emp: Employee,
+  day: number,
+  month: number,
+  year: number
+): boolean {
+  if (!emp.dismissed || !emp.dismissalDate) return true;
+  const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
+  const dismissal = new Date(dy, dm - 1, dd);
+  const target    = new Date(year, month, day);
+  // Só aparece nos dias ANTERIORES à demissão (não no dia da demissão nem depois)
+  return target < dismissal;
+}
+
 export function useDashboardAnalytics({
   attendance, employees, globalEmployees, globalAttendance, globalCompletions,
   selectedDay, currentMonth, currentYear, VALID_WORK_DAYS, isSupervision,
@@ -24,22 +39,27 @@ export function useDashboardAnalytics({
   vacations, showDismissed,
 }: UseDashboardAnalyticsParams) {
 
-  const sourceEmployees = isSupervision ? globalEmployees : employees;
+  const sourceEmployees  = isSupervision ? globalEmployees : employees;
   const sourceAttendance = isSupervision ? globalAttendance : attendance;
 
-  // LÓGICA TEMPORAL APLICADA AO DASHBOARD: Ele não apaga o histórico do mês atual
-  const activeEmployees = useMemo(
-    () => sourceEmployees.filter(emp => {
-      if (!emp.dismissed) return true;
-      if (!emp.dismissalDate) return false;
-      const [y, m, d] = emp.dismissalDate.split('-').map(Number);
-      const dismissalDate = new Date(y, m - 1, d);
-      const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
-      return dismissalDate >= firstDayOfMonth; // Se foi demitido neste mês, preserva os dados no dashboard deste mês!
-    }),
-    [sourceEmployees, currentMonth, currentYear]
-  );
+  // ─── Colaboradores ativos HOJE (para contadores gerais e férias) ────────────
+  const activeEmployees = useMemo(() => {
+    const now = new Date();
+    const today = now.getDate();
+    const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
+    const refDay = isCurrentMonth ? today : new Date(currentYear, currentMonth + 1, 0).getDate();
 
+    return sourceEmployees.filter(emp =>
+      wasActiveOnDay(emp, refDay, currentMonth, currentYear)
+    );
+  }, [sourceEmployees, currentMonth, currentYear]);
+
+  // ─── Colaboradores ativos num dia específico (para cálculos por dia) ────────
+  const getActiveEmployeesForDay = useCallback((day: number) =>
+    sourceEmployees.filter(emp => wasActiveOnDay(emp, day, currentMonth, currentYear)),
+  [sourceEmployees, currentMonth, currentYear]);
+
+  // ─── Lista exibida no dashboard (respeita showDismissed) ───────────────────
   const displayEmployees = useMemo(
     () => showDismissed ? sourceEmployees : activeEmployees,
     [sourceEmployees, activeEmployees, showDismissed]
@@ -51,75 +71,81 @@ export function useDashboardAnalytics({
       ? now.getDate() : new Date(currentYear, currentMonth + 1, 0).getDate();
   }, [currentMonth, currentYear]);
 
+  // ─── Total de faltas do mês: cada dia usa seus próprios ativos ──────────────
   const totalFaltasMes = useMemo(() => {
     let count = 0;
-    activeEmployees.forEach(emp => {
-      const empRecord = sourceAttendance[emp.id];
-      if (!empRecord) return;
-      Object.entries(empRecord).forEach(([dayStr, status]) => {
-        if (status === 'F' && isWorkDay(Number(dayStr), currentMonth, currentYear)) count++;
+    VALID_WORK_DAYS.forEach(day => {
+      const empsDoDia = getActiveEmployeesForDay(day);
+      empsDoDia.forEach(emp => {
+        if (sourceAttendance[emp.id]?.[day] === 'F') count++;
       });
     });
     return count;
-  }, [sourceAttendance, activeEmployees, currentMonth, currentYear]);
+  }, [sourceAttendance, getActiveEmployeesForDay, VALID_WORK_DAYS]);
 
   const faltasDoDia = useMemo(() => {
     if (selectedDay === 'all' || !isWorkDay(selectedDay, currentMonth, currentYear) || !isValidDay(selectedDay)) return 0;
-    let count = 0;
-    activeEmployees.forEach(emp => { if (sourceAttendance[emp.id]?.[selectedDay] === 'F') count++; });
-    return count;
-  }, [sourceAttendance, activeEmployees, selectedDay, currentMonth, currentYear, isValidDay]);
+    const empsDoDia = getActiveEmployeesForDay(selectedDay);
+    return empsDoDia.filter(emp => sourceAttendance[emp.id]?.[selectedDay] === 'F').length;
+  }, [sourceAttendance, getActiveEmployeesForDay, selectedDay, currentMonth, currentYear, isValidDay]);
 
+  // ─── Taxa de absenteísmo: base de dias possíveis por dia ───────────────────
   const taxaAbsenteismo = useMemo(() => {
     let totalFeriasEAfastamentos = 0;
-    activeEmployees.forEach(emp => {
-      const empRecord = sourceAttendance[emp.id];
-      if (!empRecord) return;
-      Object.entries(empRecord).forEach(([dayStr, status]) => {
-        const day = Number(dayStr);
-        if ((status === 'Fe' || status === 'A') && isWorkDay(day, currentMonth, currentYear) && isValidDay(day)) totalFeriasEAfastamentos++;
+    let totalDiasPossiveis = 0;
+
+    VALID_WORK_DAYS.forEach(day => {
+      if (!isValidDay(day)) return;
+      const empsDoDia = getActiveEmployeesForDay(day);
+      totalDiasPossiveis += empsDoDia.length;
+      empsDoDia.forEach(emp => {
+        const st = sourceAttendance[emp.id]?.[day];
+        if (st === 'Fe' || st === 'A') totalFeriasEAfastamentos++;
       });
     });
-    const totalDiasTrabalho = (activeEmployees.length * VALID_WORK_DAYS.length) - totalFeriasEAfastamentos;
-    if (totalDiasTrabalho <= 0) return '0.0';
-    return ((totalFaltasMes / totalDiasTrabalho) * 100).toFixed(1);
-  }, [totalFaltasMes, activeEmployees, sourceAttendance, VALID_WORK_DAYS.length, currentMonth, currentYear, isValidDay]);
 
+    const base = totalDiasPossiveis - totalFeriasEAfastamentos;
+    if (base <= 0) return '0.0';
+    return ((totalFaltasMes / base) * 100).toFixed(1);
+  }, [totalFaltasMes, getActiveEmployeesForDay, sourceAttendance, VALID_WORK_DAYS, isValidDay]);
+
+  // ─── Gráfico diário: cada dia com seus ativos ──────────────────────────────
   const dailyData = useMemo<DayData[]>(() => {
     if (selectedDay === 'all') {
       return VALID_WORK_DAYS.filter(day => day <= todayLimitDay).map(day => {
-        let faltas = 0;
-        activeEmployees.forEach(emp => { if (sourceAttendance[emp.id]?.[day] === 'F') faltas++; });
+        const empsDoDia = getActiveEmployeesForDay(day);
+        const faltas = empsDoDia.filter(emp => sourceAttendance[emp.id]?.[day] === 'F').length;
         return { day: day.toString(), faltas };
       });
     }
     if ((selectedDay as number) > todayLimitDay) return [];
-    let faltas = 0;
-    activeEmployees.forEach(emp => { if (sourceAttendance[emp.id]?.[selectedDay] === 'F') faltas++; });
+    const empsDoDia = getActiveEmployeesForDay(selectedDay as number);
+    const faltas = empsDoDia.filter(emp => sourceAttendance[emp.id]?.[selectedDay] === 'F').length;
     return [{ day: selectedDay.toString(), faltas }];
-  }, [sourceAttendance, activeEmployees, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
+  }, [sourceAttendance, getActiveEmployeesForDay, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
 
+  // ─── Padrão por dia da semana ──────────────────────────────────────────────
   const weekdayData = useMemo<WeekdayData[]>(() => {
-    const counts: Record<string, number> = { Dom: 0, Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, Sáb: 0 };
+    const counts: Record<string, number> = { Dom: 0, Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, 'Sáb': 0 };
     const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-    activeEmployees.forEach(emp => {
-      const empRecord = sourceAttendance[emp.id];
-      if (!empRecord) return;
-      Object.entries(empRecord).forEach(([dayStr, status]) => {
-        const day = parseInt(dayStr);
-        if (status === 'F' && isWorkDay(day, currentMonth, currentYear) && (selectedDay === 'all' || day === selectedDay)) {
+    const daysToScan = selectedDay === 'all' ? VALID_WORK_DAYS : [selectedDay as number];
+    daysToScan.forEach(day => {
+      const empsDoDia = getActiveEmployeesForDay(day);
+      empsDoDia.forEach(emp => {
+        if (sourceAttendance[emp.id]?.[day] === 'F') {
           counts[weekdays[new Date(currentYear, currentMonth, day).getDay()]]++;
         }
       });
     });
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(wd => ({ day: wd, faltas: counts[wd] }));
-  }, [sourceAttendance, activeEmployees, selectedDay, currentMonth, currentYear]);
+  }, [sourceAttendance, getActiveEmployeesForDay, selectedDay, VALID_WORK_DAYS, currentMonth, currentYear]);
 
+  // ─── Stats por empleado (para leaderboard/detalhe) ─────────────────────────
   const employeeData = useMemo<EmployeeWithStats[]>(() => {
     const now = new Date(); const today = now.getDate(); const windowSize = 7;
-    const currentWindowStart = Math.max(1, today - windowSize + 1);
+    const currentWindowStart  = Math.max(1, today - windowSize + 1);
     const previousWindowStart = Math.max(1, currentWindowStart - windowSize);
-    const previousWindowEnd = currentWindowStart - 1;
+    const previousWindowEnd   = currentWindowStart - 1;
 
     return displayEmployees.map(emp => {
       let totalFaltasMes = 0; let faltasJanelaAtual = 0; let faltasJanelaAnterior = 0;
@@ -138,7 +164,11 @@ export function useDashboardAnalytics({
       else if (faltasJanelaAtual < faltasJanelaAnterior && faltasJanelaAnterior > 0) trend = 'down';
 
       return {
-        ...emp, faltas: selectedDay === 'all' ? totalFaltasMes : (sourceAttendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0), trend,
+        ...emp,
+        faltas: selectedDay === 'all'
+          ? totalFaltasMes
+          : (sourceAttendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
+        trend,
       };
     }).sort((a, b) => b.faltas - a.faltas);
   }, [sourceAttendance, displayEmployees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
@@ -159,14 +189,19 @@ export function useDashboardAnalytics({
     return [...result].sort((a, b) => b.faltas - a.faltas);
   }, [searchTerm, statusFilter, sortOrder, employeeData]);
 
+  // ─── Registro de presença: usa ativos do dia selecionado ───────────────────
   const filteredRegistroEmployees = useMemo(() => {
-    let result = activeEmployees.slice();
-    if (registroSearchTerm) result = result.filter(emp => emp.name.toLowerCase().includes(registroSearchTerm.toLowerCase()));
+    const day = selectedDay === 'all'
+      ? (VALID_WORK_DAYS[VALID_WORK_DAYS.length - 1] ?? new Date().getDate())
+      : (selectedDay as number);
+    let result = getActiveEmployeesForDay(day);
+    if (registroSearchTerm)
+      result = result.filter(emp => emp.name.toLowerCase().includes(registroSearchTerm.toLowerCase()));
     return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [activeEmployees, registroSearchTerm]);
+  }, [getActiveEmployeesForDay, selectedDay, VALID_WORK_DAYS, registroSearchTerm]);
 
   const topEmployees = useMemo(() => [...employeeData].slice(0, 10).reverse(), [employeeData]);
-  const topEmployee = useMemo(() => (employeeData.length > 0 ? employeeData[0] : null), [employeeData]);
+  const topEmployee  = useMemo(() => (employeeData.length > 0 ? employeeData[0] : null), [employeeData]);
 
   const leaderboardData = useMemo<LeaderboardEntry[]>(() => {
     if (!isSupervision) return [];
@@ -176,7 +211,8 @@ export function useDashboardAnalytics({
       let totalPossible = 0; let totalPresent = 0;
       shiftEmps.forEach(emp => {
         VALID_WORK_DAYS.forEach(day => {
-          totalPossible++; if ((globalAttendance[emp.id]?.[day] || 'P') === 'P') totalPresent++;
+          totalPossible++;
+          if ((globalAttendance[emp.id]?.[day] || 'P') === 'P') totalPresent++;
         });
       });
       return { shift: `Turno ${s}`, rate: totalPossible > 0 ? Math.round((totalPresent / totalPossible) * 100) : 0 };
@@ -197,7 +233,8 @@ export function useDashboardAnalytics({
       if (emp.dismissed) return false;
       return Object.values(globalAttendance[emp.id] || {}).filter(s => s === 'F').length >= 5;
     }).length;
-    if (criticalCount > 0) newAlerts.push({ type: 'critical', message: `${criticalCount} funcionários atingiram o limite de 5 faltas no mês.`, icon: XCircle });
+    if (criticalCount > 0)
+      newAlerts.push({ type: 'critical', message: `${criticalCount} funcionários atingiram o limite de 5 faltas no mês.`, icon: XCircle });
     return newAlerts;
   }, [isSupervision, globalCompletions, globalEmployees, globalAttendance, currentMonth, currentYear]);
 
@@ -209,21 +246,27 @@ export function useDashboardAnalytics({
     years.forEach(year => {
       breakdown[year] = months.map(month => vacations.filter(v => {
         if (!v.startDate) return false;
-        const start = new Date(v.startDate + 'T12:00:00'); return start.getFullYear() === year && start.getMonth() === month;
+        const start = new Date(v.startDate + 'T12:00:00');
+        return start.getFullYear() === year && start.getMonth() === month;
       }).length);
     });
     return breakdown;
   }, [vacations]);
 
-  const vacationLiability = useMemo(() => vacationStats.reduce((acc, s) => acc + (Number(s.diasAGozar) || 0), 0), [vacationStats]);
+  const vacationLiability = useMemo(() =>
+    vacationStats.reduce((acc, s) => acc + (Number(s.diasAGozar) || 0), 0),
+  [vacationStats]);
 
   const vacationOverlapAlerts = useMemo(() => {
     const result: string[] = [];
     Array.from(new Set(activeEmployees.map(e => e.role).filter(Boolean))).forEach(role => {
       const roleEmps = activeEmployees.filter(e => e.role === role);
       if (roleEmps.length < 2) return;
-      const percentage = (vacationStats.filter(s => s.cargo === role && s.status === 'em_ferias_agora').length / roleEmps.length) * 100;
-      if (percentage >= 30) result.push(`${Math.round(percentage)}% dos ${role}s estão de férias simultaneamente.`);
+      const percentage = (
+        vacationStats.filter(s => s.cargo === role && s.status === 'em_ferias_agora').length / roleEmps.length
+      ) * 100;
+      if (percentage >= 30)
+        result.push(`${Math.round(percentage)}% dos ${role}s estão de férias simultaneamente.`);
     });
     return result;
   }, [activeEmployees, vacationStats]);
@@ -232,9 +275,13 @@ export function useDashboardAnalytics({
     const heatmap: Record<string, number> = {};
     vacations.forEach(v => {
       if (!v.startDate || !v.endDate) return;
-      let current = new Date(v.startDate + 'T12:00:00'); const end = new Date(v.endDate + 'T12:00:00');
+      let current = new Date(v.startDate + 'T12:00:00');
+      const end = new Date(v.endDate + 'T12:00:00');
       while (current <= end) {
-        if (current.getFullYear() === currentYear) { const key = current.toISOString().split('T')[0]; heatmap[key] = (heatmap[key] || 0) + 1; }
+        if (current.getFullYear() === currentYear) {
+          const key = current.toISOString().split('T')[0];
+          heatmap[key] = (heatmap[key] || 0) + 1;
+        }
         current.setDate(current.getDate() + 1);
       }
     });
