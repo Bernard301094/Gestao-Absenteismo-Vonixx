@@ -3,24 +3,18 @@ import { db } from '../firebase';
 
 export type AIProvider = 'openrouter' | 'groq';
 
-// Global AI quota variables
-const MAX_MONTHLY_CALLS = 200; 
+const MAX_MONTHLY_CALLS = 200;
 
 async function checkAndIncrementQuota(): Promise<void> {
   const now = new Date();
   const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
   const quotaRef = doc(db, 'system', `ai_quota_${monthKey}`);
-  
   const snap = await getDoc(quotaRef);
   let count = 0;
-  if (snap.exists()) {
-    count = snap.data().calls || 0;
-  }
-  
+  if (snap.exists()) count = snap.data().calls || 0;
   if (count >= MAX_MONTHLY_CALLS) {
     throw new Error(`LIMITE DE CUSTO ATINGIDO: Você atingiu o limite de ${MAX_MONTHLY_CALLS} chamadas este mês. A IA foi bloqueada para evitar cobranças adicionais.`);
   }
-  
   await setDoc(quotaRef, { calls: count + 1 }, { merge: true });
 }
 
@@ -33,12 +27,10 @@ async function fetchApiKey(provider: AIProvider): Promise<string | null> {
       if (provider === 'groq' && data.groqKey) return data.groqKey;
     }
   } catch (e) {
-    console.warn("Firestore config check failed:", e);
+    console.warn('Firestore config check failed:', e);
   }
-
   if (provider === 'openrouter') return import.meta.env.VITE_OPENROUTER_API_KEY || null;
   if (provider === 'groq') return import.meta.env.VITE_GROQ_API_KEY || null;
-  
   return null;
 }
 
@@ -61,26 +53,37 @@ const getModel = (provider: AIProvider) => {
   return OPENROUTER_FREE_MODELS[0];
 };
 
-// Trunca mensagens para não exceder ~4000 tokens (~16000 chars)
 function truncateMessages(
   messages: { role: string; content: string }[],
   maxChars = 16000
 ): { role: string; content: string }[] {
   const systemMsg = messages.find(m => m.role === 'system');
   const otherMsgs = messages.filter(m => m.role !== 'system');
-
   let total = systemMsg ? systemMsg.content.length : 0;
   const kept: { role: string; content: string }[] = [];
-
   for (let i = otherMsgs.length - 1; i >= 0; i--) {
     const msgLen = otherMsgs[i].content.length;
     if (total + msgLen > maxChars) break;
     total += msgLen;
     kept.unshift(otherMsgs[i]);
   }
-
   return systemMsg ? [systemMsg, ...kept] : kept;
 }
+
+// Regra base anti-alucinação e formatação, injetada em todos os prompts
+const BASE_RULES = `
+⚠️ REGRAS ABSOLUTAS — VIOLAÇÃO DESQUALIFICA O RELATÓRIO:
+1. PROIBIDO inventar, supor ou extrapolar qualquer dado que não esteja no JSON fornecido.
+2. Se um campo estiver vazio, ausente ou como array vazio [], escreva explicitamente "Nenhum registro" para aquela seção. NUNCA preencha com exemplos fictícios.
+3. Use EXCLUSIVAMENTE os nomes, números e datas presentes no JSON. Nenhum nome genérico como "Funcionário A" ou "Colaborador X".
+4. FORMATO DE SAÍDA OBRIGATÓRIO: Markdown estilizado renderizável. Use:
+   - ## para títulos de seção
+   - **negrito** para nomes de funcionários e métricas numéricas
+   - > citações em bloco para alertas críticos
+   - --- para separadores entre seções
+   - Listas com - para itens múltiplos
+5. O texto deve estar 100% pronto para ser renderizado em tela — sem texto plano solto, sem marcações extras, sem blocos de código.
+`;
 
 export async function callAI(
   messages: { role: string; content: string }[],
@@ -90,23 +93,17 @@ export async function callAI(
     initialProvider === 'openrouter' ? ['openrouter', 'groq'] : ['groq', 'openrouter'];
 
   await checkAndIncrementQuota();
-
-  // Truncar mensagens antes de enviar para evitar erros de limite de tokens
   const safeMessages = truncateMessages(messages);
-
   let lastError: any = null;
 
   for (const currentProvider of providersToTry) {
     const activeApiKey = await fetchApiKey(currentProvider);
-
     if (!activeApiKey) {
       console.warn(`[AI Service] Chave ausente para ${currentProvider}, pulando...`);
       continue;
     }
 
     const endpoint = getEndpoint(currentProvider);
-
-    // Para OpenRouter: tenta cada modelo gratuito em ordem
     const modelsToTry =
       currentProvider === 'openrouter' ? OPENROUTER_FREE_MODELS : [getModel('groq')];
 
@@ -135,19 +132,13 @@ export async function callAI(
 
           if (response.status === 429) {
             const errText = await response.text().catch(() => '');
-
             if (errText.includes('rate_limit_exceeded') && errText.includes('tokens')) {
-              console.warn(
-                `[AI Service] Limite de tokens em ${currentProvider}/${model}. Tentando próximo modelo...`
-              );
-              break; // Passa para o próximo modelo
+              console.warn(`[AI Service] Limite de tokens em ${currentProvider}/${model}. Tentando próximo modelo...`);
+              break;
             }
-
             const retryAfter = response.headers.get('retry-after');
             const waitTime = retryAfter ? parseInt(retryAfter) : Math.pow(2, retries);
-            console.warn(
-              `Rate limit em ${currentProvider}/${model}. Aguardando ${waitTime}s...`
-            );
+            console.warn(`Rate limit em ${currentProvider}/${model}. Aguardando ${waitTime}s...`);
             await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
             retries++;
             continue;
@@ -176,7 +167,7 @@ export async function callAI(
   );
 }
 
-// ─── 1. Geração de Resumo de Turno (Handover) ────────────────────────────────
+// ─── 1. Resumo de Turno (Handover) ───────────────────────────────────────────
 export async function generateShiftSummary(
   shift: string,
   absentEmployees: any[],
@@ -184,99 +175,123 @@ export async function generateShiftSummary(
   notes: any[],
   provider: AIProvider = 'openrouter'
 ) {
-  const systemPrompt = `Você é um assistente de RH industrial sênior.
-Sua tarefa é gerar um resumo de turno (handover) profissional, direto e claro para o próximo encarregado.
-O supervisor trabalha em regime 12x36 (06:00 às 18:00).
-Use APENAS os dados fornecidos. Não invente nomes ou situações.
-Formato de saída: Texto pronto para ser copiado para WhatsApp ou E-mail corporativo.
-Inclua saudações profissionais, o resumo das faltas, os casos críticos que precisam de atenção e as observações relevantes registradas no turno.`;
+  const systemPrompt =
+`Você é um assistente de RH industrial sênior responsável por gerar resumos de turno (handover).
+O supervisor opera em regime 12x36 (06:00 às 18:00).
+${BASE_RULES}
+ESTRUTURA OBRIGATÓRIA DO RELATÓRIO:
+## 📋 Resumo de Turno — {turno}
+---
+## 👥 Faltas do Dia
+(liste cada funcionário ausente com nome em **negrito** e motivo se disponível. Se array vazio: "Nenhum registro.")
+---
+## 🚨 Casos Críticos
+(funcionários com alto índice de faltas no mês. Se array vazio: "Nenhum caso crítico registrado.")
+---
+## 📝 Observações do Turno
+(observações registradas. Se array vazio: "Nenhuma observação registrada.")
+---
+> Relatório gerado automaticamente. Informações baseadas exclusivamente nos registros do sistema.`;
 
-  const userPrompt = `
-Turno: ${shift}
+  const userPrompt =
+`Turno: ${shift}
 Faltas do dia: ${JSON.stringify(absentEmployees)}
-Funcionários em estado crítico (muitas faltas no mês): ${JSON.stringify(criticalEmployees)}
+Funcionários críticos (muitas faltas no mês): ${JSON.stringify(criticalEmployees)}
 Observações registradas hoje: ${JSON.stringify(notes)}
 
-Por favor, gere o resumo do turno.`;
+Gere o resumo do turno seguindo EXATAMENTE a estrutura definida.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
+    { role: 'user', content: userPrompt },
   ], provider);
 }
 
 // ─── 2. Detecção de Padrões de Comportamento ─────────────────────────────────
 export async function analyzePatterns(weekdayData: any[], provider: AIProvider = 'groq') {
-  const systemPrompt = `Você é um analista de dados de RH industrial.
-Sua tarefa é analisar os dados de absenteísmo por dia da semana e identificar 1 ou 2 padrões ou tendências importantes.
-Seja extremamente conciso, direto e profissional. Escreva no máximo 2 parágrafos curtos.
-Exemplo de tom: "Notamos que 40% das faltas ocorrem às segundas-feiras. Sugerimos atenção redobrada neste dia."
-Não invente dados, baseie-se apenas no JSON fornecido.`;
+  const systemPrompt =
+`Você é um analista de dados de RH industrial.
+${BASE_RULES}
+ESTRUTURA OBRIGATÓRIA:
+## 📊 Análise de Padrões de Absenteísmo
+---
+(Máximo 2 parágrafos. Cada padrão identificado com **dia da semana** em negrito e percentual exato do JSON. Se não houver padrão claro, escreva: "Os dados não indicam padrão concentrado em dias específicos.")`;
 
-  const userPrompt = `Dados de faltas por dia da semana: ${JSON.stringify(weekdayData)}
-Gere os insights.`;
+  const userPrompt =
+`Dados de faltas por dia da semana: ${JSON.stringify(weekdayData)}
+Gere os insights baseando-se SOMENTE nos números acima.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
+    { role: 'user', content: userPrompt },
   ], provider);
 }
 
 // ─── 3. Resolução de Conflitos de Férias ─────────────────────────────────────
 export async function suggestVacationResolution(conflictData: any, provider: AIProvider = 'groq') {
-  const systemPrompt = `Você é um planejador de RH industrial estratégico.
-Sua tarefa é ler um conflito de sobreposição de férias entre funcionários e sugerir uma realocação matemática de datas.
-O objetivo é evitar gargalos na produção (ex: não ter dois operadores da mesma máquina de férias ao mesmo tempo).
-Seja prático, direto e sugira datas específicas para resolver o conflito.
-Tom: Corporativo, focado em solução.`;
+  const systemPrompt =
+`Você é um planejador de RH industrial estratégico.
+${BASE_RULES}
+ESTRUTURA OBRIGATÓRIA:
+## 🗓️ Resolução de Conflito de Férias
+---
+### Conflito Identificado
+(descreva o conflito com os nomes e datas exatos do JSON)
+---
+### Proposta de Resolução
+(sugira realocação de datas específicas com base nos dados. Não sugira datas que não façam sentido para o período.)
+---
+> Sugestão baseada nos dados do sistema. Aprovação final sujeita à gestão.`;
 
-  const userPrompt = `Conflito detectado: ${JSON.stringify(conflictData)}
-Sugira uma resolução para este conflito.`;
+  const userPrompt =
+`Conflito detectado: ${JSON.stringify(conflictData)}
+Sugira uma resolução baseada SOMENTE nos dados acima.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
+    { role: 'user', content: userPrompt },
   ], provider);
 }
 
-// ─── 4. Insight Semanal Consolidado da Equipe ─────────────────────────────────
+// ─── 4. Insight Semanal Consolidado ──────────────────────────────────────────
 export async function generateWeeklyInsight(
   payload: any,
   weekNumber: number,
   startDay: number,
   endDay: number,
-  previousInsights: string = "",
+  previousInsights: string = '',
   provider: AIProvider = 'groq'
 ) {
-  const systemPrompt = `Você é um Auditor Sênior de RH. Analise o desempenho da Semana ${weekNumber}.
-Você receberá os dados atuais da semana e, se disponível, o resumo das semanas anteriores deste mesmo mês.
+  const systemPrompt =
+`Você é um Auditor Sênior de RH. Analise o desempenho da Semana ${weekNumber} (dias ${startDay} a ${endDay}).
+${BASE_RULES}
+ESTRUTURA OBRIGATÓRIA:
+## 📅 Auditoria — Semana ${weekNumber} (Dias ${startDay}–${endDay})
+---
+### 📈 Análise de Evolução
+(compare com semanas anteriores se houver histórico. Se não houver: "Primeira semana registrada no mês.")
+---
+### ✅ Destaques Positivos
+(nomes em **negrito** dos funcionários com assiduidade perfeita na semana. Se nenhum: "Nenhum destaque positivo nesta semana.")
+---
+### ⚠️ Mapeamento de Desvios
+(nomes em **negrito** + número exato de faltas do JSON. Se nenhum: "Nenhum desvio registrado.")
+---
+### 🎯 Plano de Ação
+(máximo 3 ações concretas baseadas nos desvios reais encontrados. Se nenhum desvio: "Manter o monitoramento padrão.")`;
 
-SUA MISSÃO PRINCIPAL:
-Além de analisar a semana atual, você deve identificar a REINCIDÊNCIA. Verifique se os problemas ou destaques da semana anterior persistem ou foram resolvidos.
+  const userPrompt =
+`HISTÓRICO DAS SEMANAS ANTERIORES:
+${previousInsights || 'Nenhum histórico disponível para este mês ainda.'}
 
-ESTRUTURA DO RELATÓRIO:
-1. **Análise de Evolução**: Compare esta semana com as anteriores. O absenteísmo subiu ou desceu? Os problemas citados antes continuam?
-2. **Destaques Positivos**: Funcionários com assiduidade mantida.
-3. **Mapeamento de Desvios (Com histórico)**: Foque em quem já falhou antes e falhou de novo.
-4. **Plano de Ação Tática**: Baseado na evolução do mês.
-
-REGRAS:
-- Se não houver histórico anterior, foque apenas nos dados atuais.
-- Seja rigoroso com reincidentes.
-- Temperatura: 0.0 para precisão máxima.`;
-
-  const userPrompt = `
-CONTEXTO DAS SEMANAS ANTERIORES:
-${previousInsights || "Nenhum histórico disponível para este mês ainda."}
-
-DADOS DA SEMANA ATUAL (${weekNumber}):
+DADOS DA SEMANA ${weekNumber}:
 ${JSON.stringify(payload)}
 
-Por favor, gere a auditoria evolutiva.`;
+Gere a auditoria evolutiva usando SOMENTE os dados acima.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
+    { role: 'user', content: userPrompt },
   ], provider);
 }
 
@@ -285,29 +300,34 @@ export async function generateMonthlyInsight(
   payload: any,
   provider: AIProvider = 'openrouter'
 ) {
-  const systemPrompt = `Você é um Diretor de Recursos Humanos (CHRO) do setor industrial.
-Sua tarefa é elaborar o Relatório Gerencial de Fechamento de Mês para a liderança de um turno que opera em regime 12x36. O nível de exigência é altíssimo. O relatório deve ser exaustivo, crítico, embasado em dados e focado em eficiência operacional e compliance.
+  const systemPrompt =
+`Você é um Diretor de Recursos Humanos (CHRO) do setor industrial.
+Elabore o Relatório Gerencial de Fechamento de Mês para um turno 12x36.
+${BASE_RULES}
+ESTRUTURA OBRIGATÓRIA:
+## 📊 Dossiê Gerencial de RH — Fechamento do Mês
+---
+### 1. Balanço Estratégico
+(diagnóstico baseado nos ${payload.totalFuncionarios ?? '?'} colaboradores do JSON. Peso das ausências e ${payload.feriasAtivas ?? 0} férias ativas sobre o turno.)
+---
+### 2. Quadro de Excelência
+(lista com **nomes** dos "destaquesPositivos" do JSON. Se array vazio: "Nenhum destaque positivo registrado no período.")
+---
+### 3. Auditoria de Absenteísmo
+(analise cada item de "pontosAtencao" com **nome**, número de faltas e observações do JSON. Se array vazio: "Nenhum caso crítico no período.")
+> Para cada caso crítico, indique: **Ação recomendada** (feedback corretivo / atenção médica / monitoramento).
+---
+### 4. Diretrizes para o Próximo Ciclo
+(exatamente 3 metas baseadas nos desvios reais encontrados no JSON. Se não houver desvios: foque em manutenção.)
+---
+> Relatório gerado automaticamente com base nos registros do sistema. Dados de: ${new Date().toLocaleDateString('pt-BR')}.`;
 
-ESTRUTURA DO RELATÓRIO OBRIGATÓRIA:
-1. **Balanço Estratégico do Mês**: Faça um diagnóstico severo sobre o estado geral da equipe de ${payload.totalFuncionarios} colaboradores. Avalie o peso das ausências e das férias (${payload.feriasAtivas} ativas) sobre a sobrecarga do turno.
-2. **Quadro de Excelência e Retenção**: Avalie o grupo "destaquesPositivos". Exija que a supervisão reconheça formalmente essa estabilidade. Aponte que a retenção desses talentos é vital.
-3. **Auditoria de Absenteísmo e Casos Críticos**: Inspecione detalhadamente o grupo "pontosAtencao".
-   - Avalie a gravidade do absenteísmo indivíduo por indivíduo.
-   - Questione a validade operacional das "justificativas" (notas). Há reincidência injustificada? Há padrão de comportamento nocivo à cultura da empresa?
-   - Indique nominalmente quem requer feedback corretivo formal (advertência verbal/escrita) e quem requer atenção médica/assistencial.
-4. **Diretrizes Estratégicas para o Próximo Ciclo**: Defina 3 metas de gestão de pessoas inegociáveis para o supervisor corrigir os desvios de rota identificados.
-
-REGRAS DE OURO:
-- Postura implacável contra o absenteísmo injustificado, mas justa com problemas reais de saúde.
-- Use jargão técnico de RH (turnover, capacidade instalada, compliance, feedback corretivo, engajamento).
-- Estruturação impecável: use títulos (##), bullet points e negrito para destacar nomes e métricas.
-- Baseie-se 100% no JSON fornecido. Tolerância zero para alucinações de dados.`;
-
-  const userPrompt = `Dados Estratégicos de Fechamento do Mês Completo: ${JSON.stringify(payload)}
-Gere o Dossiê Gerencial de RH do turno.`;
+  const userPrompt =
+`Dados de Fechamento do Mês: ${JSON.stringify(payload)}
+Gere o Dossiê Gerencial usando SOMENTE os dados fornecidos acima.`;
 
   return callAI([
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
+    { role: 'user', content: userPrompt },
   ], provider);
 }
