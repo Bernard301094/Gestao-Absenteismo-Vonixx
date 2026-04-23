@@ -80,10 +80,9 @@ const BASE_RULES = `
 ⚠️ REGRAS ABSOLUTAS:
 1. Use SOMENTE os dados do JSON fornecido. PROIBIDO inventar nomes, números ou situações.
 2. Campos "ferias.detalhe" com itens = funcionários EM FÉRIAS. Se array vazio = nenhum em férias.
-3. Formato OBRIGATÓRIO: Markdown com cabeçalhos ##/###, **negrito**, tabelas GFM e listas.
+3. Formato OBRIGATÓRIO: Markdown com cabeçalhos ##/###, **negrito** e listas. NÃO use tabelas.
 4. Cada seção deve ter uma linha em branco antes e depois do cabeçalho.
-5. Tabelas GFM: cabeçalho | col1 | col2 | seguido de |---|---| em linha separada.
-6. Seja executivo e direto — sem introduções genéricas.
+5. Seja executivo e direto — sem introduções genéricas.
 `;
 
 export async function callAI(
@@ -139,7 +138,7 @@ export async function callAI(
   throw new Error(`Falha em todos os provedores. Último erro: ${lastError?.message || 'Sem conexão.'}`);
 }
 
-// ─── Resumo de Turno ──────────────────────────────────────────────────────────
+// ─── Resumo de Turno ──────────────────────────────────────────────────────────────
 export async function generateShiftSummary(
   shift: string, absentEmployees: any[], criticalEmployees: any[], notes: any[],
   provider: AIProvider = 'openrouter'
@@ -165,7 +164,7 @@ export async function generateShiftSummary(
   ], provider);
 }
 
-// ─── Análise de Padrões ───────────────────────────────────────────────────────
+// ─── Análise de Padrões ───────────────────────────────────────────────────────────
 export async function analyzePatterns(weekdayData: any[], provider: AIProvider = 'groq') {
   return callAI([
     { role: 'system', content: `Analista de dados de RH industrial.\n${BASE_RULES}` },
@@ -178,14 +177,14 @@ export async function analyzePatterns(weekdayData: any[], provider: AIProvider =
   ], provider);
 }
 
-// ─── Resolução de Férias ──────────────────────────────────────────────────────
+// ─── Resolução de Férias ──────────────────────────────────────────────────────────────
 export async function suggestVacationResolution(conflictData: any, provider: AIProvider = 'groq') {
   return callAI([
     { role: 'system', content: `Planejador de RH industrial estratégico.\n${BASE_RULES}` },
     { role: 'user', content:
 `CONFLITO: ${JSON.stringify(conflictData)}
 
-## 🗓️ Resolução de Conflito de Férias
+## 🗃️ Resolução de Conflito de Férias
 
 ### Conflito Identificado
 (nomes e datas exatos do JSON)
@@ -197,7 +196,7 @@ export async function suggestVacationResolution(conflictData: any, provider: AIP
   ], provider);
 }
 
-// ─── Auditoria Semanal ────────────────────────────────────────────────────────
+// ─── Auditoria Semanal ────────────────────────────────────────────────────────────────
 export async function generateWeeklyInsight(
   payload: any,
   weekNumber: number,
@@ -207,18 +206,14 @@ export async function generateWeeklyInsight(
   prevSnapshots: WeekSnapshot[] = [],
   provider: AIProvider = 'groq'
 ) {
-  // Tabela comparativa montada no código
+  // Comparativo como lista de texto (sem tabela GFM)
   let comparativo = '';
   if (prevSnapshots.length > 0) {
     const rows = prevSnapshots
-      .map(s => `| Semana ${s.semana} | ${s.totalFaltas} | ${s.taxaAbsenteismo}% | ${s.semJustificativa} |`)
+      .map(s => `- Semana ${s.semana}: **${s.totalFaltas} faltas** | ${s.taxaAbsenteismo}% absenteísmo | ${s.semJustificativa} sem justificativa`)
       .join('\n');
-    const atual = `| **Semana ${weekNumber} ✦** | **${payload.metricas.totalFaltas}** | **${payload.metricas.taxaAbsenteismo}%** | **${payload.metricas.totalSemJustificativa}** |`;
-    comparativo =
-`| Período | Faltas | Absenteísmo | Sem Justificativa |
-|---------|--------|-------------|-------------------|
-${rows}
-${atual}`;
+    const atual = `- **Semana ${weekNumber} ✦ (atual): ${payload.metricas.totalFaltas} faltas | ${payload.metricas.taxaAbsenteismo}% absenteísmo | ${payload.metricas.totalSemJustificativa} sem justificativa**`;
+    comparativo = `${rows}\n${atual}`;
   }
 
   // Férias com datas em DD/MM/YYYY
@@ -251,9 +246,10 @@ ${atual}`;
 `Você é um Auditor Sênior de RH Industrial.
 ${BASE_RULES}
 INSTRUÇÕES ESPECIAIS:
-- A tabela comparativa, lista de férias, faltas sem justificativa e top absenteístas JÁ VÊM PRONTOS no prompt. Copie-os EXATAMENTE, sem reformatar.
+- As listas de evolução, férias, faltas sem justificativa e top absenteístas JÁ VÊM PRONTAS no prompt. Copie-as EXATAMENTE, sem reformatar.
 - Escreva SOMENTE a seção "Visão Geral" e "Ação Recomendada" com texto narrativo próprio.
-- Máximo 300 palavras no total.`;
+- Máximo 300 palavras no total.
+- NÃO gere tabelas Markdown.`;
 
   const userPrompt =
 `DADOS REAIS DA SEMANA ${weekNumber} (Dias ${startDay}–${endDay}):
@@ -285,22 +281,18 @@ ${feriasTexto}
   return callAI([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }], provider);
 }
 
-// ─── Dossiê Mensal ────────────────────────────────────────────────────────────
+// ─── Dossiê Mensal ──────────────────────────────────────────────────────────────────────
 export async function generateMonthlyInsight(
   payload: any,
   weekSnapshots: WeekSnapshot[] = [],
   provider: AIProvider = 'openrouter'
 ) {
-  // Tabela de evolução semanal
+  // Evolução semanal como lista de texto (sem tabela GFM)
   let tabelaEvolucao = '';
   if (weekSnapshots.length > 0) {
-    const rows = weekSnapshots
-      .map(s => `| Semana ${s.semana} | ${s.totalFaltas} | ${s.taxaAbsenteismo}% | ${s.semJustificativa} |`)
+    tabelaEvolucao = weekSnapshots
+      .map(s => `- Semana ${s.semana}: **${s.totalFaltas} faltas** | ${s.taxaAbsenteismo}% absenteísmo | ${s.semJustificativa} sem justificativa`)
       .join('\n');
-    tabelaEvolucao =
-`| Semana | Faltas | Absenteísmo | Sem Justificativa |
-|--------|--------|-------------|-------------------|
-${rows}`;
   }
 
   // Férias com datas em DD/MM/YYYY
@@ -327,9 +319,10 @@ ${rows}`;
 `Você é um Diretor de RH (CHRO) do setor industrial. Elabora dossiês gerenciais de fechamento de mês.
 ${BASE_RULES}
 INSTRUÇÕES ESPECIAIS:
-- Tabela de evolução, lista de férias e top absenteístas JÁ VÊM PRONTOS. Copie-os EXATAMENTE.
+- Lista de evolução semanal, férias e top absenteístas JÁ VÊM PRONTOS. Copie-os EXATAMENTE.
 - Escreva SOMENTE as seções narrativas: Diagnóstico Estratégico e Diretrizes.
-- Máximo 400 palavras no total.`;
+- Máximo 400 palavras no total.
+- NÃO gere tabelas Markdown.`;
 
   const userPrompt =
 `DADOS REAIS DO MÊS — USE SOMENTE ESTES:
