@@ -61,72 +61,84 @@ const getModel = (provider: AIProvider) => {
   return '';
 };
 
-export async function callAI(messages: { role: string; content: string }[], provider: AIProvider = 'openrouter') {
-  let activeProvider = provider;
-  let activeApiKey = await fetchApiKey(activeProvider);
-  
-  if (!activeApiKey) {
-    const providers: AIProvider[] = ['openrouter', 'groq'];
-    for (const p of providers) {
-      if (p === provider) continue;
-      const key = await fetchApiKey(p);
-      if (key) {
-        activeProvider = p;
-        activeApiKey = key;
-        break;
+export async function callAI(messages: { role: string; content: string }[], initialProvider: AIProvider = 'openrouter') {
+  // Configura a ordem de fallback: tenta o provedor inicial e, se falhar, tenta o outro.
+  const providersToTry: AIProvider[] = initialProvider === 'openrouter' ? ['openrouter', 'groq'] : ['groq', 'openrouter'];
+
+  await checkAndIncrementQuota();
+
+  let lastError: any = null;
+
+  for (const currentProvider of providersToTry) {
+    const activeApiKey = await fetchApiKey(currentProvider);
+    
+    if (!activeApiKey) {
+      console.warn(`[AI Service] Chave ausente para ${currentProvider}, tentando o próximo provedor (fallback)...`);
+      continue; // Pula para o próximo provedor se não houver chave
+    }
+
+    const endpoint = getEndpoint(currentProvider);
+    const model = getModel(currentProvider);
+
+    let response;
+    let retries = 0;
+    const MAX_RETRIES = 2; // Limite de retentativas no mesmo provedor
+
+    while (retries < MAX_RETRIES) {
+      try {
+        response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${activeApiKey}`,
+            ...(currentProvider === 'openrouter' && {
+              'HTTP-Referer': window.location.href,
+              'X-Title': 'Gestão de Absenteísmo',
+            }),
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.0,
+          }),
+        });
+
+        if (response.status === 429) {
+          const errText = await response.text().catch(() => '');
+          
+          // Lógica de Fallback Automático: 
+          // Se o erro for de limite estrito de Tokens do Groq, quebra este loop e pula para o OpenRouter.
+          if (errText.includes('rate_limit_exceeded') && errText.includes('tokens')) {
+            console.warn(`[AI Service] Limite de tokens atingido em ${currentProvider}. Acionando provedor de fallback...`);
+            break; 
+          }
+
+          const retryAfter = response.headers.get('retry-after');
+          const waitTime = retryAfter ? parseInt(retryAfter) : Math.pow(2, retries);
+          console.warn(`Rate limit em ${currentProvider}. Retentando em ${waitTime} segundos...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
+          retries++;
+          continue;
+        }
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Erro na API (${currentProvider}): ${errText}`);
+        }
+
+        const data = await response.json();
+        return data.choices?.[0]?.message?.content || "";
+
+      } catch (err: any) {
+        lastError = err;
+        console.error(`[AI Service] Falha ao tentar usar ${currentProvider}:`, err.message);
+        break; // Quebra o while e deixa o FOR tentar o próximo provedor da lista
       }
     }
   }
 
-  if (!activeApiKey) {
-    throw new Error('Nenhuma chave de API configurada. Configure o OpenRouter ou Groq nas configurações.');
-  }
-
-  await checkAndIncrementQuota();
-
-  const endpoint = getEndpoint(activeProvider);
-  const model = getModel(activeProvider);
-
-  let response;
-  let retries = 0;
-  const MAX_RETRIES = 3;
-
-  while (retries < MAX_RETRIES) {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${activeApiKey}`,
-        ...(activeProvider === 'openrouter' && {
-          'HTTP-Referer': window.location.href,
-          'X-Title': 'Gestão de Absenteísmo',
-        }),
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature: 0.0,
-      }),
-    });
-
-    if (response.status === 429) {
-      const retryAfter = response.headers.get('retry-after');
-      const waitTime = retryAfter ? parseInt(retryAfter) : Math.pow(2, retries);
-      console.warn(`Rate limit hit on ${activeProvider}. Retrying in ${waitTime} seconds...`);
-      await new Promise(resolve => setTimeout(resolve, waitTime * 1000));
-      retries++;
-      continue;
-    }
-    break;
-  }
-
-  if (!response || !response.ok) {
-    const errText = await response?.text() || 'Unknown error';
-    throw new Error(`Erro na API de IA (${activeProvider}): ${errText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || "";
+  // Se o código chegou até aqui, ambos os provedores falharam.
+  throw new Error(`Falha em todos os provedores de IA. Último erro: ${lastError?.message || 'Erro de conexão ou chaves não configuradas.'}`);
 }
 
 // ─── 1. Geração de Resumo de Turno (Handover) ────────────────────────────────
