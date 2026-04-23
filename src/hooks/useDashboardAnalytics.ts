@@ -17,7 +17,8 @@ interface UseDashboardAnalyticsParams {
   registroSearchTerm: string; isValidDay: (day: number) => boolean; showDismissed: boolean;
 }
 
-// Retorna true se o colaborador estava ativo em um dia específico do mês/ano
+// Retorna true se o colaborador estava ativo em um dia específico do mês/ano.
+// O dia da demissão é inclusivo (aparece nesse dia, desaparece a partir do dia seguinte).
 function wasActiveOnDay(
   emp: Employee,
   day: number,
@@ -28,8 +29,7 @@ function wasActiveOnDay(
   const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
   const dismissal = new Date(dy, dm - 1, dd);
   const target    = new Date(year, month, day);
-  // Só aparece nos dias ANTERIORES à demissão (não no dia da demissão nem depois)
-  return target < dismissal;
+  return target <= dismissal; // inclusive: aparece até o dia da demissão
 }
 
 export function useDashboardAnalytics({
@@ -48,7 +48,6 @@ export function useDashboardAnalytics({
     const today = now.getDate();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
     const refDay = isCurrentMonth ? today : new Date(currentYear, currentMonth + 1, 0).getDate();
-
     return sourceEmployees.filter(emp =>
       wasActiveOnDay(emp, refDay, currentMonth, currentYear)
     );
@@ -93,7 +92,6 @@ export function useDashboardAnalytics({
   const taxaAbsenteismo = useMemo(() => {
     let totalFeriasEAfastamentos = 0;
     let totalDiasPossiveis = 0;
-
     VALID_WORK_DAYS.forEach(day => {
       if (!isValidDay(day)) return;
       const empsDoDia = getActiveEmployeesForDay(day);
@@ -103,7 +101,6 @@ export function useDashboardAnalytics({
         if (st === 'Fe' || st === 'A') totalFeriasEAfastamentos++;
       });
     });
-
     const base = totalDiasPossiveis - totalFeriasEAfastamentos;
     if (base <= 0) return '0.0';
     return ((totalFaltasMes / base) * 100).toFixed(1);
@@ -140,7 +137,7 @@ export function useDashboardAnalytics({
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(wd => ({ day: wd, faltas: counts[wd] }));
   }, [sourceAttendance, getActiveEmployeesForDay, selectedDay, VALID_WORK_DAYS, currentMonth, currentYear]);
 
-  // ─── Stats por empleado (para leaderboard/detalhe) ─────────────────────────
+  // ─── Stats por empregado (para leaderboard/detalhe) ─────────────────────────
   const employeeData = useMemo<EmployeeWithStats[]>(() => {
     const now = new Date(); const today = now.getDate(); const windowSize = 7;
     const currentWindowStart  = Math.max(1, today - windowSize + 1);
@@ -162,7 +159,6 @@ export function useDashboardAnalytics({
       let trend: 'up' | 'down' | 'neutral' = 'neutral';
       if (faltasJanelaAtual > faltasJanelaAnterior) trend = 'up';
       else if (faltasJanelaAtual < faltasJanelaAnterior && faltasJanelaAnterior > 0) trend = 'down';
-
       return {
         ...emp,
         faltas: selectedDay === 'all'
