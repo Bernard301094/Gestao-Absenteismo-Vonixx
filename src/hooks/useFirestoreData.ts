@@ -11,29 +11,51 @@ import type {
   AttendanceRecord, NotesRecord, LockedDaysRecord, Vacation
 } from '../types';
 
+// Normaliza qualquer formato de data para YYYY-MM-DD
+// Suporta: Firestore Timestamp, ISO string, DD/MM/YYYY, MM/DD/YYYY
 const normalizeDate = (dateVal: any): string => {
   if (!dateVal) return '';
+
+  // Firestore Timestamp
   if (typeof dateVal === 'object' && 'toDate' in dateVal) {
     return dateVal.toDate().toISOString().split('T')[0];
   }
+
   if (typeof dateVal === 'string') {
-    if (dateVal.includes('T')) return dateVal.split('T')[0];
+    // Já está em YYYY-MM-DD ou YYYY-MM-DDTHH:mm...
+    if (/^\d{4}-\d{2}-\d{2}/.test(dateVal)) {
+      return dateVal.split('T')[0];
+    }
+
+    // Formato com barras: pode ser DD/MM/YYYY ou MM/DD/YYYY
     if (dateVal.includes('/')) {
       const parts = dateVal.split('/');
       if (parts.length === 3) {
-        let day, month;
-        const p0 = parseInt(parts[0]);
-        const p1 = parseInt(parts[1]);
-        if (p0 > 12) { day = parts[0].padStart(2, '0'); month = parts[1].padStart(2, '0'); } 
-        else if (p1 > 12) { month = parts[0].padStart(2, '0'); day = parts[1].padStart(2, '0'); } 
-        else { day = parts[0].padStart(2, '0'); month = parts[1].padStart(2, '0'); }
-        let year = parts[2];
-        if (year.length === 2) year = '20' + year;
-        return `${year}-${month}-${day}`;
+        let p0 = parts[0].padStart(2, '0');
+        let p1 = parts[1].padStart(2, '0');
+        let year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+        const n0 = parseInt(p0);
+        const n1 = parseInt(p1);
+
+        // Se p0 > 12 → p0 é o dia com certeza
+        // Se p1 > 12 → p1 é o dia, p0 é o mês
+        // Se ambos <= 12 → assume DD/MM (padrão Brasil)
+        if (n0 > 12) {
+          // DD/MM/YYYY
+          return `${year}-${p1}-${p0}`;
+        } else if (n1 > 12) {
+          // MM/DD/YYYY
+          return `${year}-${p0}-${p1}`;
+        } else {
+          // Ambos <= 12 → assume DD/MM/YYYY (padrão Brasil)
+          return `${year}-${p1}-${p0}`;
+        }
       }
     }
+
     return dateVal;
   }
+
   return '';
 };
 
@@ -76,18 +98,16 @@ export function useFirestoreData({
   // ─── LÓGICA DE VISIBILIDADE TEMPORAL (MÁGICA DA DATA DE DEMISSÃO) ───
   const employees = useMemo(() => {
     return rawEmployees.filter(emp => {
-      if (!emp.dismissed) return true; // Ativos aparecem sempre
-      if (!emp.dismissalDate) return false; // Demitidos sem data (legado) ficam ocultos
+      if (!emp.dismissed) return true;
+      if (!emp.dismissalDate) return false;
       
       const [y, m, d] = emp.dismissalDate.split('-').map(Number);
       const dismissalDateObj = new Date(y, m - 1, d);
 
       if (selectedDay === 'all') {
-        // No dashboard mensal, mostra se a demissão foi dentro deste mês ou em um mês futuro
         const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
         return dismissalDateObj >= firstDayOfMonth;
       } else {
-        // Na tela do turno (dia específico), mostra o funcionário apenas se o dia selecionado for <= ao dia da demissão
         const targetDate = new Date(currentYear, currentMonth, selectedDay as number);
         return targetDate <= dismissalDateObj;
       }
@@ -108,7 +128,7 @@ export function useFirestoreData({
         } as GlobalEmployee);
       });
       setGlobalEmployees(emps);
-      setRawEmployees(emps); // <-- Substituído para respeitar a nova lógica temporal
+      setRawEmployees(emps);
     });
 
     const unsubAttendance = onSnapshot(collection(db, 'attendance'), (snapshot) => {
@@ -199,8 +219,10 @@ export function useFirestoreData({
                 else if (vacEnd && vacEnd >= new Date().toISOString().split('T')[0]) status = 'scheduled';
                 
                 embeddedVacs.push({
-                  id: `vac_${d.id}`, employeeId: d.id, startDate: normalizeDate(vacStart),
-                  endDate: normalizeDate(vacEnd), returnDate: normalizeDate(data.returnDate || ''),
+                  id: `vac_${d.id}`, employeeId: d.id,
+                  startDate: normalizeDate(vacStart),
+                  endDate: normalizeDate(vacEnd),
+                  returnDate: normalizeDate(data.returnDate || ''),
                   status, diasDireito: data.diasDireito ?? 30, vendeuFerias: data.vendeuFerias ?? false,
                   diasVendidos: data.diasVendidos ?? 0, isHistorical: data.isHistorical ?? false,
                 });
@@ -227,7 +249,8 @@ export function useFirestoreData({
 
             collVacs.push({
               id: d.id, employeeId: data.employeeId || d.id,
-              startDate: normalizeDate(vacStart), endDate: normalizeDate(vacEnd),
+              startDate: normalizeDate(vacStart),
+              endDate: normalizeDate(vacEnd),
               returnDate: normalizeDate(data.returnDate || ''), status,
               diasDireito: data.diasDireito ?? 30, vendeuFerias: data.vendeuFerias ?? false,
               diasVendidos: data.diasVendidos ?? 0, isHistorical: data.isHistorical ?? false,
@@ -320,7 +343,10 @@ export function useFirestoreData({
     e.preventDefault();
     if (!editingEmployee?.name.trim()) return;
     try {
-      await updateDoc(doc(db, 'employees', editingEmployee.id), {
+      // CORREÇÃO: usa updateDoc com merge implícito para NÃO sobrescrever
+      // campos de férias, histórico e outros dados não presentes no formulário.
+      // dismissalDate só é atualizado se dismissed=true; caso contrário preserva o valor anterior.
+      const updatePayload: Record<string, any> = {
         name: editingEmployee.name.trim().toUpperCase(),
         admissionDate: editingEmployee.admissionDate,
         dataAdmissao: editingEmployee.admissionDate,
@@ -328,9 +354,18 @@ export function useFirestoreData({
         role: editingEmployee.role || '',
         cargo: editingEmployee.role || '',
         dismissed: editingEmployee.dismissed || false,
-        dismissalDate: editingEmployee.dismissed ? (editingEmployee.dismissalDate || null) : null,
-      });
-      setShowEditEmployeeModal(false); setEditingEmployee(null);
+      };
+
+      // Só grava dismissalDate se o funcionário estiver sendo marcado como demitido
+      // Se está sendo reativado (dismissed=false), mantém o campo anterior sem tocá-lo
+      if (editingEmployee.dismissed) {
+        updatePayload.dismissalDate = editingEmployee.dismissalDate || null;
+        updatePayload.dataDemissao  = editingEmployee.dismissalDate || null;
+      }
+
+      await updateDoc(doc(db, 'employees', editingEmployee.id), updatePayload);
+      setShowEditEmployeeModal(false);
+      setEditingEmployee(null);
     } catch (error) { handleFirestoreError(error, OperationType.UPDATE, 'employees'); }
   };
 
