@@ -12,12 +12,11 @@ export interface AIInsight {
   weekNumber?: number;
 }
 
-// Snapshot numérico de uma semana — usado no comparativo histórico
 export interface WeekSnapshot {
   semana: number;
   totalFaltas: number;
   semJustificativa: number;
-  taxaAbsenteismo: number; // percentual
+  taxaAbsenteismo: number;
 }
 
 interface UseAIInsightsParams {
@@ -31,6 +30,18 @@ interface UseAIInsightsParams {
   currentYear: number;
   validWorkDays: number[];
   isSupervision: boolean;
+}
+
+// Parse YYYY-MM-DD sem deslocamento de fuso horário (evita bug de -1 dia)
+function parseLocalDate(dateStr: string): Date | null {
+  if (!dateStr) return null;
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return null;
+  const y = parseInt(parts[0]);
+  const m = parseInt(parts[1]) - 1; // mês 0-based
+  const d = parseInt(parts[2]);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
+  return new Date(y, m, d);
 }
 
 export function useAIInsights({
@@ -75,7 +86,7 @@ export function useAIInsights({
     return { start: weekDays[0] || 1, end: weekDays[weekDays.length - 1] || 7, days: weekDays };
   }, [fullMonthWorkDays]);
 
-  // ─── Carrega histórico do Firebase ────────────────────────────────────────
+  // ─── Firebase ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!shift) return;
     const fetchInsights = async () => {
@@ -83,7 +94,6 @@ export function useAIInsights({
       try {
         const monthSnap = await getDoc(doc(db, 'ai_insights', `monthly_${shift}_${currentYear}_${currentMonth}`));
         setMonthlyInsight(monthSnap.exists() ? (monthSnap.data() as AIInsight) : null);
-
         const loadedWeeks: AIInsight[] = [];
         for (let w = 1; w <= 4; w++) {
           const s = await getDoc(doc(db, 'ai_insights', `weekly_${shift}_${currentYear}_${currentMonth}_W${w}`));
@@ -110,41 +120,52 @@ export function useAIInsights({
     return !!lockedDays[days[days.length - 1]] && !weeklyInsights.some(w => w.weekNumber === weekNum);
   }, [getWeekRange, lockedDays, weeklyInsights]);
 
-  // ─── Férias ativas num período de dias ────────────────────────────────────
+  // ─── Férias ativas no período (sem bug de fuso horário) ────────────────────
   const getVacationsInPeriod = useCallback((daysToInclude: number[]) => {
     if (daysToInclude.length === 0) return [];
+
     const firstDay = daysToInclude[0];
-    const lastDay = daysToInclude[daysToInclude.length - 1];
-    // Data de início e fim do período no mês
+    const lastDay  = daysToInclude[daysToInclude.length - 1];
     const periodoInicio = new Date(currentYear, currentMonth, firstDay);
     const periodoFim    = new Date(currentYear, currentMonth, lastDay);
 
+    // Deduplica por employeeId — pode vir de 'vac_' e da coleção ao mesmo tempo
+    const seen = new Set<string>();
+
     return vacations
       .filter(v => {
-        if (v.status !== 'taken') return false;
-        const vs = new Date(v.startDate);
-        const ve = new Date(v.endDate);
+        // Considera férias em andamento independente do status registrado
+        // pois o status 'taken'/'scheduled' pode estar inconsistente na BD
+        const vs = parseLocalDate(v.startDate);
+        const ve = parseLocalDate(v.endDate);
+        if (!vs || !ve) return false;
+
         // Sobrepõe com o período?
-        return vs <= periodoFim && ve >= periodoInicio;
+        const sobrepos = vs <= periodoFim && ve >= periodoInicio;
+        if (!sobrepos) return false;
+
+        // Deduplica por funcionário
+        if (seen.has(v.employeeId)) return false;
+        seen.add(v.employeeId);
+        return true;
       })
       .map(v => {
         const emp = employees.find(e => e.id === v.employeeId);
         return {
-          nome: emp?.name ?? v.employeeId,
-          cargo: emp?.role ?? emp?.cargo ?? '',
+          nome:        emp?.name        ?? v.employeeId,
+          cargo:       emp?.role        ?? (emp as any)?.cargo ?? '',
           inicioFerias: v.startDate,
-          fimFerias: v.endDate,
-          retorno: v.returnDate ?? '',
+          fimFerias:    v.endDate,
+          retorno:      v.returnDate    ?? '',
         };
       });
   }, [vacations, employees, currentYear, currentMonth]);
 
-  // ─── Builder de payload enriquecido ───────────────────────────────────────
+  // ─── Payload enriquecido ───────────────────────────────────────────────────
   const buildConsolidatedPayload = useCallback((daysToInclude: number[]) => {
-    const totalDias = daysToInclude.length;
-    const totalPossivel = employees.length * totalDias; // presença-dia esperada
+    const totalDias     = daysToInclude.length;
+    const totalPossivel = employees.length * totalDias;
 
-    // Mapa: empId -> { totalFaltas, semJustificativa, faltas: [{dia, nota}] }
     const faltasPorEmp: Record<string, {
       nome: string; cargo: string;
       totalFaltas: number; semJustificativa: number;
@@ -152,7 +173,7 @@ export function useAIInsights({
     }> = {};
 
     employees.forEach(emp => {
-      let totalFaltas = 0;
+      let totalFaltas    = 0;
       let semJustificativa = 0;
       const ocorrencias: { dia: number; justificativa: string }[] = [];
 
@@ -168,7 +189,7 @@ export function useAIInsights({
       if (totalFaltas > 0) {
         faltasPorEmp[emp.id] = {
           nome: emp.name,
-          cargo: emp.role ?? emp.cargo ?? '',
+          cargo: emp.role ?? (emp as any).cargo ?? '',
           totalFaltas,
           semJustificativa,
           ocorrencias,
@@ -176,22 +197,18 @@ export function useAIInsights({
       }
     });
 
-    const todasFaltas = Object.values(faltasPorEmp);
-    const totalFaltas = todasFaltas.reduce((s, e) => s + e.totalFaltas, 0);
-    const totalSemJust = todasFaltas.reduce((s, e) => s + e.semJustificativa, 0);
+    const todasFaltas   = Object.values(faltasPorEmp);
+    const totalFaltas   = todasFaltas.reduce((s, e) => s + e.totalFaltas, 0);
+    const totalSemJust  = todasFaltas.reduce((s, e) => s + e.semJustificativa, 0);
     const taxaAbsenteismo = totalPossivel > 0
       ? parseFloat(((totalFaltas / totalPossivel) * 100).toFixed(1))
       : 0;
 
-    // Ordenar por mais faltas (top absenteístas primeiro)
-    const rankingFaltas = [...todasFaltas].sort((a, b) => b.totalFaltas - a.totalFaltas);
-
-    // Funcionários sem nenhuma falta
+    const rankingFaltas   = [...todasFaltas].sort((a, b) => b.totalFaltas - a.totalFaltas).slice(0, 8);
     const presencaPerfeita = employees
       .filter(emp => !faltasPorEmp[emp.id])
-      .map(emp => ({ nome: emp.name, cargo: emp.role ?? emp.cargo ?? '' }));
+      .map(emp => ({ nome: emp.name, cargo: emp.role ?? (emp as any).cargo ?? '' }));
 
-    // Férias ativas no período
     const feriasNoPeriodo = getVacationsInPeriod(daysToInclude);
 
     return {
@@ -199,19 +216,15 @@ export function useAIInsights({
       totalFuncionarios: employees.length,
       diasAnalisados: totalDias,
       periodo: { inicio: daysToInclude[0], fim: daysToInclude[daysToInclude.length - 1] },
-      // Métricas agregadas
       metricas: {
         totalFaltas,
         totalSemJustificativa: totalSemJust,
-        taxaAbsenteismo, // %
+        taxaAbsenteismo,
         funcionariosComFalta: rankingFaltas.length,
         funcionariosSemFalta: presencaPerfeita.length,
       },
-      // Top absenteístas (máx. 8 para não inflar o payload)
-      rankingFaltas: rankingFaltas.slice(0, 8),
-      // Presenças perfeitas (só nomes, sem listar todos)
+      rankingFaltas,
       presencaPerfeita,
-      // Férias
       ferias: {
         quantidadeEmFerias: feriasNoPeriodo.length,
         detalhe: feriasNoPeriodo,
@@ -219,7 +232,7 @@ export function useAIInsights({
     };
   }, [employees, attendance, notes, shift, getVacationsInPeriod]);
 
-  // ─── Snapshot numérico para comparativo semanal ───────────────────────────
+  // ─── Snapshot numérico semanal ─────────────────────────────────────────────
   const buildWeekSnapshot = useCallback((weekNum: number, daysToInclude: number[]): WeekSnapshot => {
     const totalPossivel = employees.length * daysToInclude.length;
     let totalFaltas = 0;
@@ -242,7 +255,7 @@ export function useAIInsights({
     };
   }, [employees, attendance, notes]);
 
-  // ─── Histórico numérico das semanas anteriores ────────────────────────────
+  // ─── Histórico numérico para comparativo ──────────────────────────────────
   const buildHistorySummary = useCallback((upToWeek: number): { texto: string; snapshots: WeekSnapshot[] } => {
     const snaps: WeekSnapshot[] = [];
     for (let w = 1; w < upToWeek; w++) {
@@ -258,14 +271,13 @@ export function useAIInsights({
     return { texto, snapshots: snaps };
   }, [getWeekRange, buildWeekSnapshot]);
 
-  // ─── Gerar mensal ─────────────────────────────────────────────────────────
+  // ─── Gerar mensal ──────────────────────────────────────────────────────────
   const handleGenerateMonthly = async () => {
     if (!canGenerateMonthly() || !shift) return;
     setIsGeneratingMonthly(true);
     setMonthlyError(null);
     try {
       const payload = buildConsolidatedPayload(validWorkDays);
-      // Para o mensal, montar snapshots de todas as 4 semanas
       const allSnaps: WeekSnapshot[] = [];
       for (let w = 1; w <= 4; w++) {
         const { days } = getWeekRange(w);
@@ -282,7 +294,7 @@ export function useAIInsights({
     }
   };
 
-  // ─── Gerar semanal ────────────────────────────────────────────────────────
+  // ─── Gerar semanal ─────────────────────────────────────────────────────────
   const handleGenerateWeekly = async (weekNum: number) => {
     if (!canGenerateWeekly(weekNum) || !shift) return;
     setIsGeneratingWeekly(weekNum);
@@ -293,10 +305,8 @@ export function useAIInsights({
       const { texto: historySummary, snapshots: prevSnaps } = buildHistorySummary(weekNum);
       const content = await generateWeeklyInsight(payload, weekNum, start, end, historySummary, prevSnaps);
       const newInsight: AIInsight = {
-        content,
-        generatedAt: new Date().toISOString(),
-        isAutoGenerated: false,
-        weekNumber: weekNum,
+        content, generatedAt: new Date().toISOString(),
+        isAutoGenerated: false, weekNumber: weekNum,
       };
       await setDoc(doc(db, 'ai_insights', `weekly_${shift}_${currentYear}_${currentMonth}_W${weekNum}`), newInsight);
       setWeeklyInsights(prev =>
@@ -317,8 +327,6 @@ export function useAIInsights({
     handleGenerateMonthly, handleGenerateWeekly,
     canGenerateMonthly, canGenerateWeekly,
     getAvailableWeeks: () => [1, 2, 3, 4],
-    getWeekRange,
-    getLastWorkDayOfMonth,
-    isLoadingHistory,
+    getWeekRange, getLastWorkDayOfMonth, isLoadingHistory,
   };
 }
