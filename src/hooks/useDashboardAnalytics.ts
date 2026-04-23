@@ -48,16 +48,23 @@ export function useDashboardAnalytics({
   showDismissed,
 }: UseDashboardAnalyticsParams) {
 
+  // ─── Determinación de Fuente de Datos ──────────────────────────────────────
+  // <-- LÍNEAS AGREGADAS: Usa los datos globales en Supervisión para poder ver a los demitidos.
+  const sourceEmployees = isSupervision ? globalEmployees : employees;
+  const sourceAttendance = isSupervision ? globalAttendance : attendance;
+
   // ─── Funcionários ativos (nunca inclui demitidos nos KPIs) ───────────────
+  // <-- LÍNEA MODIFICADA: Ahora filtra desde 'sourceEmployees'
   const activeEmployees = useMemo(
-    () => employees.filter(emp => !emp.dismissed),
-    [employees]
+    () => sourceEmployees.filter(emp => !emp.dismissed),
+    [sourceEmployees]
   );
 
   // ─── Funcionários para exibição (respeita o toggle) ──────────────────────
+  // <-- LÍNEA MODIFICADA: Usa 'sourceEmployees' si el toggle está activo
   const displayEmployees = useMemo(
-    () => showDismissed ? employees : activeEmployees,
-    [employees, activeEmployees, showDismissed]
+    () => showDismissed ? sourceEmployees : activeEmployees,
+    [sourceEmployees, activeEmployees, showDismissed]
   );
 
   // ─── Limite de dias passados ──────────────────────────────────────────────
@@ -69,12 +76,12 @@ export function useDashboardAnalytics({
       : new Date(currentYear, currentMonth + 1, 0).getDate();
   }, [currentMonth, currentYear]);
 
-  // ─── KPIs Básicos (sempre usa activeEmployees) ────────────────────────────
+  // ─── KPIs Básicos (sempre usa activeEmployees e sourceAttendance) ─────────
 
   const totalFaltasMes = useMemo(() => {
     let count = 0;
     activeEmployees.forEach(emp => {
-      const empRecord = attendance[emp.id];
+      const empRecord = sourceAttendance[emp.id]; // <-- MODIFICADO
       if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
@@ -82,21 +89,21 @@ export function useDashboardAnalytics({
       });
     });
     return count;
-  }, [attendance, activeEmployees, currentMonth, currentYear]);
+  }, [sourceAttendance, activeEmployees, currentMonth, currentYear]);
 
   const faltasDoDia = useMemo(() => {
     if (selectedDay === 'all' || !isWorkDay(selectedDay, currentMonth, currentYear) || !isValidDay(selectedDay)) return 0;
     let count = 0;
     activeEmployees.forEach(emp => {
-      if (attendance[emp.id]?.[selectedDay] === 'F') count++;
+      if (sourceAttendance[emp.id]?.[selectedDay] === 'F') count++; // <-- MODIFICADO
     });
     return count;
-  }, [attendance, activeEmployees, selectedDay, currentMonth, currentYear, isValidDay]);
+  }, [sourceAttendance, activeEmployees, selectedDay, currentMonth, currentYear, isValidDay]);
 
   const taxaAbsenteismo = useMemo(() => {
     let totalFeriasEAfastamentos = 0;
     activeEmployees.forEach(emp => {
-      const empRecord = attendance[emp.id];
+      const empRecord = sourceAttendance[emp.id]; // <-- MODIFICADO
       if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = Number(dayStr);
@@ -108,7 +115,7 @@ export function useDashboardAnalytics({
     const totalDiasTrabalho = (activeEmployees.length * VALID_WORK_DAYS.length) - totalFeriasEAfastamentos;
     if (totalDiasTrabalho <= 0) return '0.0';
     return ((totalFaltasMes / totalDiasTrabalho) * 100).toFixed(1);
-  }, [totalFaltasMes, activeEmployees, attendance, VALID_WORK_DAYS.length, currentMonth, currentYear, isValidDay]);
+  }, [totalFaltasMes, activeEmployees, sourceAttendance, VALID_WORK_DAYS.length, currentMonth, currentYear, isValidDay]);
 
   // ─── Dados de Gráficos ────────────────────────────────────────────────────
 
@@ -119,7 +126,7 @@ export function useDashboardAnalytics({
         .map(day => {
           let faltas = 0;
           activeEmployees.forEach(emp => {
-            if (attendance[emp.id]?.[day] === 'F') faltas++;
+            if (sourceAttendance[emp.id]?.[day] === 'F') faltas++; // <-- MODIFICADO
           });
           return { day: day.toString(), faltas };
         });
@@ -127,16 +134,16 @@ export function useDashboardAnalytics({
     if ((selectedDay as number) > todayLimitDay) return [];
     let faltas = 0;
     activeEmployees.forEach(emp => {
-      if (attendance[emp.id]?.[selectedDay] === 'F') faltas++;
+      if (sourceAttendance[emp.id]?.[selectedDay] === 'F') faltas++; // <-- MODIFICADO
     });
     return [{ day: selectedDay.toString(), faltas }];
-  }, [attendance, activeEmployees, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
+  }, [sourceAttendance, activeEmployees, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
 
   const weekdayData = useMemo<WeekdayData[]>(() => {
     const counts: Record<string, number> = { Dom: 0, Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0, Sáb: 0 };
     const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     activeEmployees.forEach(emp => {
-      const empRecord = attendance[emp.id];
+      const empRecord = sourceAttendance[emp.id]; // <-- MODIFICADO
       if (!empRecord) return;
       Object.entries(empRecord).forEach(([dayStr, status]) => {
         const day = parseInt(dayStr);
@@ -147,7 +154,7 @@ export function useDashboardAnalytics({
       });
     });
     return ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map(wd => ({ day: wd, faltas: counts[wd] }));
-  }, [attendance, activeEmployees, selectedDay, currentMonth, currentYear]);
+  }, [sourceAttendance, activeEmployees, selectedDay, currentMonth, currentYear]);
 
   // ─── Dados de Funcionários ────────────────────────────────────────────────
 
@@ -164,8 +171,8 @@ export function useDashboardAnalytics({
       let faltasJanelaAtual = 0;
       let faltasJanelaAnterior = 0;
 
-      if (attendance[emp.id]) {
-        Object.entries(attendance[emp.id]).forEach(([dayStr, status]) => {
+      if (sourceAttendance[emp.id]) { // <-- MODIFICADO
+        Object.entries(sourceAttendance[emp.id]).forEach(([dayStr, status]) => { // <-- MODIFICADO
           const day = Number(dayStr);
           if (status === 'F' && isWorkDay(day, currentMonth, currentYear)) {
             totalFaltasMes++;
@@ -181,11 +188,11 @@ export function useDashboardAnalytics({
 
       return {
         ...emp,
-        faltas: selectedDay === 'all' ? totalFaltasMes : (attendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0),
+        faltas: selectedDay === 'all' ? totalFaltasMes : (sourceAttendance[emp.id]?.[selectedDay as number] === 'F' ? 1 : 0), // <-- MODIFICADO
         trend,
       };
     }).sort((a, b) => b.faltas - a.faltas);
-  }, [attendance, displayEmployees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
+  }, [sourceAttendance, displayEmployees, selectedDay, currentMonth, currentYear, VALID_WORK_DAYS]);
 
   const filteredEmployees = useMemo(() => {
     let result = employeeData;
