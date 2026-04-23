@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   Sparkles, Loader2, Calendar, CalendarDays,
   ChevronDown, ChevronUp, Clock, CheckCircle2, AlertTriangle
@@ -15,7 +14,6 @@ function AIMarkdown({ content }: { content: string }) {
   return (
     <div style={{ color: '#cbd5e1', fontFamily: 'inherit', fontSize: '0.875rem', lineHeight: '1.6' }}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
             <h1 className="text-white font-bold text-base mt-5 mb-2 border-b border-slate-700 pb-2">
@@ -58,33 +56,6 @@ function AIMarkdown({ content }: { content: string }) {
             <blockquote className="border-l-2 border-slate-600 pl-3 my-3 text-slate-400 italic text-xs">
               {children}
             </blockquote>
-          ),
-          // ── Tabela estilizada ──────────────────────────────────────────
-          table: ({ children }) => (
-            <div className="overflow-x-auto my-4 rounded-lg border border-slate-700/60">
-              <table className="w-full text-xs border-collapse">
-                {children}
-              </table>
-            </div>
-          ),
-          thead: ({ children }) => (
-            <thead className="bg-slate-700/60">{children}</thead>
-          ),
-          tbody: ({ children }) => (
-            <tbody className="divide-y divide-slate-700/40">{children}</tbody>
-          ),
-          tr: ({ children }) => (
-            <tr className="hover:bg-slate-700/20 transition-colors">{children}</tr>
-          ),
-          th: ({ children }) => (
-            <th className="px-3 py-2 text-left text-slate-300 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
-              {children}
-            </td>
           ),
         }}
       >

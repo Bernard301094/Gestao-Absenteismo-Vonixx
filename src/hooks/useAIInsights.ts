@@ -3,6 +3,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { generateMonthlyInsight, generateWeeklyInsight } from '../services/aiService';
 import { getDaysInMonth, isWorkDay } from '../utils/dateUtils';
+import { computeVacationStats } from './useVacationStats';
 import type { Employee, AttendanceRecord, NotesRecord, Vacation } from '../types';
 
 export interface AIInsight {
@@ -32,18 +33,6 @@ interface UseAIInsightsParams {
   isSupervision: boolean;
 }
 
-// Parse YYYY-MM-DD sem deslocamento de fuso horário (evita bug de -1 dia)
-function parseLocalDate(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return null;
-  const y = parseInt(parts[0]);
-  const m = parseInt(parts[1]) - 1; // mês 0-based
-  const d = parseInt(parts[2]);
-  if (isNaN(y) || isNaN(m) || isNaN(d)) return null;
-  return new Date(y, m, d);
-}
-
 export function useAIInsights({
   shift,
   employees,
@@ -63,6 +52,11 @@ export function useAIInsights({
   const [monthlyError, setMonthlyError] = useState<string | null>(null);
   const [weeklyError, setWeeklyError] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+
+  const vacationStats = useMemo(
+    () => computeVacationStats(employees, vacations),
+    [employees, vacations]
+  );
 
   const fullMonthWorkDays = useMemo(() => {
     const days: number[] = [];
@@ -120,46 +114,18 @@ export function useAIInsights({
     return !!lockedDays[days[days.length - 1]] && !weeklyInsights.some(w => w.weekNumber === weekNum);
   }, [getWeekRange, lockedDays, weeklyInsights]);
 
-  // ─── Férias ativas no período (sem bug de fuso horário) ────────────────────
-  const getVacationsInPeriod = useCallback((daysToInclude: number[]) => {
-    if (daysToInclude.length === 0) return [];
-
-    const firstDay = daysToInclude[0];
-    const lastDay  = daysToInclude[daysToInclude.length - 1];
-    const periodoInicio = new Date(currentYear, currentMonth, firstDay);
-    const periodoFim    = new Date(currentYear, currentMonth, lastDay);
-
-    // Deduplica por employeeId — pode vir de 'vac_' e da coleção ao mesmo tempo
-    const seen = new Set<string>();
-
-    return vacations
-      .filter(v => {
-        // Considera férias em andamento independente do status registrado
-        // pois o status 'taken'/'scheduled' pode estar inconsistente na BD
-        const vs = parseLocalDate(v.startDate);
-        const ve = parseLocalDate(v.endDate);
-        if (!vs || !ve) return false;
-
-        // Sobrepõe com o período?
-        const sobrepos = vs <= periodoFim && ve >= periodoInicio;
-        if (!sobrepos) return false;
-
-        // Deduplica por funcionário
-        if (seen.has(v.employeeId)) return false;
-        seen.add(v.employeeId);
-        return true;
-      })
-      .map(v => {
-        const emp = employees.find(e => e.id === v.employeeId);
-        return {
-          nome:        emp?.name        ?? v.employeeId,
-          cargo:       emp?.role        ?? (emp as any)?.cargo ?? '',
-          inicioFerias: v.startDate,
-          fimFerias:    v.endDate,
-          retorno:      v.returnDate    ?? '',
-        };
-      });
-  }, [vacations, employees, currentYear, currentMonth]);
+  // ─── Férias ativas hoje (usando computeVacationStats) ─────────────────────
+  const getVacationsInPeriod = useCallback((_daysToInclude: number[]) => {
+    return vacationStats
+      .filter(s => s.status === 'em_ferias_agora')
+      .map(s => ({
+        nome: s.employeeName,
+        cargo: s.cargo,
+        inicioFerias: s.dataInicioFerias,
+        fimFerias: s.dataFimFerias,
+        retorno: s.dataRetorno,
+      }));
+  }, [vacationStats]);
 
   // ─── Payload enriquecido ───────────────────────────────────────────────────
   const buildConsolidatedPayload = useCallback((daysToInclude: number[]) => {
