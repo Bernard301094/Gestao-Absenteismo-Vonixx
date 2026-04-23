@@ -240,6 +240,7 @@ export function useFirestoreData({
                 admissionDate,
                 role: data.role || data.cargo || '',
                 shift: data.shift || '',
+                dismissed: data.dismissed || false, // <-- LÍNEA AGREGADA: Captura si está despedido
               });
 
               const vacStart = data.vacationStart || data.dataInicioFerias;
@@ -269,7 +270,8 @@ export function useFirestoreData({
               }
             });
 
-            setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
+            // <-- LÍNEA MODIFICADA: Filtra a los empleados que están en `dismissed: true` para que no se muestren en el turno
+            setEmployees(emps.filter(emp => !emp.dismissed).sort((a, b) => a.name.localeCompare(b.name)));
             setVacations(prev => {
               const collectionVacs = prev.filter(v => !v.id.startsWith('vac_'));
               return [...embeddedVacs, ...collectionVacs];
@@ -450,6 +452,7 @@ export function useFirestoreData({
         data_admissao: editingEmployee.admissionDate,
         role: editingEmployee.role || '',
         cargo: editingEmployee.role || '',
+        dismissed: editingEmployee.dismissed || false, // <-- LÍNEA AGREGADA: Guarda el estado de demitido
       });
       setShowEditEmployeeModal(false);
       setEditingEmployee(null);
