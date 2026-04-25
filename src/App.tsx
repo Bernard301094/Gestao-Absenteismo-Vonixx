@@ -18,6 +18,9 @@ const AttendanceRegistry   = lazy(() => import('./components/AttendanceRegistry/
 const VacationManagement   = lazy(() => import('./components/VacationManagement/VacationManagement'));
 const VacationAnalytics    = lazy(() => import('./components/VacationAnalytics/VacationAnalytics'));
 
+// ─── QR Kiosk ──────────────────────────────────────────────────────────────────────────────────────
+const AttendanceKiosk = lazy(() => import('./components/AttendanceKiosk/AttendanceKiosk'));
+
 // ─── Code-Split Modals ─────────────────────────────────────────────────────────────────────────────
 const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/AddEmployeeModal'));
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
@@ -35,7 +38,31 @@ const APP_START_YEAR  = 2026;
 const APP_START_MONTH = 3;
 const APP_START_DAY   = 3;
 
+// ─── Kiosk route detection ─────────────────────────────────────────────────────────────────────────
+const isKioskRoute = typeof window !== 'undefined' &&
+  window.location.pathname.toLowerCase().includes('/presenca');
+const kioskParams = typeof window !== 'undefined'
+  ? new URLSearchParams(window.location.search)
+  : new URLSearchParams();
+const kioskPrefilledCode = kioskParams.get('code') || '';
+const kioskShift = (kioskParams.get('shift') || 'A').toUpperCase();
+
 export default function App() {
+  // ─── Kiosk route: render before any auth logic ──────────────────────────────────────────────────
+  if (isKioskRoute) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={
+          <div className="min-h-screen bg-gradient-to-br from-[#0f3638] to-[#0d9488] flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+          </div>
+        }>
+          <AttendanceKiosk prefilledCode={kioskPrefilledCode} shift={kioskShift} />
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   const auth = useAuth();
 
   // ─── Biometric Lock ────────────────────────────────────────────────────────────────────────────────
