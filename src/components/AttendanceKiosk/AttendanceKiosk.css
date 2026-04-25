@@ -1,0 +1,295 @@
+/* =====================================================
+   QR Code Panel — Painel Admin
+   ===================================================== */
+.qr-access-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  max-width: 280px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+}
+
+.qr-access-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+.qr-access-icon { font-size: 1.5rem; }
+.qr-access-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+.qr-access-subtitle {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.qr-canvas-wrapper {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #e2e8f0;
+}
+
+.qr-expiring-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(247,246,242,0.88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #e97316;
+  animation: kiosk-pulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes kiosk-pulse {
+  from { opacity: 0.5; }
+  to   { opacity: 1; }
+}
+
+.qr-code-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.qr-code-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 600;
+}
+.qr-code-value {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  color: #01696f;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.qr-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.qr-timer-label {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+/* =====================================================
+   Attendance Kiosk — Tela do Funcionário
+   ===================================================== */
+.kiosk-container {
+  min-height: 100dvh;
+  background: linear-gradient(135deg, #0f3638 0%, #01696f 50%, #0d9488 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.kiosk-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.kiosk-card-wide { max-width: 520px; }
+
+.kiosk-logo { font-size: 2.5rem; text-align: center; }
+
+.kiosk-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: #1e293b;
+  text-align: center;
+  margin: 0;
+}
+
+.kiosk-subtitle {
+  font-size: 0.875rem;
+  color: #64748b;
+  text-align: center;
+  margin: 0;
+}
+
+.kiosk-input-group { display: flex; gap: 0.75rem; }
+
+.kiosk-code-input {
+  flex: 1;
+  padding: 0.8rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: 0.35em;
+  text-align: center;
+  background: #f8fafc;
+  color: #1e293b;
+  transition: border-color 0.2s;
+  outline: none;
+  min-width: 0;
+}
+.kiosk-code-input:focus {
+  border-color: #01696f;
+  background: #f0fdfa;
+}
+
+.kiosk-btn-primary {
+  padding: 0.8rem 1.2rem;
+  background: #01696f;
+  color: white;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 1rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.kiosk-btn-primary:hover { background: #0c4e54; }
+.kiosk-btn-primary:active { transform: scale(0.97); }
+.kiosk-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.kiosk-error-msg {
+  background: #fef2f2;
+  color: #dc2626;
+  border-radius: 10px;
+  padding: 0.65rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  border: 1px solid #fecaca;
+  margin: 0;
+}
+
+.kiosk-shift-badge {
+  align-self: center;
+  background: #f0fdfa;
+  color: #01696f;
+  border: 1px solid #99f6e4;
+  border-radius: 999px;
+  padding: 0.3rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.kiosk-attendance-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.kiosk-toast {
+  background: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-align: center;
+  animation: kiosk-slide-down 0.25s ease;
+}
+
+@keyframes kiosk-slide-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.kiosk-employee-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 55dvh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.kiosk-employee-list::-webkit-scrollbar { width: 4px; }
+.kiosk-employee-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+
+.kiosk-employee-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.kiosk-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: 800;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.kiosk-emp-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kiosk-present-btn {
+  padding: 0.38rem 0.9rem;
+  background: #16a34a;
+  color: white;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.8rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.18s, transform 0.1s;
+  flex-shrink: 0;
+}
+.kiosk-present-btn:hover { background: #15803d; transform: scale(1.04); }
+
+.kiosk-all-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 0;
+  text-align: center;
+}
+.kiosk-done-emoji { font-size: 3rem; }
+.kiosk-all-done h3 { font-size: 1.3rem; font-weight: 800; color: #16a34a; margin: 0; }
+.kiosk-all-done p { font-size: 0.9rem; color: #64748b; margin: 0; }
