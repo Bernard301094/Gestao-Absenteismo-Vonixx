@@ -79,8 +79,8 @@ service cloud.firestore {
     }
 
     function isValidAttendanceRecord() {
-      return hasOnlyAllowedFields(['empId', 'day', 'month', 'year', 'status', 'note', 'updatedAt', 'shift']) &&
-             hasRequiredFields(['empId', 'day', 'month', 'year', 'status', 'updatedAt', 'shift']) &&
+      return hasOnlyAllowedFields(['empId', 'day', 'month', 'year', 'status', 'note', 'updatedAt', 'shift', 'markedAt', 'markedViaKiosk']) &&
+             hasRequiredFields(['empId', 'day', 'month', 'year', 'status', 'shift']) &&
              isValidString('empId', 1, 50) &&
              request.resource.data.day is number &&
              request.resource.data.day >= 1 &&
@@ -93,13 +93,17 @@ service cloud.firestore {
              request.resource.data.year <= 2030 &&
              request.resource.data.status in ['P', 'F', 'Fe', 'A'] &&
              isValidOptionalString('note', 0, 500) &&
-             request.resource.data.updatedAt is timestamp &&
              request.resource.data.shift in ['A', 'B', 'C', 'D'];
     }
 
     // ─── config/passwords: leitura pública (necessária antes do login) ────────
-    // Somente admin pode alterar as senhas
     match /config/passwords {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ─── config/accessCode: kiosk QR — leitura pública, escrita só admin ──────
+    match /config/accessCode {
       allow read: if true;
       allow write: if isAdmin();
     }
@@ -122,8 +126,8 @@ service cloud.firestore {
 
     match /attendance/{recordId} {
       allow read: if isAuthenticated() && isOwnerShift();
-      allow create: if isAuthenticated() && isValidAttendanceRecord() && isCreatingOwnShift();
-      allow update: if isAuthenticated() && isValidAttendanceRecord() && isOwnerShift() && isCreatingOwnShift();
+      allow create: if isValidAttendanceRecord() && isCreatingOwnShift();
+      allow update: if isValidAttendanceRecord() && isOwnerShift() && isCreatingOwnShift();
       allow delete: if isAuthenticated() && isOwnerShift();
     }
 

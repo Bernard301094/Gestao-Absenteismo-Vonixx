@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Download, FileWarning, UserMinus } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, FileWarning, UserMinus, QrCode, ChevronDown, ChevronUp } from 'lucide-react';
 import { exportToPDF } from '../../utils/exportPDF';
 import { wasActiveOnDay } from '../../hooks/useFirestoreData';
 import type {
@@ -16,6 +16,9 @@ import DistributionChart from '../Charts/DistributionChart';
 import EmployeeTable from '../Charts/EmployeeTable';
 import DailyTable from '../Charts/DailyTable';
 import AIInsightsPanel from './AIInsightsPanel';
+import QRCodePanel from '../QRCodePanel/QRCodePanel';
+
+const BASE_KIOSK_URL = 'https://gestao-absenteismo-vonixx.web.app/presenca';
 
 interface DashboardProps {
   handleExportExcel: () => void;
@@ -91,6 +94,10 @@ export default function Dashboard({
   setShowDismissed,
 }: DashboardProps) {
 
+  const [showQR, setShowQR] = useState(false);
+
+  const kioskUrl = `${BASE_KIOSK_URL}?shift=${currentShift ?? 'A'}`;
+
   const handleExportPDF = () => {
     exportToPDF(
       isSupervision ? 'Supervisão' : 'Turno Atual',
@@ -99,8 +106,8 @@ export default function Dashboard({
       selectedDay,
       currentMonth,
       currentYear,
-      undefined, // signatureData
-      notes,     // passar notes para detecção de atestado
+      undefined,
+      notes,
     );
   };
 
@@ -148,7 +155,7 @@ export default function Dashboard({
     return newAlerts as Alert[];
   }, [employees, notes, selectedDay]);
 
-  // ─── 2. BANNER DE DEMITIDOS (foto histórica) ───
+  // ─── 2. BANNER DE DEMITIDOS ───
   const dismissedAlerts = useMemo(() => {
     const refDay = selectedDay === 'all'
       ? new Date().getDate()
@@ -179,11 +186,31 @@ export default function Dashboard({
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
         <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
+
+          {/* ── QR Code Button (não-supervisão) ── */}
+          {!isSupervision && (
+            <button
+              onClick={() => setShowQR(v => !v)}
+              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
+            >
+              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              QR Presença
+              {showQR ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          )}
+
           <button onClick={handleExportPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95">
             <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Exportar PDF
           </button>
         </div>
       </div>
+
+      {/* ── QR Code Panel (expansível) ── */}
+      {showQR && !isSupervision && (
+        <div className="flex justify-end animate-in slide-in-from-top-2 duration-300">
+          <QRCodePanel baseUrl={kioskUrl} />
+        </div>
+      )}
 
       {selectedDay === 'all' && (
         <AIInsightsPanel
