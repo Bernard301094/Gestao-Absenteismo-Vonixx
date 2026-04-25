@@ -21,15 +21,21 @@ interface Props {
 type Step = 'enter_code' | 'mark_attendance';
 
 export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = 'A' }) => {
-  const [step, setStep] = useState<Step>('enter_code');
+  const [step, setStep]           = useState<Step>('enter_code');
   const [inputCode, setInputCode] = useState(prefilledCode);
-  const [error, setError] = useState('');
+  const [error, setError]         = useState('');
   const [markedIds, setMarkedIds] = useState<Set<string>>(new Set());
   const [lastMarked, setLastMarked] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const { validateCode } = useAccessCode(false);
-  const autoValidated = useRef(false);
+  const { validateCode }           = useAccessCode(false);
+  const autoValidated              = useRef(false);
 
+  const today = new Date();
+  const day   = today.getDate();
+  const month = today.getMonth();
+  const year  = today.getFullYear();
+
+  // Carrega funcionários ativos do turno
   useEffect(() => {
     const q = query(collection(db, 'employees'), where('shift', '==', shift));
     const unsub = onSnapshot(q, (snap) => {
@@ -43,14 +49,33 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     return () => unsub();
   }, [shift]);
 
-  // Valida automaticamente o código da URL — aguarda 300ms para TOTP estar pronto
+  // Escuta em tempo real quem já tem presença marcada hoje
+  // Quando alguém clica "Presente", o nome some automaticamente da lista
+  useEffect(() => {
+    const q = query(
+      collection(db, 'attendance'),
+      where('shift',  '==', shift),
+      where('day',    '==', day),
+      where('month',  '==', month),
+      where('year',   '==', year),
+      where('status', '==', 'P')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const ids = new Set<string>();
+      snap.forEach(d => ids.add(d.data().empId));
+      setMarkedIds(ids);
+    });
+    return () => unsub();
+  }, [shift, day, month, year]);
+
+  // Auto-valida código vindo da URL — aguarda 400ms para TOTP inicializar
   useEffect(() => {
     if (autoValidated.current) return;
     if (!prefilledCode || prefilledCode.length !== 6) return;
     autoValidated.current = true;
-    const timer = setTimeout(() => handleSubmitCode(prefilledCode), 300);
+    const timer = setTimeout(() => handleSubmitCode(prefilledCode), 400);
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmitCode = async (code: string) => {
@@ -65,36 +90,36 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
 
   const handleMarkPresent = async (employee: Employee) => {
     if (markedIds.has(employee.id)) return;
-    const now = new Date();
-    const day = now.getDate();
-    const month = now.getMonth();
-    const year = now.getFullYear();
+
+    // ID exatamente igual ao gerado pelo handleSave no useFirestoreData
+    const docId = `${employee.shift}_${employee.id}_${year}_${month}_${day}`;
 
     await setDoc(
-      doc(db, 'attendance', `${employee.shift}_${employee.id}_${year}_${month}_${day}`),
+      doc(db, 'attendance', docId),
       {
-        empId: employee.id,
+        empId:     employee.id,
         day,
         month,
         year,
-        status: 'P',
-        shift: employee.shift,
-        markedAt: serverTimestamp(),
-        markedViaKiosk: true,
+        status:    'P',
+        note:      '',        // campo exigido por isValidAttendanceRecord()
+        shift:     employee.shift,
+        updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
 
-    setMarkedIds(prev => new Set([...prev, employee.id]));
     setLastMarked(employee.name);
     setTimeout(() => setLastMarked(null), 2500);
   };
 
-  const remaining = employees.filter(e => !markedIds.has(e.id));
+  const remaining   = employees.filter(e => !markedIds.has(e.id));
   const markedCount = markedIds.size;
 
   return (
     <div className="kiosk-container">
+
+      {/* ── TELA 1: Inserir código ── */}
       {step === 'enter_code' && (
         <div className="kiosk-card">
           <div className="kiosk-logo">🏭</div>
@@ -123,11 +148,11 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
           </div>
 
           {error && <p className="kiosk-error-msg">{error}</p>}
-
           <div className="kiosk-shift-badge">Turno {shift}</div>
         </div>
       )}
 
+      {/* ── TELA 2: Marcar presença ── */}
       {step === 'mark_attendance' && (
         <div className="kiosk-card kiosk-card-wide">
           <div className="kiosk-attendance-header">
