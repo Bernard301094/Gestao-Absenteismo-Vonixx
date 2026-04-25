@@ -23,7 +23,7 @@ export default function EditEmployeeModal({
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900">Editar Funcionário</h3>
-          <button 
+          <button
             onClick={() => {
               setShowEditEmployeeModal(false);
               setEditingEmployee(null);
@@ -58,17 +58,24 @@ export default function EditEmployeeModal({
               className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             />
           </div>
-          
+
           <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-3">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-800 cursor-pointer">
               <input
                 type="checkbox"
                 checked={!!editingEmployee.dismissed}
-                onChange={(e) => setEditingEmployee({ 
-                  ...editingEmployee, 
-                  dismissed: e.target.checked,
-                  dismissalDate: e.target.checked ? (editingEmployee.dismissalDate || new Date().toISOString().split('T')[0]) : undefined
-                })}
+                onChange={(e) => {
+                  const isDismissed = e.target.checked;
+                  setEditingEmployee({
+                    ...editingEmployee,
+                    dismissed: isDismissed,
+                    // Ao marcar: preenche com hoje se não havia data
+                    // Ao desmarcar: limpa a data completamente
+                    dismissalDate: isDismissed
+                      ? (editingEmployee.dismissalDate || new Date().toISOString().split('T')[0])
+                      : '',
+                  });
+                }}
                 className="w-4 h-4 rounded border-gray-300 text-red-600 focus:ring-red-500"
               />
               Marcar como Demitido
@@ -80,7 +87,9 @@ export default function EditEmployeeModal({
                   Data da Demissão (Oculta o funcionário a partir deste dia)
                 </label>
                 <input
-                  id="dismissalDate" type="date" required={!!editingEmployee.dismissed}
+                  id="dismissalDate"
+                  type="date"
+                  required={!!editingEmployee.dismissed}
                   value={editingEmployee.dismissalDate || ''}
                   onChange={(e) => setEditingEmployee({ ...editingEmployee, dismissalDate: e.target.value })}
                   className="w-full px-3 py-1.5 rounded-lg border border-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all"
