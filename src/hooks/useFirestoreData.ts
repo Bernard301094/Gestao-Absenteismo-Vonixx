@@ -38,20 +38,30 @@ const normalizeDate = (dateVal: any): string => {
 
 // Retorna true se o colaborador estava ativo em uma data específica.
 // Regras:
-//   dismissed=false                → sempre visível
-//   dismissed=true, sem data       → OCULTO (demitido sem data = ocultar imediatamente)
-//   dismissed=true, com data       → visível apenas nos dias ANTERIORES à demissão (exclusivo)
+//   1. admissionDate definida  → só visível a partir do dia de admissão (inclusivo)
+//   2. dismissed=false          → visível (desde que passe a regra 1)
+//   3. dismissed=true, sem data → OCULTO imediatamente
+//   4. dismissed=true, com data → visível apenas nos dias ANTERIORES à demissão (exclusivo)
 export function wasActiveOnDay(
-  emp: { dismissed?: boolean; dismissalDate?: string },
+  emp: { dismissed?: boolean; dismissalDate?: string; admissionDate?: string },
   day: number,
   month: number,
   year: number
 ): boolean {
+  const target = new Date(year, month, day);
+
+  // Regra 1: não mostrar antes da data de admissão
+  if (emp.admissionDate) {
+    const [ay, am, ad] = emp.admissionDate.split('-').map(Number);
+    const admission = new Date(ay, am - 1, ad);
+    if (target < admission) return false;
+  }
+
+  // Regras 2/3/4: verifica demissão
   if (!emp.dismissed) return true;
-  if (!emp.dismissalDate) return false; // sem data → oculto imediatamente
+  if (!emp.dismissalDate) return false;
   const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
   const dismissal = new Date(dy, dm - 1, dd);
-  const target    = new Date(year, month, day);
   return target < dismissal; // exclusivo: demitido dia 23 → some a partir do dia 23
 }
 
@@ -341,8 +351,6 @@ export function useFirestoreData({
       };
 
       if (editingEmployee.dismissed) {
-        // Garante que a data de demissão SEMPRE seja salva.
-        // Se o usuário não preencheu, usa hoje como fallback.
         const dismissalDate = editingEmployee.dismissalDate || today;
         updatePayload.dismissalDate = dismissalDate;
         updatePayload.dataDemissao  = dismissalDate;
