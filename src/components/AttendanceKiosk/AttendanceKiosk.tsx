@@ -21,14 +21,17 @@ interface Props {
 type Step = 'enter_code' | 'mark_attendance';
 
 export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = 'A' }) => {
-  const [step, setStep]           = useState<Step>('enter_code');
-  const [inputCode, setInputCode] = useState(prefilledCode);
-  const [error, setError]         = useState('');
-  const [markedIds, setMarkedIds] = useState<Set<string>>(new Set());
-  const [lastMarked, setLastMarked] = useState<string | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const { validateCode }           = useAccessCode(false);
-  const autoValidated              = useRef(false);
+  const [step, setStep]              = useState<Step>('enter_code');
+  const [inputCode, setInputCode]    = useState(prefilledCode);
+  const [error, setError]            = useState('');
+  const [markedIds, setMarkedIds]    = useState<Set<string>>(new Set());
+  const [lastMarked, setLastMarked]  = useState<string | null>(null);
+  const [employees, setEmployees]    = useState<Employee[]>([]);
+  const [loadingEmps, setLoadingEmps]  = useState(true);
+  const [loadingMarked, setLoadingMarked] = useState(true);
+  const [search, setSearch]          = useState('');
+  const { validateCode }             = useAccessCode(false);
+  const autoValidated                = useRef(false);
 
   const today = new Date();
   const day   = today.getDate();
@@ -45,12 +48,12 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
         if (!data.dismissed) emps.push({ id: d.id, name: data.name, shift: data.shift });
       });
       setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
+      setLoadingEmps(false);
     });
     return () => unsub();
   }, [shift]);
 
-  // Escuta em tempo real quem já tem presença marcada hoje
-  // Quando alguém clica "Presente", o nome some automaticamente da lista
+  // Escuta quem já tem presença P hoje — sincronizado em tempo real
   useEffect(() => {
     const q = query(
       collection(db, 'attendance'),
@@ -64,11 +67,12 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       const ids = new Set<string>();
       snap.forEach(d => ids.add(d.data().empId));
       setMarkedIds(ids);
+      setLoadingMarked(false);
     });
     return () => unsub();
   }, [shift, day, month, year]);
 
-  // Auto-valida código vindo da URL — aguarda 400ms para TOTP inicializar
+  // Auto-valida código da URL após TOTP inicializar
   useEffect(() => {
     if (autoValidated.current) return;
     if (!prefilledCode || prefilledCode.length !== 6) return;
@@ -90,10 +94,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
 
   const handleMarkPresent = async (employee: Employee) => {
     if (markedIds.has(employee.id)) return;
-
-    // ID exatamente igual ao gerado pelo handleSave no useFirestoreData
     const docId = `${employee.shift}_${employee.id}_${year}_${month}_${day}`;
-
     await setDoc(
       doc(db, 'attendance', docId),
       {
@@ -102,19 +103,23 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
         month,
         year,
         status:    'P',
-        note:      '',        // campo exigido por isValidAttendanceRecord()
+        note:      '',
         shift:     employee.shift,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
     );
-
     setLastMarked(employee.name);
     setTimeout(() => setLastMarked(null), 2500);
   };
 
-  const remaining   = employees.filter(e => !markedIds.has(e.id));
+  const isLoading  = loadingEmps || loadingMarked;
+  const remaining  = employees.filter(e => !markedIds.has(e.id));
+  const filtered   = remaining.filter(e =>
+    e.name.toLowerCase().includes(search.toLowerCase())
+  );
   const markedCount = markedIds.size;
+  const allDone    = !isLoading && employees.length > 0 && remaining.length === 0;
 
   return (
     <div className="kiosk-container">
@@ -155,42 +160,91 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       {/* ── TELA 2: Marcar presença ── */}
       {step === 'mark_attendance' && (
         <div className="kiosk-card kiosk-card-wide">
+
           <div className="kiosk-attendance-header">
-            <div>
-              <h2 className="kiosk-title">Marcar Presença — Turno {shift}</h2>
-              <p className="kiosk-subtitle">
-                ✅ {markedCount} marcados &nbsp;·&nbsp; ⏳ {remaining.length} pendentes
-              </p>
-            </div>
+            <h2 className="kiosk-title">Marcar Presença</h2>
+            <span className="kiosk-shift-badge">Turno {shift}</span>
           </div>
 
+          {/* Contador */}
+          {!isLoading && (
+            <div className="kiosk-counters">
+              <div className="kiosk-counter kiosk-counter-done">
+                <span className="kiosk-counter-num">{markedCount}</span>
+                <span className="kiosk-counter-lbl">Presentes</span>
+              </div>
+              <div className="kiosk-counter kiosk-counter-pending">
+                <span className="kiosk-counter-num">{remaining.length}</span>
+                <span className="kiosk-counter-lbl">Pendentes</span>
+              </div>
+              <div className="kiosk-counter kiosk-counter-total">
+                <span className="kiosk-counter-num">{employees.length}</span>
+                <span className="kiosk-counter-lbl">Total</span>
+              </div>
+            </div>
+          )}
+
+          {/* Toast de confirmação */}
           {lastMarked && (
             <div className="kiosk-toast">
               ✅ {lastMarked} — Presença registrada!
             </div>
           )}
 
-          {remaining.length === 0 ? (
+          {/* Spinner de carregamento */}
+          {isLoading && (
+            <div className="kiosk-loading">
+              <div className="kiosk-spinner" />
+              <p>Carregando funcionários…</p>
+            </div>
+          )}
+
+          {/* Todos presentes */}
+          {allDone && (
             <div className="kiosk-all-done">
               <div className="kiosk-done-emoji">🎉</div>
               <h3>Todos presentes!</h3>
               <p>Todas as presenças do Turno {shift} foram registradas.</p>
             </div>
-          ) : (
-            <ul className="kiosk-employee-list">
-              {remaining.map(emp => (
-                <li key={emp.id} className="kiosk-employee-item">
-                  <div className="kiosk-avatar">{emp.name.charAt(0)}</div>
-                  <span className="kiosk-emp-name">{emp.name}</span>
-                  <button
-                    className="kiosk-present-btn"
-                    onClick={() => handleMarkPresent(emp)}
-                  >
-                    ✓ Presente
-                  </button>
-                </li>
-              ))}
-            </ul>
+          )}
+
+          {/* Buscador + lista */}
+          {!isLoading && !allDone && (
+            <>
+              <div className="kiosk-search-wrapper">
+                <span className="kiosk-search-icon">🔍</span>
+                <input
+                  className="kiosk-search-input"
+                  type="text"
+                  placeholder="Buscar funcionário..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  autoComplete="off"
+                />
+                {search && (
+                  <button className="kiosk-search-clear" onClick={() => setSearch('')}>×</button>
+                )}
+              </div>
+
+              {filtered.length === 0 ? (
+                <p className="kiosk-no-results">Nenhum funcionário encontrado para “{search}”.</p>
+              ) : (
+                <ul className="kiosk-employee-list">
+                  {filtered.map(emp => (
+                    <li key={emp.id} className="kiosk-employee-item">
+                      <div className="kiosk-avatar">{emp.name.charAt(0)}</div>
+                      <span className="kiosk-emp-name">{emp.name}</span>
+                      <button
+                        className="kiosk-present-btn"
+                        onClick={() => handleMarkPresent(emp)}
+                      >
+                        ✓ Presente
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </div>
       )}

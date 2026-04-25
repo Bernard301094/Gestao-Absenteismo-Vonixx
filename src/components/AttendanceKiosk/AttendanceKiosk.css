@@ -20,7 +20,7 @@
   gap: 0.6rem;
   width: 100%;
 }
-.qr-access-icon { font-size: 1.5rem; }
+.qr-access-icon  { font-size: 1.5rem; }
 .qr-access-title {
   font-size: 0.9rem;
   font-weight: 700;
@@ -55,7 +55,7 @@
 
 @keyframes kiosk-pulse {
   from { opacity: 0.5; }
-  to   { opacity: 1; }
+  to   { opacity: 1;   }
 }
 
 .qr-code-display {
@@ -85,93 +85,155 @@
   align-items: center;
   gap: 0.6rem;
 }
-.qr-timer-label {
-  font-size: 0.72rem;
-  color: #64748b;
-}
+.qr-timer-label { font-size: 0.72rem; color: #64748b; }
+
 
 /* =====================================================
    Attendance Kiosk — Tela do Funcionário
+   Mobile-first, totalmente responsivo
    ===================================================== */
+
 .kiosk-container {
   min-height: 100dvh;
-  background: linear-gradient(135deg, #0f3638 0%, #01696f 50%, #0d9488 100%);
+  background: linear-gradient(160deg, #0f3638 0%, #01696f 55%, #0d9488 100%);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 1rem;
+  padding-top: max(1.5rem, env(safe-area-inset-top));
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
 }
 
+/* Card principal */
 .kiosk-card {
   background: #ffffff;
   border-radius: 20px;
-  padding: 2rem;
+  padding: 1.5rem;
   width: 100%;
-  max-width: 420px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  max-width: 440px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.28);
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
+  gap: 1rem;
+  margin-top: 1rem;
 }
+.kiosk-card-wide { max-width: 560px; }
 
-.kiosk-card-wide { max-width: 520px; }
-
-.kiosk-logo { font-size: 2.5rem; text-align: center; }
-
+/* Logo e título */
+.kiosk-logo {
+  font-size: 2.5rem;
+  text-align: center;
+  line-height: 1;
+}
 .kiosk-title {
-  font-size: 1.3rem;
+  font-size: clamp(1.1rem, 4vw, 1.35rem);
   font-weight: 800;
   color: #1e293b;
   text-align: center;
   margin: 0;
+  line-height: 1.2;
 }
-
 .kiosk-subtitle {
-  font-size: 0.875rem;
+  font-size: clamp(0.8rem, 3vw, 0.9rem);
   color: #64748b;
   text-align: center;
   margin: 0;
 }
 
-.kiosk-input-group { display: flex; gap: 0.75rem; }
+/* Header da tela de marcar */
+.kiosk-attendance-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.kiosk-attendance-header .kiosk-title { text-align: left; }
 
+/* Contadores */
+.kiosk-counters {
+  display: flex;
+  gap: 0.5rem;
+}
+.kiosk-counter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.6rem 0.25rem;
+  border-radius: 12px;
+  border: 1px solid;
+}
+.kiosk-counter-done    { background: #f0fdf4; border-color: #bbf7d0; }
+.kiosk-counter-pending { background: #fffbeb; border-color: #fde68a; }
+.kiosk-counter-total   { background: #eff6ff; border-color: #bfdbfe; }
+
+.kiosk-counter-num {
+  font-size: clamp(1.3rem, 5vw, 1.7rem);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.kiosk-counter-done    .kiosk-counter-num { color: #16a34a; }
+.kiosk-counter-pending .kiosk-counter-num { color: #d97706; }
+.kiosk-counter-total   .kiosk-counter-num { color: #2563eb; }
+
+.kiosk-counter-lbl {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+  color: #64748b;
+}
+
+/* Input código */
+.kiosk-input-group {
+  display: flex;
+  gap: 0.6rem;
+}
 .kiosk-code-input {
   flex: 1;
-  padding: 0.8rem 1rem;
+  padding: 0.75rem 0.5rem;
   border: 2px solid #e2e8f0;
   border-radius: 12px;
-  font-size: 1.8rem;
+  font-size: clamp(1.4rem, 6vw, 1.9rem);
   font-weight: 800;
-  letter-spacing: 0.35em;
+  letter-spacing: 0.3em;
   text-align: center;
   background: #f8fafc;
   color: #1e293b;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
   outline: none;
   min-width: 0;
+  -webkit-appearance: none;
 }
 .kiosk-code-input:focus {
   border-color: #01696f;
   background: #f0fdfa;
 }
 
+/* Botão entrar */
 .kiosk-btn-primary {
-  padding: 0.8rem 1.2rem;
+  min-height: 48px;
+  padding: 0.75rem 1rem;
   background: #01696f;
   color: white;
   border-radius: 12px;
   font-weight: 800;
-  font-size: 1rem;
+  font-size: clamp(0.85rem, 3vw, 1rem);
   border: none;
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
   white-space: nowrap;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
 }
-.kiosk-btn-primary:hover { background: #0c4e54; }
+.kiosk-btn-primary:hover  { background: #0c4e54; }
 .kiosk-btn-primary:active { transform: scale(0.97); }
-.kiosk-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.kiosk-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+/* Erro */
 .kiosk-error-msg {
   background: #fef2f2;
   color: #dc2626;
@@ -184,24 +246,21 @@
   margin: 0;
 }
 
+/* Badge turno */
 .kiosk-shift-badge {
-  align-self: center;
+  align-self: flex-end;
   background: #f0fdfa;
   color: #01696f;
   border: 1px solid #99f6e4;
   border-radius: 999px;
-  padding: 0.3rem 1rem;
-  font-size: 0.78rem;
+  padding: 0.28rem 0.9rem;
+  font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.05em;
+  white-space: nowrap;
 }
 
-.kiosk-attendance-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
+/* Toast */
 .kiosk-toast {
   background: #f0fdf4;
   color: #16a34a;
@@ -209,25 +268,86 @@
   border-radius: 12px;
   padding: 0.75rem 1rem;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: clamp(0.82rem, 3vw, 0.95rem);
   text-align: center;
   animation: kiosk-slide-down 0.25s ease;
 }
-
 @keyframes kiosk-slide-down {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Buscador */
+.kiosk-search-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.kiosk-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 1rem;
+  pointer-events: none;
+  user-select: none;
+}
+.kiosk-search-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.65rem 2.5rem 0.65rem 2.4rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: clamp(0.9rem, 3vw, 1rem);
+  background: #f8fafc;
+  color: #1e293b;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
+  -webkit-appearance: none;
+}
+.kiosk-search-input:focus {
+  border-color: #01696f;
+  background: #f0fdfa;
+}
+.kiosk-search-clear {
+  position: absolute;
+  right: 0.6rem;
+  background: #e2e8f0;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s;
+}
+.kiosk-search-clear:hover { background: #cbd5e1; }
+
+/* Sem resultados */
+.kiosk-no-results {
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  padding: 1.5rem 0;
+  margin: 0;
+}
+
+/* Lista de funcionários */
 .kiosk-employee-list {
   list-style: none;
   padding: 0;
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  max-height: 55dvh;
+  gap: 0.4rem;
+  max-height: 52dvh;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding-right: 2px;
 }
 .kiosk-employee-list::-webkit-scrollbar { width: 4px; }
@@ -236,16 +356,19 @@
 .kiosk-employee-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
+  gap: 0.65rem;
+  padding: 0.55rem 0.7rem;
   background: #f8fafc;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
+  transition: background 0.15s;
+  min-height: 56px;  /* touch target mínimo */
 }
+.kiosk-employee-item:active { background: #f0fdfa; }
 
 .kiosk-avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   background: #e0f2fe;
   color: #0369a1;
@@ -261,35 +384,87 @@
 .kiosk-emp-name {
   flex: 1;
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: clamp(0.82rem, 3vw, 0.95rem);
   color: #1e293b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 
+/* Botão presente — touch target 48px */
 .kiosk-present-btn {
-  padding: 0.38rem 0.9rem;
+  min-height: 48px;
+  min-width: 90px;
+  padding: 0.4rem 0.75rem;
   background: #16a34a;
   color: white;
-  border-radius: 8px;
+  border-radius: 10px;
   font-weight: 700;
-  font-size: 0.8rem;
+  font-size: clamp(0.78rem, 2.5vw, 0.85rem);
   border: none;
   cursor: pointer;
-  transition: background 0.18s, transform 0.1s;
+  transition: background 0.15s, transform 0.1s;
   flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.kiosk-present-btn:hover { background: #15803d; transform: scale(1.04); }
+.kiosk-present-btn:hover  { background: #15803d; }
+.kiosk-present-btn:active { transform: scale(0.96); background: #166534; }
 
-.kiosk-all-done {
+/* Spinner de carregamento */
+.kiosk-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
   padding: 2rem 0;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+.kiosk-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #01696f;
+  border-radius: 50%;
+  animation: kiosk-spin 0.7s linear infinite;
+}
+@keyframes kiosk-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Todos presentes */
+.kiosk-all-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 0.5rem;
   text-align: center;
 }
 .kiosk-done-emoji { font-size: 3rem; }
 .kiosk-all-done h3 { font-size: 1.3rem; font-weight: 800; color: #16a34a; margin: 0; }
-.kiosk-all-done p { font-size: 0.9rem; color: #64748b; margin: 0; }
+.kiosk-all-done p  { font-size: 0.9rem; color: #64748b; margin: 0; }
+
+/* =====================================================
+   Responsivo — telas maiores
+   ===================================================== */
+@media (min-width: 480px) {
+  .kiosk-container {
+    align-items: center;
+    padding: 2rem 1.5rem;
+  }
+  .kiosk-card {
+    padding: 2rem;
+    margin-top: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .kiosk-card      { padding: 2.5rem; gap: 1.25rem; }
+  .kiosk-card-wide { max-width: 620px; }
+  .kiosk-employee-list { max-height: 55vh; }
+}
