@@ -11,12 +11,15 @@ import React, { useState } from 'react';
 import {
   LogOut, ChevronLeft, ChevronRight,
   LayoutDashboard, ClipboardList, Calendar,
-  RefreshCw, Settings, Download, FileText, Fingerprint,
+  RefreshCw, Settings, Download, FileText, Fingerprint, QrCode, X,
 } from 'lucide-react';
 import { MONTH_NAMES, now } from '../../utils/constants';
 import SettingsModal from '../Settings/SettingsModal';
 import BiometricToggleModal from '../BiometricToggle/BiometricToggleModal';
 import CustomDropdown from '../CustomDropdown';
+import QRCodePanel from '../QRCodePanel/QRCodePanel';
+
+const BASE_KIOSK_URL = 'https://gestao-absenteismo-vonixx.web.app/presenca';
 
 interface HeaderProps {
   isSupervision: boolean;
@@ -128,6 +131,42 @@ function ConnectionDot({ hasError }: { hasError: boolean }) {
   );
 }
 
+// ─── QR Drawer ────────────────────────────────────────────────────────────────
+
+function QRDrawer({
+  open,
+  onClose,
+  kioskUrl,
+}: {
+  open: boolean;
+  onClose: () => void;
+  kioskUrl: string;
+}) {
+  if (!open) return null;
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      {/* Panel */}
+      <div className="fixed top-16 right-3 sm:right-6 z-50 animate-in slide-in-from-top-2 fade-in duration-200">
+        <div className="relative">
+          <button
+            onClick={onClose}
+            className="absolute -top-2 -right-2 z-10 w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center shadow-lg hover:bg-gray-700 transition-colors"
+            aria-label="Fechar"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+          <QRCodePanel baseUrl={kioskUrl} />
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Header Principal ─────────────────────────────────────────────────────────
 
 export default function Header({
@@ -158,6 +197,9 @@ export default function Header({
 }: HeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isBiometricOpen, setIsBiometricOpen] = useState(false);
+  const [showQRDrawer, setShowQRDrawer] = useState(false);
+
+  const kioskUrl = `${BASE_KIOSK_URL}?shift=${currentShift ?? 'A'}`;
 
   // ── Options ────────────────────────────────────────────────────────────────
 
@@ -187,6 +229,15 @@ export default function Header({
 
   return (
     <header className="bg-[#1e3a8a] sticky top-0 z-20 shadow-xl border-b border-blue-950 pb-safe">
+
+      {/* ── QR Drawer flutuante ────────────────────────────────────────── */}
+      {!isSupervision && (
+        <QRDrawer
+          open={showQRDrawer}
+          onClose={() => setShowQRDrawer(false)}
+          kioskUrl={kioskUrl}
+        />
+      )}
 
       {/* ── Barra Superior: Identidade + Ações ────────────────────────────── */}
       <div className="max-w-7xl 2xl:max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8">
@@ -266,6 +317,26 @@ export default function Header({
 
           {/* Ações */}
           <div className="flex items-center gap-1 shrink-0">
+
+            {/* QR Presença (não-supervisão) */}
+            {!isSupervision && (
+              <button
+                onClick={() => setShowQRDrawer(v => !v)}
+                title="QR Presença"
+                className={`
+                  p-2 rounded-xl transition-all active:scale-90 flex items-center gap-1.5
+                  ${showQRDrawer
+                    ? 'bg-teal-500 text-white shadow-lg'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                  }
+                `}
+              >
+                <QrCode className="w-4 h-4" />
+                <span className="hidden sm:inline text-[10px] font-black uppercase tracking-widest">
+                  QR
+                </span>
+              </button>
+            )}
 
             {/* Export: imagem */}
             {onExportImage && (
