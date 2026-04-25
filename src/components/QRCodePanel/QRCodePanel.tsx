@@ -15,7 +15,6 @@ export default function QRCodePanel({ baseUrl }: Props) {
 
   const kioskUrl = `${baseUrl}&code=${currentCode}`;
 
-  // Gera o QR Code no canvas sempre que o código ou URL mudar
   useEffect(() => {
     if (!currentCode || !canvasRef.current) return;
     setQrReady(false);
@@ -39,7 +38,9 @@ export default function QRCodePanel({ baseUrl }: Props) {
   const isExpiring = timeLeft <= 8;
 
   return (
-    <div className="w-full bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+    // max-w-xl limita a ~576px — nunca estica em telas ultrawide
+    <div className="w-full max-w-xl bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 bg-teal-50/60">
         <div className="flex items-center gap-2.5">
@@ -51,7 +52,6 @@ export default function QRCodePanel({ baseUrl }: Props) {
             <p className="text-[11px] text-teal-700 font-medium mt-0.5">Escaneie para registrar presença</p>
           </div>
         </div>
-        {/* Timer */}
         <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-colors ${
           isExpiring ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-700'
         }`}>
@@ -60,12 +60,11 @@ export default function QRCodePanel({ baseUrl }: Props) {
         </div>
       </div>
 
-      {/* Body: QR + código lado a lado em desktop, empilhados em mobile */}
+      {/* Body */}
       <div className="flex flex-col sm:flex-row items-center gap-6 p-4 sm:p-6">
 
         {/* QR Code */}
         <div className="relative shrink-0">
-          {/* Barra de progresso circular ao redor do QR */}
           <div className="relative inline-flex">
             <div className={`p-3 rounded-2xl border-2 transition-colors ${
               isExpiring ? 'border-red-300 bg-red-50/30' : 'border-teal-200 bg-teal-50/20'
@@ -83,7 +82,6 @@ export default function QRCodePanel({ baseUrl }: Props) {
                 </div>
               )}
             </div>
-            {/* Barra de progresso na base */}
             <div className="absolute bottom-0 left-3 right-3 h-1 bg-gray-100 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-1000 ${
@@ -96,7 +94,8 @@ export default function QRCodePanel({ baseUrl }: Props) {
         </div>
 
         {/* Info lateral */}
-        <div className="flex flex-col items-center sm:items-start gap-4 w-full">
+        <div className="flex flex-col items-center sm:items-start gap-4 w-full min-w-0">
+
           {/* Código numérico */}
           <div className="w-full">
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 text-center sm:text-left">
@@ -152,7 +151,7 @@ export default function QRCodePanel({ baseUrl }: Props) {
         </div>
       </div>
 
-      {/* Footer: aviso de expiração */}
+      {/* Footer */}
       <div className={`px-4 sm:px-6 py-2.5 text-[11px] font-medium text-center border-t transition-colors ${
         isExpiring
           ? 'bg-red-50 border-red-100 text-red-600'
