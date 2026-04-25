@@ -37,11 +37,6 @@ const normalizeDate = (dateVal: any): string => {
 };
 
 // Retorna true se o colaborador estava ativo em uma data específica.
-// Regras:
-//   1. admissionDate definida  → só visível a partir do dia de admissão (inclusivo)
-//   2. dismissed=false          → visível (desde que passe a regra 1)
-//   3. dismissed=true, sem data → OCULTO imediatamente
-//   4. dismissed=true, com data → visível apenas nos dias ANTERIORES à demissão (exclusivo)
 export function wasActiveOnDay(
   emp: { dismissed?: boolean; dismissalDate?: string; admissionDate?: string },
   day: number,
@@ -50,19 +45,30 @@ export function wasActiveOnDay(
 ): boolean {
   const target = new Date(year, month, day);
 
-  // Regra 1: não mostrar antes da data de admissão
   if (emp.admissionDate) {
     const [ay, am, ad] = emp.admissionDate.split('-').map(Number);
     const admission = new Date(ay, am - 1, ad);
     if (target < admission) return false;
   }
 
-  // Regras 2/3/4: verifica demissão
   if (!emp.dismissed) return true;
   if (!emp.dismissalDate) return false;
   const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
   const dismissal = new Date(dy, dm - 1, dd);
-  return target < dismissal; // exclusivo: demitido dia 23 → some a partir do dia 23
+  return target < dismissal;
+}
+
+/** Check if an employee has an active vacation on a given date string (YYYY-MM-DD) */
+function isEmployeeOnVacation(empId: string, dateStr: string, vacations: Vacation[]): boolean {
+  return vacations.some(
+    v =>
+      v.employeeId === empId &&
+      v.status === 'taken' &&
+      v.startDate &&
+      v.endDate &&
+      dateStr >= v.startDate &&
+      dateStr <= v.endDate
+  );
 }
 
 interface UseFirestoreDataParams {
@@ -414,16 +420,32 @@ export function useFirestoreData({
   const handleMarkAllPresent = () => {
     const day = selectedDay === 'all' ? new Date().getDate() : (selectedDay as number);
     if (lockedDays[day]) return;
+
+    // Build date string for vacation check
+    const mm = String(currentMonth + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const dateStr = `${currentYear}-${mm}-${dd}`;
+
     const targetDate = new Date(currentYear, currentMonth, day);
     const batch: Record<string, Status> = {};
+
     employees.forEach(emp => {
       if (emp.admissionDate) {
         const [y, m, d] = emp.admissionDate.split('-').map(Number);
         if (targetDate < new Date(y, m - 1, d)) return;
       }
-      const s = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
-      if (s !== 'P') batch[emp.id] = 'P';
+
+      const currentS = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
+
+      // Do NOT overwrite Fe or A — those are managed separately
+      if (currentS === 'Fe' || currentS === 'A') return;
+
+      // Also check if employee is on an active vacation in the vacations list
+      if (isEmployeeOnVacation(emp.id, dateStr, vacations)) return;
+
+      if (currentS !== 'P') batch[emp.id] = 'P';
     });
+
     if (Object.keys(batch).length === 0) return;
     setPendingAttendance(prev => {
       const next = { ...prev };
