@@ -21,17 +21,20 @@ interface Props {
 type Step = 'enter_code' | 'mark_attendance';
 
 export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = 'A' }) => {
-  const [step, setStep]              = useState<Step>('enter_code');
-  const [inputCode, setInputCode]    = useState(prefilledCode);
-  const [error, setError]            = useState('');
-  const [markedIds, setMarkedIds]    = useState<Set<string>>(new Set());
-  const [lastMarked, setLastMarked]  = useState<string | null>(null);
-  const [employees, setEmployees]    = useState<Employee[]>([]);
-  const [loadingEmps, setLoadingEmps]  = useState(true);
-  const [loadingMarked, setLoadingMarked] = useState(true);
-  const [search, setSearch]          = useState('');
-  const { validateCode }             = useAccessCode(false);
-  const autoValidated                = useRef(false);
+  const [step, setStep]                   = useState<Step>('enter_code');
+  const [inputCode, setInputCode]         = useState(prefilledCode);
+  const [error, setError]                 = useState('');
+  // IDs que JA possuem documento salvo hoje (qualquer status)
+  const [savedIds, setSavedIds]           = useState<Set<string>>(new Set());
+  // IDs marcados como P (presentes confirmados)
+  const [presentIds, setPresentIds]       = useState<Set<string>>(new Set());
+  const [lastMarked, setLastMarked]       = useState<string | null>(null);
+  const [employees, setEmployees]         = useState<Employee[]>([]);
+  const [loadingEmps, setLoadingEmps]     = useState(true);
+  const [loadingAttend, setLoadingAttend] = useState(true);
+  const [search, setSearch]               = useState('');
+  const { validateCode }                  = useAccessCode(false);
+  const autoValidated                     = useRef(false);
 
   const today = new Date();
   const day   = today.getDate();
@@ -41,7 +44,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   // Carrega funcionários ativos do turno
   useEffect(() => {
     const q = query(collection(db, 'employees'), where('shift', '==', shift));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, snap => {
       const emps: Employee[] = [];
       snap.forEach(d => {
         const data = d.data();
@@ -53,21 +56,28 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     return () => unsub();
   }, [shift]);
 
-  // Escuta quem já tem presença P hoje — sincronizado em tempo real
+  // Escuta TODOS os documentos de attendance hoje para este turno.
+  // - savedIds: quem JÁ tem qualquer documento (lançado manualmente ou via kiosk)
+  // - presentIds: quem está com status 'P' explicitamente salvo
   useEffect(() => {
     const q = query(
       collection(db, 'attendance'),
-      where('shift',  '==', shift),
-      where('day',    '==', day),
-      where('month',  '==', month),
-      where('year',   '==', year),
-      where('status', '==', 'P')
+      where('shift', '==', shift),
+      where('day',   '==', day),
+      where('month', '==', month),
+      where('year',  '==', year)
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const ids = new Set<string>();
-      snap.forEach(d => ids.add(d.data().empId));
-      setMarkedIds(ids);
-      setLoadingMarked(false);
+    const unsub = onSnapshot(q, snap => {
+      const saved   = new Set<string>();
+      const present = new Set<string>();
+      snap.forEach(d => {
+        const data = d.data();
+        saved.add(data.empId);
+        if (data.status === 'P') present.add(data.empId);
+      });
+      setSavedIds(saved);
+      setPresentIds(present);
+      setLoadingAttend(false);
     });
     return () => unsub();
   }, [shift, day, month, year]);
@@ -93,7 +103,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   };
 
   const handleMarkPresent = async (employee: Employee) => {
-    if (markedIds.has(employee.id)) return;
+    if (savedIds.has(employee.id)) return;
     const docId = `${employee.shift}_${employee.id}_${year}_${month}_${day}`;
     await setDoc(
       doc(db, 'attendance', docId),
@@ -113,13 +123,19 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     setTimeout(() => setLastMarked(null), 2500);
   };
 
-  const isLoading  = loadingEmps || loadingMarked;
-  const remaining  = employees.filter(e => !markedIds.has(e.id));
-  const filtered   = remaining.filter(e =>
+  const isLoading = loadingEmps || loadingAttend;
+
+  // Pendentes = funcionários SEM documento salvo hoje
+  // (quem foi lançado manualmente no Lançar já tem doc = some da lista)
+  const remaining = employees.filter(e => !savedIds.has(e.id));
+  const filtered  = remaining.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase())
   );
-  const markedCount = markedIds.size;
-  const allDone    = !isLoading && employees.length > 0 && remaining.length === 0;
+
+  // Contador de presentes: salvos com P explícito + os sem doc (padrão P do Lançar)
+  // Para o contador mostramos: total - pendentes = confirmados de alguma forma
+  const confirmedCount = employees.length - remaining.length;
+  const allDone = !isLoading && employees.length > 0 && remaining.length === 0;
 
   return (
     <div className="kiosk-container">
@@ -166,12 +182,12 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             <span className="kiosk-shift-badge">Turno {shift}</span>
           </div>
 
-          {/* Contador */}
+          {/* Contadores */}
           {!isLoading && (
             <div className="kiosk-counters">
               <div className="kiosk-counter kiosk-counter-done">
-                <span className="kiosk-counter-num">{markedCount}</span>
-                <span className="kiosk-counter-lbl">Presentes</span>
+                <span className="kiosk-counter-num">{confirmedCount}</span>
+                <span className="kiosk-counter-lbl">Confirmados</span>
               </div>
               <div className="kiosk-counter kiosk-counter-pending">
                 <span className="kiosk-counter-num">{remaining.length}</span>
@@ -184,14 +200,14 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             </div>
           )}
 
-          {/* Toast de confirmação */}
+          {/* Toast */}
           {lastMarked && (
             <div className="kiosk-toast">
               ✅ {lastMarked} — Presença registrada!
             </div>
           )}
 
-          {/* Spinner de carregamento */}
+          {/* Spinner */}
           {isLoading && (
             <div className="kiosk-loading">
               <div className="kiosk-spinner" />
@@ -199,16 +215,16 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             </div>
           )}
 
-          {/* Todos presentes */}
+          {/* Todos confirmados */}
           {allDone && (
             <div className="kiosk-all-done">
               <div className="kiosk-done-emoji">🎉</div>
-              <h3>Todos presentes!</h3>
-              <p>Todas as presenças do Turno {shift} foram registradas.</p>
+              <h3>Todos confirmados!</h3>
+              <p>Todas as presenças do Turno {shift} já foram registradas hoje.</p>
             </div>
           )}
 
-          {/* Buscador + lista */}
+          {/* Buscador + lista de pendentes */}
           {!isLoading && !allDone && (
             <>
               <div className="kiosk-search-wrapper">
@@ -227,7 +243,11 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
               </div>
 
               {filtered.length === 0 ? (
-                <p className="kiosk-no-results">Nenhum funcionário encontrado para “{search}”.</p>
+                <p className="kiosk-no-results">
+                  {search
+                    ? `Nenhum funcionário pendente encontrado para "${search}".`
+                    : 'Nenhum funcionário pendente.'}
+                </p>
               ) : (
                 <ul className="kiosk-employee-list">
                   {filtered.map(emp => (
