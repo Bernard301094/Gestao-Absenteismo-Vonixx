@@ -96,16 +96,19 @@ service cloud.firestore {
              request.resource.data.shift in ['A', 'B', 'C', 'D'];
     }
 
-    // ─── config/passwords: leitura pública (necessária antes do login) ────────
+    // ─── config/passwords ────────────────────────────────────────────────────
     match /config/passwords {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // ─── config/accessCode: kiosk QR — leitura pública, escrita só admin ──────
+    // ─── config/accessCode: kiosk QR ─────────────────────────────────────────
+    // Leitura pública (kiosk não está logado).
+    // Escrita permitida para qualquer autenticado: o código é temporário (30s),
+    // não contém dados sensíveis e qualquer turno logado pode rotacioná-lo.
     match /config/accessCode {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAuthenticated();
     }
 
     match /employees/{employeeId} {
