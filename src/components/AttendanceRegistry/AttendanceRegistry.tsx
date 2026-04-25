@@ -81,6 +81,22 @@ const STATUS_CONFIG: Record<Status, StatusCfg> = {
 
 const STATUS_ORDER: Status[] = ['P', 'F', 'Fe', 'A'];
 
+// Retorna true se o colaborador estava ativo em um dia específico.
+// Demitido no dia X → aparece apenas nos dias ANTERIORES a X (exclusivo).
+function wasActiveOnDay(
+  emp: Employee,
+  day: number,
+  month: number,
+  year: number
+): boolean {
+  if (!emp.dismissed) return true;
+  if (!emp.dismissalDate) return true; // sem data → visível (pendente)
+  const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
+  const dismissal = new Date(dy, dm - 1, dd);
+  const target    = new Date(year, month, day);
+  return target < dismissal; // exclusivo
+}
+
 export default function AttendanceRegistry({
   selectedDay,
   currentDayOfMonth,
@@ -112,16 +128,16 @@ export default function AttendanceRegistry({
   const isLocked  = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
-  // ESTADO PARA EL FILTRO DE STATUS
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
 
+  // Colaboradores ativos no dia exibido, usando a regra temporal correta
   const activeEmployees = employees.filter(emp => {
-    if (emp.dismissed) return false;
+    // Verifica data de demissão (exclusivo: demitido no dia X → some a partir de X)
+    if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
+    // Verifica data de admissão
     if (!emp.admissionDate) return true;
     const [y, m, d] = emp.admissionDate.split('-').map(Number);
-    const admDate    = new Date(y, m - 1, d);
-    const targetDate = new Date(currentYear, currentMonth, dayNum);
-    return targetDate >= admDate;
+    return new Date(currentYear, currentMonth, dayNum) >= new Date(y, m - 1, d);
   });
 
   const pendingCount =
@@ -137,22 +153,17 @@ export default function AttendanceRegistry({
   }));
 
   const handleGeneratePDF = () => {
-    const listF = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'F').map(e => e.name);
-    const listA = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'A').map(e => e.name);
+    const listF  = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'F').map(e => e.name);
+    const listA  = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'A').map(e => e.name);
     const listFe = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'Fe').map(e => e.name);
-    
-    const totalStatus = listF.length + listA.length + listFe.length;
+    const totalStatus    = listF.length + listA.length + listFe.length;
     const totalEmployees = activeEmployees.length || 1;
-    const percentual = `${Math.round((totalStatus / totalEmployees) * 100)}%`;
-
+    const percentual     = `${Math.round((totalStatus / totalEmployees) * 100)}%`;
     generateStatsImage({
-      faltas: listF,
-      afastamentos: listA,
-      ferias: listFe,
-      percentual,
-      title: 'Relatório Diário de Frequência',
+      faltas: listF, afastamentos: listA, ferias: listFe,
+      percentual, title: 'Relatório Diário de Frequência',
       subtitle: `Produção Vonixx • Turno ${currentShift || 'A'}`,
-      shift: currentShift || 'A'
+      shift: currentShift || 'A',
     });
   };
 
@@ -162,9 +173,11 @@ export default function AttendanceRegistry({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // LÓGICA DE FILTRADO COMBINADO (Búsqueda + Filtro + Ignorar Demitidos)
+  // Lista final: usa filteredRegistroEmployees (já filtrado pelo hook),
+  // aplica a regra temporal e o filtro local de status
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
-    if (emp.dismissed) return false; 
+    // Mesma regra temporal: respeita dismissalDate
+    if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
     if (localStatusFilter === 'all') return true;
     const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
     return currentStatus === localStatusFilter;
@@ -246,7 +259,6 @@ export default function AttendanceRegistry({
         )}
       </div>
 
-      {/* BARRA DE BÚSQUEDA Y BOTONES DE FILTRO */}
       {!isHoliday && selectedDay !== 'all' && (
         <div className="flex flex-col lg:flex-row gap-3">
           <div className="relative flex-1 max-w-md">
@@ -259,7 +271,6 @@ export default function AttendanceRegistry({
               className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-shadow text-gray-700 shadow-sm"
             />
           </div>
-          
           <div className="flex flex-wrap items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm shrink-0">
             <button onClick={() => setLocalStatusFilter('all')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>Todos</button>
             <button onClick={() => setLocalStatusFilter('P')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'P' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:bg-gray-100'}`}>Presentes</button>
@@ -298,18 +309,15 @@ export default function AttendanceRegistry({
               let isNotYetHired = false;
               if (emp.admissionDate) {
                 const [y, m, d] = emp.admissionDate.split('-').map(Number);
-                const admDate    = new Date(y, m - 1, d);
-                const targetDate = new Date(currentYear, currentMonth, dayNum);
-                isNotYetHired = targetDate < admDate;
+                isNotYetHired = new Date(currentYear, currentMonth, dayNum) < new Date(y, m - 1, d);
               }
 
               const cfg = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
-              const isRowDisabled = isNotYetHired;
 
               return (
                 <div key={emp.id} className={`group relative transition-colors ${isModified ? 'bg-blue-50/30' : 'hover:bg-gray-50/50'}`}>
                   {isModified && (
-                     <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
                   )}
 
                   <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3.5 items-center">
@@ -332,7 +340,7 @@ export default function AttendanceRegistry({
                     </div>
 
                     <div className="flex justify-center">
-                      <div className={`flex items-center bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <div className={`flex items-center bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isNotYetHired ? 'opacity-50 pointer-events-none' : ''}`}>
                         {STATUS_ORDER.map(key => {
                           const s = STATUS_CONFIG[key];
                           const Icon = s.icon;
@@ -340,7 +348,7 @@ export default function AttendanceRegistry({
                           return (
                             <button
                               key={key}
-                              onClick={() => !isRowDisabled && setStatus(emp.id, dayNum, key)}
+                              onClick={() => !isNotYetHired && setStatus(emp.id, dayNum, key)}
                               title={s.label}
                               className={['flex items-center justify-center w-12 h-8 rounded-lg transition-all duration-200', isActive ? s.activeClass : s.inactiveClass].join(' ')}
                             >
@@ -357,9 +365,9 @@ export default function AttendanceRegistry({
                         type="text"
                         placeholder="Adicionar observação..."
                         value={currentNote}
-                        readOnly={isRowDisabled}
+                        readOnly={isNotYetHired}
                         onChange={e => setNote(emp.id, dayNum, e.target.value)}
-                        className={`w-full pl-9 pr-3 py-2 text-xs font-medium bg-transparent border border-transparent hover:border-gray-200 hover:bg-white focus:bg-white focus:border-gray-300 focus:ring-0 focus:outline-none rounded-xl transition-all placeholder:text-gray-400 text-gray-700 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}
+                        className={`w-full pl-9 pr-3 py-2 text-xs font-medium bg-transparent border border-transparent hover:border-gray-200 hover:bg-white focus:bg-white focus:border-gray-300 focus:ring-0 focus:outline-none rounded-xl transition-all placeholder:text-gray-400 text-gray-700 ${isNotYetHired ? 'opacity-50 pointer-events-none' : ''}`}
                       />
                     </div>
 
@@ -391,7 +399,7 @@ export default function AttendanceRegistry({
                       </div>
                     </div>
 
-                    <div className={`grid grid-cols-4 bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isRowDisabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <div className={`grid grid-cols-4 bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isNotYetHired ? 'opacity-50 pointer-events-none' : ''}`}>
                       {STATUS_ORDER.map(key => {
                         const s = STATUS_CONFIG[key];
                         const Icon = s.icon;
@@ -399,7 +407,7 @@ export default function AttendanceRegistry({
                         return (
                           <button
                             key={key}
-                            onClick={() => !isRowDisabled && setStatus(emp.id, dayNum, key)}
+                            onClick={() => !isNotYetHired && setStatus(emp.id, dayNum, key)}
                             className={['flex flex-col items-center gap-1 py-2 rounded-lg transition-all', isActive ? s.activeClass : s.inactiveClass].join(' ')}
                           >
                             <Icon className="w-4 h-4" />
@@ -415,7 +423,7 @@ export default function AttendanceRegistry({
                         type="text"
                         placeholder="Observação..."
                         value={currentNote}
-                        readOnly={isRowDisabled}
+                        readOnly={isNotYetHired}
                         onChange={e => setNote(emp.id, dayNum, e.target.value)}
                         className="w-full pl-9 pr-3 py-2.5 text-sm font-medium bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-gray-400 focus:outline-none transition-all text-gray-700"
                       />
