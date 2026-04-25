@@ -1,22 +1,61 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useAccessCode } from '../../hooks/useAccessCode';
 
 interface QRCodePanelProps {
   baseUrl: string;
 }
 
+// Carrega qrcodejs via CDN dinamicamente (sem npm)
+function loadQRLib(): Promise<any> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).QRCode) { resolve((window as any).QRCode); return; }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    script.onload  = () => resolve((window as any).QRCode);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
 export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
   const { currentCode, timeLeft } = useAccessCode(true);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const qrInstanceRef = useRef<any>(null);
 
   const separator = baseUrl.includes('?') ? '&' : '?';
   const urlWithCode = `${baseUrl}${separator}code=${currentCode}`;
 
-  // QR via Google Charts API — sem dependência npm
-  const qrSrc = useMemo(() => {
-    if (!currentCode) return '';
-    const encoded = encodeURIComponent(urlWithCode);
-    return `https://chart.googleapis.com/chart?cht=qr&chs=200x200&chld=M|2&chl=${encoded}`;
-  }, [urlWithCode, currentCode]);
+  const renderQR = useCallback(async (url: string) => {
+    if (!containerRef.current || !url) return;
+    try {
+      const QRCode = await loadQRLib();
+      if (qrInstanceRef.current) {
+        // Atualiza o QR existente
+        qrInstanceRef.current.clear();
+        qrInstanceRef.current.makeCode(url);
+      } else {
+        // Cria o QR pela primeira vez
+        containerRef.current.innerHTML = '';
+        qrInstanceRef.current = new QRCode(containerRef.current, {
+          text: url,
+          width: 200,
+          height: 200,
+          colorDark: '#0f3638',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      }
+    } catch (e) {
+      // Fallback: mostra a URL como texto se a lib não carregar
+      if (containerRef.current) {
+        containerRef.current.innerHTML = `<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:8px;font-size:10px;color:#64748b;text-align:center;padding:8px;word-break:break-all">${url}</div>`;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentCode) renderQR(urlWithCode);
+  }, [urlWithCode, currentCode, renderQR]);
 
   const circumference = 2 * Math.PI * 20;
   const offset = circumference - ((timeLeft / 30) * circumference);
@@ -49,35 +88,33 @@ export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
         </div>
       </div>
 
-      {/* QR Image */}
+      {/* QR Canvas Container */}
       <div style={{
         position: 'relative',
         borderRadius: '10px',
-        overflow: 'hidden',
         border: '2px solid #e2e8f0',
-        lineHeight: 0,
         width: 200,
         height: 200,
-        background: '#f7f6f2',
+        background: '#ffffff',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
       }}>
-        {qrSrc ? (
-          <img
-            src={qrSrc}
-            alt="QR Code de presença"
-            width={200}
-            height={200}
-            style={{ display: 'block' }}
-          />
-        ) : (
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Carregando...</span>
-        )}
-        {timeLeft <= 5 && timeLeft > 0 && (
+        <div ref={containerRef} style={{ width: 200, height: 200 }} />
+        {!currentCode && (
           <div style={{
             position: 'absolute', inset: 0,
-            background: 'rgba(247,246,242,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#f8fafc', fontSize: '0.75rem', color: '#94a3b8',
+          }}>
+            Gerando...
+          </div>
+        )}
+        {timeLeft <= 5 && timeLeft > 0 && currentCode && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'rgba(255,255,255,0.92)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontSize: '0.85rem', color: '#e97316',
           }}>
@@ -117,11 +154,8 @@ export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
             transform="rotate(-90 26 26)"
             style={{ transition: 'stroke-dashoffset 0.5s linear, stroke 0.3s' }}
           />
-          <text
-            x="26" y="31" textAnchor="middle"
-            fontSize="13" fontWeight="700"
-            fill={isExpiring ? '#e97316' : '#0f3638'}
-          >
+          <text x="26" y="31" textAnchor="middle" fontSize="13" fontWeight="700"
+            fill={isExpiring ? '#e97316' : '#0f3638'}>
             {timeLeft}s
           </text>
         </svg>
