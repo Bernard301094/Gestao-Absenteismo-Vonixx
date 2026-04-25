@@ -99,11 +99,12 @@ export default function Dashboard({
       selectedDay,
       currentMonth,
       currentYear,
+      undefined, // signatureData
+      notes,     // passar notes para detecção de atestado
     );
   };
 
   // ─── 1. ALERTAS DE ATESTADO ───
-  // employees já chega filtrado por wasActiveOnDay — não precisa checar emp.dismissed
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
 
@@ -148,9 +149,6 @@ export default function Dashboard({
   }, [employees, notes, selectedDay]);
 
   // ─── 2. BANNER DE DEMITIDOS (foto histórica) ───
-  // Usa rawEmployees (todos) para calcular quem está OCULTO no dia selecionado.
-  // No dia 21 o THIAGO não aparece aqui porque ainda era ativo nesse dia.
-  // No dia 23+ ele aparece como oculto.
   const dismissedAlerts = useMemo(() => {
     const refDay = selectedDay === 'all'
       ? new Date().getDate()
@@ -231,7 +229,6 @@ export default function Dashboard({
       )}
 
       {/* ── KPI Cards ── */}
-      {/* employees já filtrado por wasActiveOnDay — sem !emp.dismissed redundante */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
