@@ -1,5 +1,4 @@
-import React, { useEffect, useRef } from 'react';
-import QRCode from 'qrcode';
+import React, { useMemo } from 'react';
 import { useAccessCode } from '../../hooks/useAccessCode';
 
 interface QRCodePanelProps {
@@ -8,20 +7,16 @@ interface QRCodePanelProps {
 
 export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
   const { currentCode, timeLeft } = useAccessCode(true);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Se o baseUrl já tem ?shift=X, acrescenta &code=, senão usa ?code=
   const separator = baseUrl.includes('?') ? '&' : '?';
   const urlWithCode = `${baseUrl}${separator}code=${currentCode}`;
 
-  useEffect(() => {
-    if (!canvasRef.current || !currentCode) return;
-    QRCode.toCanvas(canvasRef.current, urlWithCode, {
-      width: 200,
-      margin: 2,
-      color: { dark: '#0f3638', light: '#f7f6f2' },
-    });
-  }, [currentCode, urlWithCode]);
+  // QR via Google Charts API — sem dependência npm
+  const qrSrc = useMemo(() => {
+    if (!currentCode) return '';
+    const encoded = encodeURIComponent(urlWithCode);
+    return `https://chart.googleapis.com/chart?cht=qr&chs=200x200&chld=M|2&chl=${encoded}`;
+  }, [urlWithCode, currentCode]);
 
   const circumference = 2 * Math.PI * 20;
   const offset = circumference - ((timeLeft / 30) * circumference);
@@ -54,19 +49,35 @@ export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
         </div>
       </div>
 
-      {/* Canvas QR */}
+      {/* QR Image */}
       <div style={{
         position: 'relative',
         borderRadius: '10px',
         overflow: 'hidden',
         border: '2px solid #e2e8f0',
         lineHeight: 0,
+        width: 200,
+        height: 200,
+        background: '#f7f6f2',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}>
-        <canvas ref={canvasRef} />
+        {qrSrc ? (
+          <img
+            src={qrSrc}
+            alt="QR Code de presença"
+            width={200}
+            height={200}
+            style={{ display: 'block' }}
+          />
+        ) : (
+          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Carregando...</span>
+        )}
         {timeLeft <= 5 && timeLeft > 0 && (
           <div style={{
             position: 'absolute', inset: 0,
-            background: 'rgba(247,246,242,0.9)',
+            background: 'rgba(247,246,242,0.92)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontSize: '0.85rem', color: '#e97316',
           }}>
