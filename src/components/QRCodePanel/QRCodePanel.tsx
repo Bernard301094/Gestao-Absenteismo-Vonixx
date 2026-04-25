@@ -1,170 +1,168 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { useAccessCode } from '../../hooks/useAccessCode';
+import { RefreshCw, Copy, Check, Smartphone } from 'lucide-react';
 
-interface QRCodePanelProps {
+interface Props {
   baseUrl: string;
 }
 
-// Carrega qrcodejs via CDN dinamicamente (sem npm)
-function loadQRLib(): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).QRCode) { resolve((window as any).QRCode); return; }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-    script.onload  = () => resolve((window as any).QRCode);
-    script.onerror = reject;
-    document.head.appendChild(script);
-  });
-}
-
-export const QRCodePanel: React.FC<QRCodePanelProps> = ({ baseUrl }) => {
+export default function QRCodePanel({ baseUrl }: Props) {
   const { currentCode, timeLeft } = useAccessCode(true);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const qrInstanceRef = useRef<any>(null);
+  const canvasRef  = useRef<HTMLCanvasElement>(null);
+  const [copied, setCopied]   = useState(false);
+  const [qrReady, setQrReady] = useState(false);
 
-  const separator = baseUrl.includes('?') ? '&' : '?';
-  const urlWithCode = `${baseUrl}${separator}code=${currentCode}`;
+  const kioskUrl = `${baseUrl}&code=${currentCode}`;
 
-  const renderQR = useCallback(async (url: string) => {
-    if (!containerRef.current || !url) return;
-    try {
-      const QRCode = await loadQRLib();
-      if (qrInstanceRef.current) {
-        // Atualiza o QR existente
-        qrInstanceRef.current.clear();
-        qrInstanceRef.current.makeCode(url);
-      } else {
-        // Cria o QR pela primeira vez
-        containerRef.current.innerHTML = '';
-        qrInstanceRef.current = new QRCode(containerRef.current, {
-          text: url,
-          width: 200,
-          height: 200,
-          colorDark: '#0f3638',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M,
-        });
-      }
-    } catch (e) {
-      // Fallback: mostra a URL como texto se a lib não carregar
-      if (containerRef.current) {
-        containerRef.current.innerHTML = `<div style="width:200px;height:200px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:8px;font-size:10px;color:#64748b;text-align:center;padding:8px;word-break:break-all">${url}</div>`;
-      }
-    }
-  }, []);
-
+  // Gera o QR Code no canvas sempre que o código ou URL mudar
   useEffect(() => {
-    if (currentCode) renderQR(urlWithCode);
-  }, [urlWithCode, currentCode, renderQR]);
+    if (!currentCode || !canvasRef.current) return;
+    setQrReady(false);
+    QRCode.toCanvas(canvasRef.current, kioskUrl, {
+      width: 220,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    }).then(() => setQrReady(true)).catch(() => {});
+  }, [kioskUrl, currentCode]);
 
-  const circumference = 2 * Math.PI * 20;
-  const offset = circumference - ((timeLeft / 30) * circumference);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(kioskUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  const progress = (timeLeft / 30) * 100;
   const isExpiring = timeLeft <= 8;
 
   return (
-    <div style={{
-      background: '#ffffff',
-      border: '1px solid #e2e8f0',
-      borderRadius: '16px',
-      padding: '1.25rem',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '0.875rem',
-      width: '260px',
-      boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
-    }}>
-
+    <div className="w-full bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', width: '100%' }}>
-        <span style={{ fontSize: '1.4rem' }}>📱</span>
-        <div>
-          <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
-            Acesso por QR Code
-          </p>
-          <p style={{ margin: 0, fontSize: '0.68rem', color: '#64748b' }}>
-            Escaneie para marcar presença
-          </p>
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-100 bg-teal-50/60">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-teal-600 rounded-xl flex items-center justify-center shrink-0">
+            <Smartphone className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-black text-gray-900 leading-none">QR de Presença</p>
+            <p className="text-[11px] text-teal-700 font-medium mt-0.5">Escaneie para registrar presença</p>
+          </div>
+        </div>
+        {/* Timer */}
+        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-colors ${
+          isExpiring ? 'bg-red-50 text-red-600' : 'bg-teal-50 text-teal-700'
+        }`}>
+          <RefreshCw className={`w-3 h-3 ${isExpiring ? 'animate-spin' : ''}`} />
+          {timeLeft}s
         </div>
       </div>
 
-      {/* QR Canvas Container */}
-      <div style={{
-        position: 'relative',
-        borderRadius: '10px',
-        border: '2px solid #e2e8f0',
-        width: 200,
-        height: 200,
-        background: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        <div ref={containerRef} style={{ width: 200, height: 200 }} />
-        {!currentCode && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: '#f8fafc', fontSize: '0.75rem', color: '#94a3b8',
-          }}>
-            Gerando...
+      {/* Body: QR + código lado a lado em desktop, empilhados em mobile */}
+      <div className="flex flex-col sm:flex-row items-center gap-6 p-4 sm:p-6">
+
+        {/* QR Code */}
+        <div className="relative shrink-0">
+          {/* Barra de progresso circular ao redor do QR */}
+          <div className="relative inline-flex">
+            <div className={`p-3 rounded-2xl border-2 transition-colors ${
+              isExpiring ? 'border-red-300 bg-red-50/30' : 'border-teal-200 bg-teal-50/20'
+            }`}>
+              <canvas
+                ref={canvasRef}
+                className={`block rounded-xl transition-opacity duration-300 ${
+                  qrReady ? 'opacity-100' : 'opacity-30'
+                }`}
+                style={{ width: 180, height: 180 }}
+              />
+              {!qrReady && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-8 h-8 border-3 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" />
+                </div>
+              )}
+            </div>
+            {/* Barra de progresso na base */}
+            <div className="absolute bottom-0 left-3 right-3 h-1 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-1000 ${
+                  isExpiring ? 'bg-red-500' : 'bg-teal-500'
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
-        )}
-        {timeLeft <= 5 && timeLeft > 0 && currentCode && (
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'rgba(255,255,255,0.92)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, fontSize: '0.85rem', color: '#e97316',
-          }}>
-            Atualizando...
+        </div>
+
+        {/* Info lateral */}
+        <div className="flex flex-col items-center sm:items-start gap-4 w-full">
+          {/* Código numérico */}
+          <div className="w-full">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 text-center sm:text-left">
+              Código manual
+            </p>
+            <div className={`flex items-center justify-center sm:justify-start gap-1 transition-colors ${
+              isExpiring ? 'text-red-600' : 'text-gray-900'
+            }`}>
+              {currentCode.split('').map((digit, i) => (
+                <span
+                  key={i}
+                  className={`w-9 h-11 flex items-center justify-center text-2xl font-black rounded-xl border-2 transition-colors tabular-nums ${
+                    isExpiring
+                      ? 'border-red-200 bg-red-50'
+                      : 'border-gray-200 bg-gray-50'
+                  }`}
+                >
+                  {digit}
+                </span>
+              ))}
+            </div>
           </div>
-        )}
+
+          {/* Instruções */}
+          <div className="bg-gray-50 rounded-xl p-3 w-full border border-gray-100">
+            <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest mb-2">Como usar</p>
+            <ol className="space-y-1">
+              {[
+                'Escaneie o QR com a câmera do celular',
+                'Ou acesse o link e digite o código',
+                'Selecione seu nome e confirme presença',
+              ].map((step, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
+                  <span className="w-4 h-4 bg-teal-600 text-white rounded-full flex items-center justify-center text-[9px] font-black shrink-0 mt-px">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Botão copiar link */}
+          <button
+            onClick={handleCopy}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-xs font-bold text-gray-600 transition-all active:scale-95"
+          >
+            {copied
+              ? <><Check className="w-3.5 h-3.5 text-green-600" /><span className="text-green-600">Link copiado!</span></>
+              : <><Copy className="w-3.5 h-3.5" />Copiar link do kiosk</>
+            }
+          </button>
+        </div>
       </div>
 
-      {/* Código numérico */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-        <span style={{
-          fontSize: '0.6rem', textTransform: 'uppercase',
-          letterSpacing: '0.1em', color: '#94a3b8', fontWeight: 600,
-        }}>
-          Código atual
-        </span>
-        <span style={{
-          fontSize: '2rem', fontWeight: 800,
-          letterSpacing: '0.3em', color: '#01696f',
-          fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-        }}>
-          {currentCode || '------'}
-        </span>
-      </div>
-
-      {/* Timer circular */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <svg width="44" height="44" viewBox="0 0 52 52">
-          <circle cx="26" cy="26" r="20" fill="none" stroke="#e2e8f0" strokeWidth="3" />
-          <circle
-            cx="26" cy="26" r="20" fill="none"
-            stroke={isExpiring ? '#e97316' : '#01696f'}
-            strokeWidth="3"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            transform="rotate(-90 26 26)"
-            style={{ transition: 'stroke-dashoffset 0.5s linear, stroke 0.3s' }}
-          />
-          <text x="26" y="31" textAnchor="middle" fontSize="13" fontWeight="700"
-            fill={isExpiring ? '#e97316' : '#0f3638'}>
-            {timeLeft}s
-          </text>
-        </svg>
-        <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-          próximo código em {timeLeft}s
-        </span>
+      {/* Footer: aviso de expiração */}
+      <div className={`px-4 sm:px-6 py-2.5 text-[11px] font-medium text-center border-t transition-colors ${
+        isExpiring
+          ? 'bg-red-50 border-red-100 text-red-600'
+          : 'bg-gray-50 border-gray-100 text-gray-400'
+      }`}>
+        {isExpiring
+          ? `⚠️ Código expira em ${timeLeft}s — um novo será gerado automaticamente`
+          : `Código válido por ${timeLeft}s · renova automaticamente a cada 30 segundos`
+        }
       </div>
     </div>
   );
-};
-
-export default QRCodePanel;
+}
