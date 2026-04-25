@@ -37,17 +37,11 @@ const normalizeDate = (dateVal: any): string => {
         const n0 = parseInt(p0);
         const n1 = parseInt(p1);
 
-        // Se p0 > 12 → p0 é o dia com certeza
-        // Se p1 > 12 → p1 é o dia, p0 é o mês
-        // Se ambos <= 12 → assume DD/MM (padrão Brasil)
         if (n0 > 12) {
-          // DD/MM/YYYY
           return `${year}-${p1}-${p0}`;
         } else if (n1 > 12) {
-          // MM/DD/YYYY
           return `${year}-${p0}-${p1}`;
         } else {
-          // Ambos <= 12 → assume DD/MM/YYYY (padrão Brasil)
           return `${year}-${p1}-${p0}`;
         }
       }
@@ -95,24 +89,38 @@ export function useFirestoreData({
   const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
-  // ─── LÓGICA DE VISIBILIDADE TEMPORAL (MÁGICA DA DATA DE DEMISSÃO) ───
+  // ─── LÓGICA DE VISIBILIDADE TEMPORAL (DATA DE DEMISSÃO) ───────────────────
+  // Dia de referência para o modo 'all':
+  //   - mês atual  → usa o dia de hoje (estado atual da equipe)
+  //   - mês passado → usa o último dia do mês (snapshot final do período)
+  const allModeRefDay = useMemo(() => {
+    const now = new Date();
+    const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
+    return isCurrentMonth
+      ? now.getDate()
+      : new Date(currentYear, currentMonth + 1, 0).getDate();
+  }, [currentMonth, currentYear]);
+
   const employees = useMemo(() => {
     return rawEmployees.filter(emp => {
       if (!emp.dismissed) return true;
       if (!emp.dismissalDate) return false;
-      
+
       const [y, m, d] = emp.dismissalDate.split('-').map(Number);
       const dismissalDateObj = new Date(y, m - 1, d);
 
       if (selectedDay === 'all') {
-        const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
-        return dismissalDateObj >= firstDayOfMonth;
+        // 'Todos os dias' → mostra estado atual: só aparece se ainda não
+        // foi demitido até o dia de referência (hoje ou último dia do mês)
+        const refDate = new Date(currentYear, currentMonth, allModeRefDay);
+        return refDate <= dismissalDateObj;
       } else {
+        // Dia específico → aparece se ainda estava ativo naquele dia
         const targetDate = new Date(currentYear, currentMonth, selectedDay as number);
         return targetDate <= dismissalDateObj;
       }
     });
-  }, [rawEmployees, selectedDay, currentMonth, currentYear]);
+  }, [rawEmployees, selectedDay, currentMonth, currentYear, allModeRefDay]);
 
   useEffect(() => {
     if (!isSupervision) return;
@@ -343,9 +351,6 @@ export function useFirestoreData({
     e.preventDefault();
     if (!editingEmployee?.name.trim()) return;
     try {
-      // CORREÇÃO: usa updateDoc com merge implícito para NÃO sobrescrever
-      // campos de férias, histórico e outros dados não presentes no formulário.
-      // dismissalDate só é atualizado se dismissed=true; caso contrário preserva o valor anterior.
       const updatePayload: Record<string, any> = {
         name: editingEmployee.name.trim().toUpperCase(),
         admissionDate: editingEmployee.admissionDate,
@@ -356,8 +361,6 @@ export function useFirestoreData({
         dismissed: editingEmployee.dismissed || false,
       };
 
-      // Só grava dismissalDate se o funcionário estiver sendo marcado como demitido
-      // Se está sendo reativado (dismissed=false), mantém o campo anterior sem tocá-lo
       if (editingEmployee.dismissed) {
         updatePayload.dismissalDate = editingEmployee.dismissalDate || null;
         updatePayload.dataDemissao  = editingEmployee.dismissalDate || null;

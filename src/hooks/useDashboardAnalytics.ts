@@ -29,7 +29,7 @@ function wasActiveOnDay(
   const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
   const dismissal = new Date(dy, dm - 1, dd);
   const target    = new Date(year, month, day);
-  return target <= dismissal; // inclusive: aparece até o dia da demissão
+  return target <= dismissal;
 }
 
 export function useDashboardAnalytics({
@@ -42,16 +42,23 @@ export function useDashboardAnalytics({
   const sourceEmployees  = isSupervision ? globalEmployees : employees;
   const sourceAttendance = isSupervision ? globalAttendance : attendance;
 
-  // ─── Colaboradores ativos HOJE (para contadores gerais e férias) ────────────
-  const activeEmployees = useMemo(() => {
+  // ─── Dia de referência para contadores no modo 'all' ─────────────────────
+  // Mês atual  → dia de hoje (estado real da equipe agora)
+  // Mês passado → último dia do mês (snapshot final do período)
+  const allModeRefDay = useMemo(() => {
     const now = new Date();
-    const today = now.getDate();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
-    const refDay = isCurrentMonth ? today : new Date(currentYear, currentMonth + 1, 0).getDate();
+    return isCurrentMonth
+      ? now.getDate()
+      : new Date(currentYear, currentMonth + 1, 0).getDate();
+  }, [currentMonth, currentYear]);
+
+  // ─── Colaboradores ativos no dia de referência (para contadores gerais e férias) ──
+  const activeEmployees = useMemo(() => {
     return sourceEmployees.filter(emp =>
-      wasActiveOnDay(emp, refDay, currentMonth, currentYear)
+      wasActiveOnDay(emp, allModeRefDay, currentMonth, currentYear)
     );
-  }, [sourceEmployees, currentMonth, currentYear]);
+  }, [sourceEmployees, allModeRefDay, currentMonth, currentYear]);
 
   // ─── Colaboradores ativos num dia específico (para cálculos por dia) ────────
   const getActiveEmployeesForDay = useCallback((day: number) =>
@@ -63,12 +70,6 @@ export function useDashboardAnalytics({
     () => showDismissed ? sourceEmployees : activeEmployees,
     [sourceEmployees, activeEmployees, showDismissed]
   );
-
-  const todayLimitDay = useMemo(() => {
-    const now = new Date();
-    return (now.getMonth() === currentMonth && now.getFullYear() === currentYear)
-      ? now.getDate() : new Date(currentYear, currentMonth + 1, 0).getDate();
-  }, [currentMonth, currentYear]);
 
   // ─── Total de faltas do mês: cada dia usa seus próprios ativos ──────────────
   const totalFaltasMes = useMemo(() => {
@@ -109,17 +110,17 @@ export function useDashboardAnalytics({
   // ─── Gráfico diário: cada dia com seus ativos ──────────────────────────────
   const dailyData = useMemo<DayData[]>(() => {
     if (selectedDay === 'all') {
-      return VALID_WORK_DAYS.filter(day => day <= todayLimitDay).map(day => {
+      return VALID_WORK_DAYS.filter(day => day <= allModeRefDay).map(day => {
         const empsDoDia = getActiveEmployeesForDay(day);
         const faltas = empsDoDia.filter(emp => sourceAttendance[emp.id]?.[day] === 'F').length;
         return { day: day.toString(), faltas };
       });
     }
-    if ((selectedDay as number) > todayLimitDay) return [];
+    if ((selectedDay as number) > allModeRefDay) return [];
     const empsDoDia = getActiveEmployeesForDay(selectedDay as number);
     const faltas = empsDoDia.filter(emp => sourceAttendance[emp.id]?.[selectedDay] === 'F').length;
     return [{ day: selectedDay.toString(), faltas }];
-  }, [sourceAttendance, getActiveEmployeesForDay, VALID_WORK_DAYS, selectedDay, todayLimitDay]);
+  }, [sourceAttendance, getActiveEmployeesForDay, VALID_WORK_DAYS, selectedDay, allModeRefDay]);
 
   // ─── Padrão por dia da semana ──────────────────────────────────────────────
   const weekdayData = useMemo<WeekdayData[]>(() => {
@@ -186,15 +187,16 @@ export function useDashboardAnalytics({
   }, [searchTerm, statusFilter, sortOrder, employeeData]);
 
   // ─── Registro de presença: usa ativos do dia selecionado ───────────────────
+  // No modo 'all' usa o dia de referência (hoje ou último dia do mês)
   const filteredRegistroEmployees = useMemo(() => {
     const day = selectedDay === 'all'
-      ? (VALID_WORK_DAYS[VALID_WORK_DAYS.length - 1] ?? new Date().getDate())
+      ? allModeRefDay
       : (selectedDay as number);
     let result = getActiveEmployeesForDay(day);
     if (registroSearchTerm)
       result = result.filter(emp => emp.name.toLowerCase().includes(registroSearchTerm.toLowerCase()));
     return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [getActiveEmployeesForDay, selectedDay, VALID_WORK_DAYS, registroSearchTerm]);
+  }, [getActiveEmployeesForDay, selectedDay, allModeRefDay, registroSearchTerm]);
 
   const topEmployees = useMemo(() => [...employeeData].slice(0, 10).reverse(), [employeeData]);
   const topEmployee  = useMemo(() => (employeeData.length > 0 ? employeeData[0] : null), [employeeData]);
