@@ -18,7 +18,8 @@ import DailyTable from '../Charts/DailyTable';
 import AIInsightsPanel from './AIInsightsPanel';
 import QRCodePanel from '../QRCodePanel/QRCodePanel';
 
-const BASE_KIOSK_URL = 'https://gestao-absenteismo-vonixx.web.app/presenca';
+// Usa o domínio atual automaticamente — funciona no Vercel, localhost e qualquer outro host
+const BASE_KIOSK_URL = `${window.location.origin}/presenca`;
 
 interface DashboardProps {
   handleExportExcel: () => void;
