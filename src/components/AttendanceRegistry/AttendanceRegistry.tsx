@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
 import { generateStatsImage } from '../../utils/generateStatsImage';
+import { wasActiveOnDay } from '../../hooks/useFirestoreData';
 import type { Employee, Status, AttendanceRecord, NotesRecord, LockedDaysRecord } from '../../types';
 
 interface AttendanceRegistryProps {
@@ -81,22 +82,6 @@ const STATUS_CONFIG: Record<Status, StatusCfg> = {
 
 const STATUS_ORDER: Status[] = ['P', 'F', 'Fe', 'A'];
 
-// Retorna true se o colaborador estava ativo em um dia específico.
-// Demitido no dia X → aparece apenas nos dias ANTERIORES a X (exclusivo).
-function wasActiveOnDay(
-  emp: Employee,
-  day: number,
-  month: number,
-  year: number
-): boolean {
-  if (!emp.dismissed) return true;
-  if (!emp.dismissalDate) return true; // sem data → visível (pendente)
-  const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
-  const dismissal = new Date(dy, dm - 1, dd);
-  const target    = new Date(year, month, day);
-  return target < dismissal; // exclusivo
-}
-
 export default function AttendanceRegistry({
   selectedDay,
   currentDayOfMonth,
@@ -130,11 +115,9 @@ export default function AttendanceRegistry({
 
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
 
-  // Colaboradores ativos no dia exibido, usando a regra temporal correta
+  // Colaboradores ativos no dia exibido — usa wasActiveOnDay (fonte única de verdade)
   const activeEmployees = employees.filter(emp => {
-    // Verifica data de demissão (exclusivo: demitido no dia X → some a partir de X)
     if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
-    // Verifica data de admissão
     if (!emp.admissionDate) return true;
     const [y, m, d] = emp.admissionDate.split('-').map(Number);
     return new Date(currentYear, currentMonth, dayNum) >= new Date(y, m - 1, d);
@@ -173,11 +156,9 @@ export default function AttendanceRegistry({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Lista final: usa filteredRegistroEmployees (já filtrado pelo hook),
-  // aplica a regra temporal e o filtro local de status
+  // filteredRegistroEmployees já vem filtrado pelo hook (wasActiveOnDay)
+  // Aplica apenas o filtro local de status
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
-    // Mesma regra temporal: respeita dismissalDate
-    if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
     if (localStatusFilter === 'all') return true;
     const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
     return currentStatus === localStatusFilter;

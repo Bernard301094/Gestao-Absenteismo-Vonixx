@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { AlertCircle, XCircle } from 'lucide-react';
 import { isWorkDay } from '../utils/dateUtils';
 import { computeVacationStats } from './useVacationStats';
+import { wasActiveOnDay } from './useFirestoreData';
 import type {
   Employee, GlobalEmployee, AttendanceRecord, NotesRecord,
   EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert,
@@ -17,21 +18,6 @@ interface UseDashboardAnalyticsParams {
   registroSearchTerm: string; isValidDay: (day: number) => boolean; showDismissed: boolean;
 }
 
-// Retorna true se o colaborador estava ativo em um dia específico.
-// Demitido no dia X → aparece apenas nos dias ANTERIORES a X (exclusivo).
-function wasActiveOnDay(
-  emp: Employee,
-  day: number,
-  month: number,
-  year: number
-): boolean {
-  if (!emp.dismissed || !emp.dismissalDate) return true;
-  const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
-  const dismissal = new Date(dy, dm - 1, dd);
-  const target    = new Date(year, month, day);
-  return target < dismissal; // exclusivo: demitido no dia 23 → some a partir do dia 23
-}
-
 export function useDashboardAnalytics({
   attendance, employees, globalEmployees, globalAttendance, globalCompletions,
   selectedDay, currentMonth, currentYear, VALID_WORK_DAYS, isSupervision,
@@ -42,7 +28,6 @@ export function useDashboardAnalytics({
   const sourceEmployees  = isSupervision ? globalEmployees : employees;
   const sourceAttendance = isSupervision ? globalAttendance : attendance;
 
-  // ─── Dia de referência para o modo 'all' ──────────────────────────────
   const allModeRefDay = useMemo(() => {
     const now = new Date();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;

@@ -36,6 +36,25 @@ const normalizeDate = (dateVal: any): string => {
   return '';
 };
 
+// Retorna true se o colaborador estava ativo em uma data específica.
+// Regras:
+//   dismissed=false                → sempre visível
+//   dismissed=true, sem data       → OCULTO (demitido sem data = ocultar imediatamente)
+//   dismissed=true, com data       → visível apenas nos dias ANTERIORES à demissão (exclusivo)
+export function wasActiveOnDay(
+  emp: { dismissed?: boolean; dismissalDate?: string },
+  day: number,
+  month: number,
+  year: number
+): boolean {
+  if (!emp.dismissed) return true;
+  if (!emp.dismissalDate) return false; // sem data → oculto imediatamente
+  const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
+  const dismissal = new Date(dy, dm - 1, dd);
+  const target    = new Date(year, month, day);
+  return target < dismissal; // exclusivo: demitido dia 23 → some a partir do dia 23
+}
+
 interface UseFirestoreDataParams {
   user: any; currentShift: ShiftType | null; isSupervision: boolean; isAdminUser: boolean;
   supervisionShiftFilter: 'A' | 'B' | 'C' | 'D'; currentMonth: number; currentYear: number;
@@ -72,9 +91,6 @@ export function useFirestoreData({
   const [showEditEmployeeModal, setShowEditEmployeeModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
-  // ─── Dia de referência para o modo 'all' ────────────────────────────────
-  // Mês atual  → hoje (estado real da equipe agora)
-  // Mês passado → último dia do mês (snapshot final do período)
   const allModeRefDay = useMemo(() => {
     const now = new Date();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
@@ -83,30 +99,9 @@ export function useFirestoreData({
       : new Date(currentYear, currentMonth + 1, 0).getDate();
   }, [currentMonth, currentYear]);
 
-  // ─── LÓGICA DE VISIBILIDADE TEMPORAL ──────────────────────────────────
-  // Regras:
-  //   dismissed=false                → sempre visível
-  //   dismissed=true, sem data       → visível (data pendente)
-  //   dismissed=true, com data       → visível APENAS nos dias ANTERIORES à demissão
-  //   Dia da demissão = exclusivo: demitido no dia 23 → aparece até dia 22
   const employees = useMemo(() => {
-    return rawEmployees.filter(emp => {
-      if (!emp.dismissed) return true;
-      if (!emp.dismissalDate) return true; // sem data → visível (pendente)
-
-      const [y, m, d] = emp.dismissalDate.split('-').map(Number);
-      const dismissalDateObj = new Date(y, m - 1, d);
-
-      if (selectedDay === 'all') {
-        // 'Todos os dias' → estado atual do time no dia de referência
-        const refDate = new Date(currentYear, currentMonth, allModeRefDay);
-        return refDate < dismissalDateObj; // exclusivo: demitido no dia 23 → some a partir do dia 23
-      } else {
-        // Dia específico: aparece apenas nos dias ANTES da demissão
-        const targetDate = new Date(currentYear, currentMonth, selectedDay as number);
-        return targetDate < dismissalDateObj; // exclusivo
-      }
-    });
+    const refDay = selectedDay === 'all' ? allModeRefDay : (selectedDay as number);
+    return rawEmployees.filter(emp => wasActiveOnDay(emp, refDay, currentMonth, currentYear));
   }, [rawEmployees, selectedDay, currentMonth, currentYear, allModeRefDay]);
 
   useEffect(() => {
@@ -308,7 +303,7 @@ export function useFirestoreData({
     const shiftToAssign = isSupervision ? supervisionShiftFilter : currentShift;
     if (!shiftToAssign || shiftToAssign === 'ALL') return;
 
-    const shiftEmployees = employees.filter(emp => emp.shift === shiftToAssign);
+    const shiftEmployees = rawEmployees.filter(emp => emp.shift === shiftToAssign);
     const maxId = shiftEmployees.reduce((max, emp) => {
       const numericPart = parseInt(emp.id.replace(/^[A-D]/, ''));
       return isNaN(numericPart) ? max : Math.max(max, numericPart);
@@ -334,6 +329,7 @@ export function useFirestoreData({
     e.preventDefault();
     if (!editingEmployee?.name.trim()) return;
     try {
+      const today = new Date().toISOString().split('T')[0];
       const updatePayload: Record<string, any> = {
         name: editingEmployee.name.trim().toUpperCase(),
         admissionDate: editingEmployee.admissionDate,
@@ -344,10 +340,13 @@ export function useFirestoreData({
         dismissed: editingEmployee.dismissed || false,
       };
 
-      if (editingEmployee.dismissed && editingEmployee.dismissalDate) {
-        updatePayload.dismissalDate = editingEmployee.dismissalDate;
-        updatePayload.dataDemissao  = editingEmployee.dismissalDate;
-      } else if (!editingEmployee.dismissed) {
+      if (editingEmployee.dismissed) {
+        // Garante que a data de demissão SEMPRE seja salva.
+        // Se o usuário não preencheu, usa hoje como fallback.
+        const dismissalDate = editingEmployee.dismissalDate || today;
+        updatePayload.dismissalDate = dismissalDate;
+        updatePayload.dataDemissao  = dismissalDate;
+      } else {
         updatePayload.dismissalDate = deleteField();
         updatePayload.dataDemissao  = deleteField();
       }
@@ -355,6 +354,7 @@ export function useFirestoreData({
       await updateDoc(doc(db, 'employees', editingEmployee.id), updatePayload);
       setShowEditEmployeeModal(false);
       setEditingEmployee(null);
+      toast.success('Funcionário atualizado com sucesso!');
     } catch (error) { handleFirestoreError(error, OperationType.UPDATE, 'employees'); }
   };
 
@@ -436,7 +436,7 @@ export function useFirestoreData({
       let hasChanges = false;
 
       Object.entries(pendingAttendance).forEach(([empId, days]) => {
-        const emp = employees.find(e => e.id === empId);
+        const emp = rawEmployees.find(e => e.id === empId);
         Object.entries(days).forEach(([dayStr, status]) => {
           const day = parseInt(dayStr);
           if (emp?.admissionDate) {
@@ -453,7 +453,7 @@ export function useFirestoreData({
       });
 
       Object.entries(pendingNotes).forEach(([empId, days]) => {
-        const emp = employees.find(e => e.id === empId);
+        const emp = rawEmployees.find(e => e.id === empId);
         Object.entries(days).forEach(([dayStr, note]) => {
           const day = parseInt(dayStr);
           if (pendingAttendance[empId]?.[day]) return;
@@ -510,7 +510,7 @@ export function useFirestoreData({
   };
 
   return {
-    employees, globalEmployees, globalAttendance, globalCompletions, attendance, notes, vacations, dataLoading,
+    employees, rawEmployees, globalEmployees, globalAttendance, globalCompletions, attendance, notes, vacations, dataLoading,
     pendingAttendance, pendingNotes, isSaving, lockedDays, setLockedDays, selectedEmployeeDetail, setSelectedEmployeeDetail,
     newEmployeeName, setNewEmployeeName, newEmployeeRole, setNewEmployeeRole, newEmployeeAdmissionDate, setNewEmployeeAdmissionDate,
     showAddEmployeeModal, setShowAddEmployeeModal, showEditEmployeeModal, setShowEditEmployeeModal, editingEmployee, setEditingEmployee,
