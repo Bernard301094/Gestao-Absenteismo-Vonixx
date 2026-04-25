@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Download, FileWarning, UserMinus } from 'lucide-react';
 import { exportToPDF } from '../../utils/exportPDF';
+import { wasActiveOnDay } from '../../hooks/useFirestoreData';
 import type {
   Employee, AttendanceRecord, NotesRecord,
   EmployeeWithStats, DayData, WeekdayData, LeaderboardEntry, Alert,
@@ -25,6 +26,7 @@ interface DashboardProps {
   currentYear: number;
   totalFaltasMes: number;
   employees: Employee[];
+  rawEmployees: Employee[];
   attendance: AttendanceRecord;
   getStatusForDay: (empId: string, day: number) => string;
   taxaAbsenteismo: string;
@@ -61,6 +63,7 @@ export default function Dashboard({
   currentYear,
   totalFaltasMes,
   employees,
+  rawEmployees,
   attendance,
   getStatusForDay,
   taxaAbsenteismo,
@@ -99,26 +102,23 @@ export default function Dashboard({
     );
   };
 
-  // ─── 1. LÓGICA DE ATESTADOS (Ignorando demitidos) ───
+  // ─── 1. ALERTAS DE ATESTADO ───
+  // employees já chega filtrado por wasActiveOnDay — não precisa checar emp.dismissed
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
 
     if (selectedDay === 'all') {
       const todosAtestados: { day: number, name: string, note: string }[] = [];
       employees.forEach(emp => {
-        if (emp.dismissed) return; // Ignora demitidos no alerta de atestado
         const empNotes = notes[emp.id];
         if (!empNotes) return;
-        
         Object.entries(empNotes).forEach(([d, note]) => {
           if (note.toLowerCase().includes('atestado')) {
             todosAtestados.push({ day: Number(d), name: emp.name, note });
           }
         });
       });
-
       todosAtestados.sort((a, b) => b.day - a.day);
-
       todosAtestados.slice(0, 4).forEach(at => {
         newAlerts.push({
           type: 'warning',
@@ -126,21 +126,18 @@ export default function Dashboard({
           message: `Atestado (Dia ${at.day}): ${at.name} - ${at.note}`
         });
       });
-
       if (todosAtestados.length > 4) {
-         newAlerts.push({
-           type: 'warning',
-           icon: FileWarning,
-           message: `Existem mais ${todosAtestados.length - 4} atestados registrados neste mês.`
-         });
+        newAlerts.push({
+          type: 'warning',
+          icon: FileWarning,
+          message: `Existem mais ${todosAtestados.length - 4} atestados registrados neste mês.`
+        });
       }
     } else {
       const withAtestado = employees.filter(emp => {
-        if (emp.dismissed) return false;
         const note = notes[emp.id]?.[selectedDay as number] || '';
         return note.toLowerCase().includes('atestado');
       });
-
       newAlerts = withAtestado.map(emp => ({
         type: 'warning',
         icon: FileWarning,
@@ -150,27 +147,36 @@ export default function Dashboard({
     return newAlerts as Alert[];
   }, [employees, notes, selectedDay]);
 
-  // ─── 2. LÓGICA DE FUNCIONÁRIOS DEMITIDOS ───
+  // ─── 2. BANNER DE DEMITIDOS (foto histórica) ───
+  // Usa rawEmployees (todos) para calcular quem está OCULTO no dia selecionado.
+  // No dia 21 o THIAGO não aparece aqui porque ainda era ativo nesse dia.
+  // No dia 23+ ele aparece como oculto.
   const dismissedAlerts = useMemo(() => {
-    const dismissed = employees.filter(emp => emp.dismissed);
-    if (dismissed.length === 0) return [];
+    const refDay = selectedDay === 'all'
+      ? new Date().getDate()
+      : (selectedDay as number);
 
-    const names = dismissed.slice(0, 3).map(e => e.name).join(', ');
-    const extra = dismissed.length > 3 ? ` e mais ${dismissed.length - 3}` : '';
+    const hiddenNow = rawEmployees.filter(emp =>
+      emp.dismissed && !wasActiveOnDay(emp, refDay, currentMonth, currentYear)
+    );
+
+    if (hiddenNow.length === 0) return [];
+
+    const names = hiddenNow.slice(0, 3).map(e => e.name).join(', ');
+    const extra = hiddenNow.length > 3 ? ` e mais ${hiddenNow.length - 3}` : '';
 
     return [{
       type: 'info',
       icon: UserMinus,
-      message: `Observação: ${dismissed.length} funcionário(s) constam como demitidos (${names}${extra}). Eles estão ocultos e não afetam os indicadores ativos.`
+      message: `Observação: ${hiddenNow.length} funcionário(s) oculto(s) nesta data (${names}${extra}). Demitido(s) a partir do dia ${String(refDay).padStart(2,'0')}/${String(currentMonth + 1).padStart(2,'0')} ou antes.`
     }];
-  }, [employees]);
+  }, [rawEmployees, selectedDay, currentMonth, currentYear]);
 
-  // ─── JUNÇÃO DE TODOS OS ALERTAS ───
   const combinedAlerts = [...(isSupervision ? alerts : []), ...atestadoAlerts, ...dismissedAlerts];
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
+
       {/* ── Header ── */}
       <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
         <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
@@ -196,15 +202,12 @@ export default function Dashboard({
         />
       )}
 
-      {/* ── Alerts & Warnings Rendering ── */}
+      {/* ── Alertas ── */}
       {combinedAlerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
           {combinedAlerts.map((alert, idx) => {
-            
-            // Configuração visual dinâmica baseada no tipo de alerta
             let bgClass = 'bg-gray-50 border-gray-200 text-gray-700';
             let iconBgClass = 'bg-gray-200 text-gray-600';
-
             if (alert.type === 'critical') {
               bgClass = 'bg-red-50 border-red-100 text-red-800';
               iconBgClass = 'bg-red-100 text-red-600';
@@ -215,7 +218,6 @@ export default function Dashboard({
               bgClass = 'bg-slate-50 border-slate-200 text-slate-700';
               iconBgClass = 'bg-slate-200 text-slate-600';
             }
-
             return (
               <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${bgClass}`}>
                 <div className={`p-2 rounded-xl ${iconBgClass}`}>
@@ -229,6 +231,7 @@ export default function Dashboard({
       )}
 
       {/* ── KPI Cards ── */}
+      {/* employees já filtrado por wasActiveOnDay — sem !emp.dismissed redundante */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
@@ -237,7 +240,7 @@ export default function Dashboard({
           <div className="text-3xl sm:text-4xl font-extrabold text-red-600">
             {selectedDay === 'all'
               ? totalFaltasMes
-              : employees.filter(emp => !emp.dismissed && getStatusForDay(emp.id, selectedDay as number) === 'F').length}
+              : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'F').length}
           </div>
         </div>
 
@@ -248,7 +251,7 @@ export default function Dashboard({
           <div className="text-3xl sm:text-4xl font-extrabold text-orange-600">
             {selectedDay === 'all'
               ? `${taxaAbsenteismo}%`
-              : employees.filter(emp => !emp.dismissed && getStatusForDay(emp.id, selectedDay as number) === 'P').length}
+              : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'P').length}
           </div>
         </div>
 
@@ -264,7 +267,7 @@ export default function Dashboard({
           <div className="text-sm sm:text-lg font-bold text-green-700 leading-tight uppercase">
             {selectedDay === 'all'
               ? (topEmployee?.name ?? '-')
-              : employees.filter(emp => !emp.dismissed && ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length}
+              : employees.filter(emp => ['Fe', 'A'].includes(attendance[emp.id]?.[selectedDay as number] || 'P')).length}
           </div>
           {selectedDay === 'all' && topEmployee && (
             <div className="text-xs sm:text-sm font-bold text-green-600">({topEmployee.faltas} Faltas no mês)</div>
@@ -272,7 +275,6 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* ── Gráficos e Tabelas ── */}
       {selectedDay === 'all' && (
         <div>
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Evolução do Mês</p>
@@ -302,7 +304,7 @@ export default function Dashboard({
 
       {selectedDay !== 'all' && (
         <DistributionChart
-          employees={employees.filter(emp => !emp.dismissed)}
+          employees={employees}
           getStatusForDay={getStatusForDay}
           selectedDay={selectedDay as number}
         />
