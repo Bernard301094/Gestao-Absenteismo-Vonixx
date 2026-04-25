@@ -6,20 +6,19 @@ import { useDashboardAnalytics } from './hooks/useDashboardAnalytics';
 import { getDaysInMonth, isWorkDay, getWeekdayName, getInitials } from './utils/dateUtils';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 
-// ─── Static Components ────────────────────────────────────────────────────────
+// ─── Static Components ────────────────────────────────────────────────────────────────────────────────
+const BIOMETRIC_KEY = 'vonixx_biometric_enabled';
 import Login from './components/Login/Login';
 import Header from './components/Header/Header';
 import LockScreen from './components/LockScreen/LockScreen';
 
-const BIOMETRIC_KEY = 'vonixx_biometric_enabled';
-
-// ─── Code-Split Views ─────────────────────────────────────────────────────────
+// ─── Code-Split Views ──────────────────────────────────────────────────────────────────────────────
 const AbsenteeismDashboard = lazy(() => import('./components/AbsenteeismDashboard/AbsenteeismDashboard'));
 const AttendanceRegistry   = lazy(() => import('./components/AttendanceRegistry/AttendanceRegistry'));
 const VacationManagement   = lazy(() => import('./components/VacationManagement/VacationManagement'));
 const VacationAnalytics    = lazy(() => import('./components/VacationAnalytics/VacationAnalytics'));
 
-// ─── Code-Split Modals ────────────────────────────────────────────────────────
+// ─── Code-Split Modals ─────────────────────────────────────────────────────────────────────────────
 const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/AddEmployeeModal'));
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
 const EmployeeDetailModal = lazy(() => import('./components/EmployeeDetailModal/EmployeeDetailModal'));
@@ -39,15 +38,13 @@ const APP_START_DAY   = 3;
 export default function App() {
   const auth = useAuth();
 
-  // ─── Biometric Lock ─────────────────────────────────────────────────────────
-  // 1. INICIALIZACIÓN SÍNCRONA: Lee el bloqueo en el milisegundo cero sin esperar a Firebase
+  // ─── Biometric Lock ────────────────────────────────────────────────────────────────────────────────
   const [isLocked, setIsLocked] = useState(() => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
     const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
     return isMobile && enabled;
   });
 
-  // 2. Bloqueo al regresar de segundo plano
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && auth.user) {
@@ -61,7 +58,6 @@ export default function App() {
   }, [auth.user]);
 
   const handleUnlock = useCallback(() => setIsLocked(false), []);
-  // ────────────────────────────────────────────────────────────────────────────
 
   const [activeTab, setActiveTab]   = useState<'dashboard' | 'registro' | 'ferias' | 'ferias_dashboard'>('dashboard');
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth());
@@ -186,28 +182,17 @@ export default function App() {
     testConnection();
   }, []);
 
-  // ----------------------------------------------------------------------
-  // 🔥 JERARQUÍA DE RENDERIZADO: LA HUELLA TIENE PRIORIDAD ABSOLUTA 🔥
-  // ----------------------------------------------------------------------
+  if (isLocked) return <LockScreen onUnlock={handleUnlock} />;
 
-  // PRIORIDAD 1: Si la pantalla está bloqueada, mostrar Inmediatamente el LockScreen
-  if (isLocked) {
-    return <LockScreen onUnlock={handleUnlock} />;
-  }
-
-  // PRIORIDAD 2: Solo si NO está bloqueada, mostramos el Loading de Firebase
   if (auth.authLoading) {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4" />
-        <p className="text-blue-500/50 text-xs font-bold uppercase tracking-widest animate-pulse">
-          Validando acesso...
-        </p>
+        <p className="text-blue-500/50 text-xs font-bold uppercase tracking-widest animate-pulse">Validando acesso...</p>
       </div>
     );
   }
 
-  // PRIORIDAD 3: Si Firebase cargó y no hay usuario, mostrar el Login
   if (!auth.user) {
     return (
       <ErrorBoundary>
@@ -223,7 +208,6 @@ export default function App() {
     );
   }
 
-  // PRIORIDAD 4: Mostrar el App Principal
   return (
     <div className="min-h-screen bg-slate-50 text-gray-900 font-sans pb-16 overflow-x-hidden">
       <ErrorBoundary>
@@ -269,6 +253,7 @@ export default function App() {
                   currentYear={currentYear}
                   totalFaltasMes={analytics.totalFaltasMes}
                   employees={data.employees}
+                  rawEmployees={data.rawEmployees}
                   attendance={data.attendance}
                   getStatusForDay={data.getStatusForDay}
                   taxaAbsenteismo={analytics.taxaAbsenteismo}
