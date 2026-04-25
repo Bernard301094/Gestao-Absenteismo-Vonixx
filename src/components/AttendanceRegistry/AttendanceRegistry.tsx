@@ -5,7 +5,7 @@ import {
   MessageSquare, Activity, CalendarDays, ShieldCheck, FileText
 } from 'lucide-react';
 import { MONTH_NAMES } from '../../utils/constants';
-import { generateStatsImage } from '../../utils/generateStatsImage';
+import { exportToPDF } from '../../utils/exportPDF';
 import { wasActiveOnDay } from '../../hooks/useFirestoreData';
 import type { Employee, Status, AttendanceRecord, NotesRecord, LockedDaysRecord } from '../../types';
 
@@ -115,7 +115,6 @@ export default function AttendanceRegistry({
 
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
 
-  // Colaboradores ativos no dia exibido — usa wasActiveOnDay (fonte única de verdade)
   const activeEmployees = employees.filter(emp => {
     if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
     if (!emp.admissionDate) return true;
@@ -135,19 +134,35 @@ export default function AttendanceRegistry({
         : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
   }));
 
+  // Monta o attendance consolidado (pending tem prioridade) para o PDF
+  const mergedAttendance: AttendanceRecord = {};
+  activeEmployees.forEach(emp => {
+    mergedAttendance[emp.id] = { ...attendance[emp.id] };
+    if (pendingAttendance[emp.id]) {
+      Object.assign(mergedAttendance[emp.id], pendingAttendance[emp.id]);
+    }
+  });
+
+  // Monta notes consolidado (pending tem prioridade)
+  const mergedNotes: NotesRecord = {};
+  activeEmployees.forEach(emp => {
+    mergedNotes[emp.id] = { ...notes[emp.id] };
+    if (pendingNotes[emp.id]) {
+      Object.assign(mergedNotes[emp.id], pendingNotes[emp.id]);
+    }
+  });
+
   const handleGeneratePDF = () => {
-    const listF  = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'F').map(e => e.name);
-    const listA  = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'A').map(e => e.name);
-    const listFe = activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === 'Fe').map(e => e.name);
-    const totalStatus    = listF.length + listA.length + listFe.length;
-    const totalEmployees = activeEmployees.length || 1;
-    const percentual     = `${Math.round((totalStatus / totalEmployees) * 100)}%`;
-    generateStatsImage({
-      faltas: listF, afastamentos: listA, ferias: listFe,
-      percentual, title: 'Relatório Diário de Frequência',
-      subtitle: `Produção Vonixx • Turno ${currentShift || 'A'}`,
-      shift: currentShift || 'A',
-    });
+    exportToPDF(
+      `Turno ${currentShift || 'A'}`,
+      activeEmployees,
+      mergedAttendance,
+      selectedDay,
+      currentMonth,
+      currentYear,
+      undefined,    // signatureData
+      mergedNotes,  // notas com atestados
+    );
   };
 
   const getInitials = (name: string) => {
@@ -156,8 +171,6 @@ export default function AttendanceRegistry({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // filteredRegistroEmployees já vem filtrado pelo hook (wasActiveOnDay)
-  // Aplica apenas o filtro local de status
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
     if (localStatusFilter === 'all') return true;
     const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
