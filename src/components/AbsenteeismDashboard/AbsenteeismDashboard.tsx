@@ -18,7 +18,6 @@ import DailyTable from '../Charts/DailyTable';
 import AIInsightsPanel from './AIInsightsPanel';
 import QRCodePanel from '../QRCodePanel/QRCodePanel';
 
-// Usa o domínio atual automaticamente — funciona no Vercel, localhost e qualquer outro host
 const BASE_KIOSK_URL = `${window.location.origin}/presenca`;
 
 interface DashboardProps {
@@ -112,10 +111,8 @@ export default function Dashboard({
     );
   };
 
-  // ─── 1. ALERTAS DE ATESTADO ───
   const atestadoAlerts = useMemo(() => {
     let newAlerts: any[] = [];
-
     if (selectedDay === 'all') {
       const todosAtestados: { day: number, name: string, note: string }[] = [];
       employees.forEach(emp => {
@@ -156,21 +153,16 @@ export default function Dashboard({
     return newAlerts as Alert[];
   }, [employees, notes, selectedDay]);
 
-  // ─── 2. BANNER DE DEMITIDOS ───
   const dismissedAlerts = useMemo(() => {
     const refDay = selectedDay === 'all'
       ? new Date().getDate()
       : (selectedDay as number);
-
     const hiddenNow = rawEmployees.filter(emp =>
       emp.dismissed && !wasActiveOnDay(emp, refDay, currentMonth, currentYear)
     );
-
     if (hiddenNow.length === 0) return [];
-
     const names = hiddenNow.slice(0, 3).map(e => e.name).join(', ');
     const extra = hiddenNow.length > 3 ? ` e mais ${hiddenNow.length - 3}` : '';
-
     return [{
       type: 'info',
       icon: UserMinus,
@@ -183,35 +175,38 @@ export default function Dashboard({
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      {/* ── Header ── */}
-      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
-        <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
-        <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
+      {/* ── Header + QR (mesma coluna, empilhados) ── */}
+      <div className="flex flex-col gap-3">
 
-          {/* ── QR Code Button (não-supervisão) ── */}
-          {!isSupervision && (
-            <button
-              onClick={() => setShowQR(v => !v)}
-              className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
-            >
-              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              QR Presença
-              {showQR ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        {/* Linha do título + botões */}
+        <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
+          <h2 className="text-lg sm:text-xl font-bold text-gray-900 uppercase tracking-tight">Visão Geral do Mês</h2>
+          <div className="flex flex-wrap items-center gap-2 self-start xs:self-auto">
+
+            {!isSupervision && (
+              <button
+                onClick={() => setShowQR(v => !v)}
+                className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95"
+              >
+                <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                QR Presença
+                {showQR ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            <button onClick={handleExportPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95">
+              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Exportar PDF
             </button>
-          )}
-
-          <button onClick={handleExportPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-2 sm:px-4 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-sm hover:shadow-md active:scale-95">
-            <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Exportar PDF
-          </button>
+          </div>
         </div>
+
+        {/* Painel QR — ocupa toda a largura, logo abaixo dos botões */}
+        {showQR && !isSupervision && (
+          <div className="animate-in slide-in-from-top-2 duration-300">
+            <QRCodePanel baseUrl={kioskUrl} />
+          </div>
+        )}
       </div>
-
-      {/* ── QR Code Panel (expansível) ── */}
-      {showQR && !isSupervision && (
-        <div className="flex justify-end animate-in slide-in-from-top-2 duration-300">
-          <QRCodePanel baseUrl={kioskUrl} />
-        </div>
-      )}
 
       {selectedDay === 'all' && (
         <AIInsightsPanel
@@ -228,22 +223,14 @@ export default function Dashboard({
         />
       )}
 
-      {/* ── Alertas ── */}
       {combinedAlerts.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in slide-in-from-top duration-500">
           {combinedAlerts.map((alert, idx) => {
             let bgClass = 'bg-gray-50 border-gray-200 text-gray-700';
             let iconBgClass = 'bg-gray-200 text-gray-600';
-            if (alert.type === 'critical') {
-              bgClass = 'bg-red-50 border-red-100 text-red-800';
-              iconBgClass = 'bg-red-100 text-red-600';
-            } else if (alert.type === 'warning') {
-              bgClass = 'bg-amber-50 border-amber-200 text-amber-900';
-              iconBgClass = 'bg-amber-100 text-amber-700';
-            } else if (alert.type === 'info') {
-              bgClass = 'bg-slate-50 border-slate-200 text-slate-700';
-              iconBgClass = 'bg-slate-200 text-slate-600';
-            }
+            if (alert.type === 'critical') { bgClass = 'bg-red-50 border-red-100 text-red-800'; iconBgClass = 'bg-red-100 text-red-600'; }
+            else if (alert.type === 'warning') { bgClass = 'bg-amber-50 border-amber-200 text-amber-900'; iconBgClass = 'bg-amber-100 text-amber-700'; }
+            else if (alert.type === 'info') { bgClass = 'bg-slate-50 border-slate-200 text-slate-700'; iconBgClass = 'bg-slate-200 text-slate-600'; }
             return (
               <div key={idx} className={`flex items-center gap-4 p-4 rounded-2xl border shadow-sm ${bgClass}`}>
                 <div className={`p-2 rounded-xl ${iconBgClass}`}>
@@ -256,7 +243,7 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* ── KPI Cards ── */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
@@ -268,10 +255,9 @@ export default function Dashboard({
               : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'F').length}
           </div>
         </div>
-
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
-            {selectedDay === 'all' ? 'Absenteísmo' : 'Presentes'}
+            {selectedDay === 'all' ? 'Absentesmo' : 'Presentes'}
           </h3>
           <div className="text-3xl sm:text-4xl font-extrabold text-orange-600">
             {selectedDay === 'all'
@@ -279,12 +265,10 @@ export default function Dashboard({
               : employees.filter(emp => getStatusForDay(emp.id, selectedDay as number) === 'P').length}
           </div>
         </div>
-
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">Funcionários</h3>
           <div className="text-3xl sm:text-4xl font-extrabold text-blue-600">{activeEmployeesCount}</div>
         </div>
-
         <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-gray-100 shadow-sm flex flex-col items-start gap-1 sm:gap-2 hover:shadow-md transition-shadow">
           <h3 className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wider leading-snug">
             {selectedDay === 'all' ? 'Mais Faltas' : 'Afast./Férias'}
