@@ -40,7 +40,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const month = today.getMonth();
   const year  = today.getFullYear();
 
-  // 1. Carrega funcionários ativos do turno
+  // 1. Funcionários ativos do turno
   useEffect(() => {
     const q = query(collection(db, 'employees'), where('shift', '==', shift));
     return onSnapshot(q, snap => {
@@ -54,7 +54,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     });
   }, [shift]);
 
-  // 2. Escuta documentos de attendance salvos hoje para este turno
+  // 2. Documentos de attendance salvos hoje
   useEffect(() => {
     const q = query(
       collection(db, 'attendance'),
@@ -71,8 +71,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     });
   }, [shift, day, month, year]);
 
-  // 3. Verifica se o supervisor já fechou o dia (completion existe)
-  //    Se sim, todos sem documento são P implícito — não precisam confirmar
+  // 3. Verifica se o turno já fechou o dia no Lançar
   useEffect(() => {
     const q = query(
       collection(db, 'completions'),
@@ -101,14 +100,14 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     setError('');
     const valid = await validateCode(code);
     if (!valid) {
-      setError('Código inválido ou expirado. Solicite um novo QR ao supervisor.');
+      setError('Código inválido ou expirado. Solicite um novo código ao responsável do turno.');
       return;
     }
     setStep('mark_attendance');
   };
 
   const handleMarkPresent = async (employee: Employee) => {
-    if (isAlreadyHandled(employee.id)) return;
+    if (savedIds.has(employee.id) || dayLocked) return;
     const docId = `${employee.shift}_${employee.id}_${year}_${month}_${day}`;
     await setDoc(
       doc(db, 'attendance', docId),
@@ -128,27 +127,20 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     setTimeout(() => setLastMarked(null), 2500);
   };
 
-  const isLoading = loadingEmps || loadingAttend || loadingLock;
-
-  // Um funcionário está "tratado" se:
-  // a) Tem documento salvo hoje (qualquer status), OU
-  // b) O dia foi fechado pelo supervisor (dayLocked=true) → P implícito
-  const isAlreadyHandled = (empId: string) => savedIds.has(empId) || dayLocked;
-
-  // Pendentes = sem documento E dia não fechado pelo supervisor
-  const remaining = employees.filter(e => !savedIds.has(e.id) && !dayLocked);
-  const filtered  = remaining.filter(e =>
+  const isLoading  = loadingEmps || loadingAttend || loadingLock;
+  const remaining  = employees.filter(e => !savedIds.has(e.id) && !dayLocked);
+  const filtered   = remaining.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase())
   );
-
-  // Confirmados = quem tem doc salvo + quem é P implícito (se dayLocked)
-  const confirmedCount = dayLocked ? employees.length : employees.filter(e => savedIds.has(e.id)).length;
+  const confirmedCount = dayLocked
+    ? employees.length
+    : employees.filter(e => savedIds.has(e.id)).length;
   const allDone = !isLoading && (dayLocked || (employees.length > 0 && remaining.length === 0));
 
   return (
     <div className="kiosk-container">
 
-      {/* ── TELA 1: Inserir código ── */}
+      {/* TELA 1: Inserir código */}
       {step === 'enter_code' && (
         <div className="kiosk-card">
           <div className="kiosk-logo">🏭</div>
@@ -181,17 +173,17 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
         </div>
       )}
 
-      {/* ── TELA 2: Marcar presença ── */}
+      {/* TELA 2: Marcar presença */}
       {step === 'mark_attendance' && (
         <div className="kiosk-card kiosk-card-wide">
 
           <div className="kiosk-attendance-header">
             <h2 className="kiosk-title">Marcar Presença</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span className="kiosk-shift-badge">Turno {shift}</span>
               {dayLocked && (
                 <span className="kiosk-shift-badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
-                  ✓ Fechado pelo supervisor
+                  ✓ Lançamento fechado
                 </span>
               )}
             </div>
@@ -234,11 +226,11 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
           {allDone && (
             <div className="kiosk-all-done">
               <div className="kiosk-done-emoji">🎉</div>
-              <h3>Todos confirmados!</h3>
+              <h3>Tudo certo!</h3>
               <p>
                 {dayLocked
-                  ? `O supervisor já fechou o dia. Todas as presenças do Turno ${shift} estão registradas.`
-                  : `Todas as presenças do Turno ${shift} foram registradas via kiosk.`
+                  ? `O Turno ${shift} já registrou o lançamento de hoje. Todas as presenças estão confirmadas.`
+                  : `Todas as presenças do Turno ${shift} foram marcadas com sucesso.`
                 }
               </p>
             </div>
