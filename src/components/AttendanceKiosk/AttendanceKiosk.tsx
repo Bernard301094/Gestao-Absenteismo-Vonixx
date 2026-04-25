@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAccessCode } from '../../hooks/useAccessCode';
 import { db } from '../../firebase';
 import {
@@ -28,6 +28,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const [lastMarked, setLastMarked] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const { validateCode } = useAccessCode(false);
+  const autoValidated = useRef(false);
 
   useEffect(() => {
     const q = query(collection(db, 'employees'), where('shift', '==', shift));
@@ -42,17 +43,21 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     return () => unsub();
   }, [shift]);
 
+  // Valida automaticamente o código da URL — aguarda 300ms para TOTP estar pronto
   useEffect(() => {
-    if (prefilledCode && prefilledCode.length === 6) {
-      handleSubmitCode(prefilledCode);
-    }
+    if (autoValidated.current) return;
+    if (!prefilledCode || prefilledCode.length !== 6) return;
+    autoValidated.current = true;
+    const timer = setTimeout(() => handleSubmitCode(prefilledCode), 300);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmitCode = async (code: string) => {
     setError('');
     const valid = await validateCode(code);
     if (!valid) {
-      setError('Código inválido ou expirado. Peça ao supervisor para mostrar o painel.');
+      setError('Código inválido ou expirado. Solicite um novo QR ao supervisor.');
       return;
     }
     setStep('mark_attendance');
@@ -60,9 +65,10 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
 
   const handleMarkPresent = async (employee: Employee) => {
     if (markedIds.has(employee.id)) return;
-    const day = new Date().getDate();
-    const month = new Date().getMonth();
-    const year = new Date().getFullYear();
+    const now = new Date();
+    const day = now.getDate();
+    const month = now.getMonth();
+    const year = now.getFullYear();
 
     await setDoc(
       doc(db, 'attendance', `${employee.shift}_${employee.id}_${year}_${month}_${day}`),
