@@ -28,6 +28,7 @@ export function useDashboardAnalytics({
   const sourceEmployees  = isSupervision ? globalEmployees : employees;
   const sourceAttendance = isSupervision ? globalAttendance : attendance;
 
+  // Dia de referência para o modo "all" (exibe todos os dias do mês)
   const allModeRefDay = useMemo(() => {
     const now = new Date();
     const isCurrentMonth = now.getMonth() === currentMonth && now.getFullYear() === currentYear;
@@ -36,15 +37,19 @@ export function useDashboardAnalytics({
       : new Date(currentYear, currentMonth + 1, 0).getDate();
   }, [currentMonth, currentYear]);
 
-  const activeEmployees = useMemo(() => {
-    return sourceEmployees.filter(emp =>
-      wasActiveOnDay(emp, allModeRefDay, currentMonth, currentYear)
-    );
-  }, [sourceEmployees, allModeRefDay, currentMonth, currentYear]);
+  // Dia efetivo para filtrar funcionários ativos:
+  // - modo "all" → usa o último dia válido do mês (comportamento atual do mês)
+  // - dia específico → usa EXATAMENTE esse dia (foto histórica)
+  const effectiveDay = selectedDay === 'all' ? allModeRefDay : (selectedDay as number);
 
   const getActiveEmployeesForDay = useCallback((day: number) =>
     sourceEmployees.filter(emp => wasActiveOnDay(emp, day, currentMonth, currentYear)),
   [sourceEmployees, currentMonth, currentYear]);
+
+  // activeEmployees agora reflete o dia selecionado — foto histórica correta
+  const activeEmployees = useMemo(() =>
+    getActiveEmployeesForDay(effectiveDay),
+  [getActiveEmployeesForDay, effectiveDay]);
 
   const displayEmployees = useMemo(
     () => showDismissed ? sourceEmployees : activeEmployees,
