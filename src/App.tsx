@@ -6,22 +6,22 @@ import { useDashboardAnalytics } from './hooks/useDashboardAnalytics';
 import { getDaysInMonth, isWorkDay, getWeekdayName, getInitials } from './utils/dateUtils';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 
-// ─── Static Components ────────────────────────────────────────────────────────────────────────────────
+// ─── Static Components ──────────────────────────────────────────────────────────────────────────────────────
 const BIOMETRIC_KEY = 'vonixx_biometric_enabled';
 import Login from './components/Login/Login';
 import Header from './components/Header/Header';
 import LockScreen from './components/LockScreen/LockScreen';
 
-// ─── Code-Split Views ──────────────────────────────────────────────────────────────────────────────
+// ─── Code-Split Views ────────────────────────────────────────────────────────────────────────────────────
 const AbsenteeismDashboard = lazy(() => import('./components/AbsenteeismDashboard/AbsenteeismDashboard'));
 const AttendanceRegistry   = lazy(() => import('./components/AttendanceRegistry/AttendanceRegistry'));
 const VacationManagement   = lazy(() => import('./components/VacationManagement/VacationManagement'));
 const VacationAnalytics    = lazy(() => import('./components/VacationAnalytics/VacationAnalytics'));
 
-// ─── QR Kiosk ──────────────────────────────────────────────────────────────────────────────────────
+// ─── QR Kiosk ─────────────────────────────────────────────────────────────────────────────────────────
 const AttendanceKiosk = lazy(() => import('./components/AttendanceKiosk/AttendanceKiosk'));
 
-// ─── Code-Split Modals ─────────────────────────────────────────────────────────────────────────────
+// ─── Code-Split Modals ──────────────────────────────────────────────────────────────────────────────────
 const AddEmployeeModal    = lazy(() => import('./components/AddEmployeeModal/AddEmployeeModal'));
 const EditEmployeeModal   = lazy(() => import('./components/EditEmployeeModal/EditEmployeeModal'));
 const EmployeeDetailModal = lazy(() => import('./components/EmployeeDetailModal/EmployeeDetailModal'));
@@ -38,7 +38,7 @@ const APP_START_YEAR  = 2026;
 const APP_START_MONTH = 3;
 const APP_START_DAY   = 3;
 
-// ─── Kiosk route detection ─────────────────────────────────────────────────────────────────────────
+// ─── Kiosk route detection ─────────────────────────────────────────────────────────────────────────────
 const isKioskRoute = typeof window !== 'undefined' &&
   window.location.pathname.toLowerCase().includes('/presenca');
 const kioskParams = typeof window !== 'undefined'
@@ -65,7 +65,7 @@ export default function App() {
 
   const auth = useAuth();
 
-  // ─── Biometric Lock ────────────────────────────────────────────────────────────────────────────────
+  // ─── Biometric Lock ────────────────────────────────────────────────────────────────────────────────────
   const [isLocked, setIsLocked] = useState(() => {
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024;
     const enabled = localStorage.getItem(BIOMETRIC_KEY) === 'true';
@@ -339,6 +339,8 @@ export default function App() {
                   handleSave={data.handleSave}
                   isSaving={data.isSaving}
                   currentShift={auth.currentShift}
+                  vacations={data.vacations}
+                  handleUpdateVacation={data.handleUpdateVacation}
                 />
               </Suspense>
             )}
