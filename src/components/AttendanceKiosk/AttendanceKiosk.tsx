@@ -24,14 +24,13 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const [step, setStep]                   = useState<Step>('enter_code');
   const [inputCode, setInputCode]         = useState(prefilledCode);
   const [error, setError]                 = useState('');
-  // IDs que JA possuem documento salvo hoje (qualquer status)
   const [savedIds, setSavedIds]           = useState<Set<string>>(new Set());
-  // IDs marcados como P (presentes confirmados)
-  const [presentIds, setPresentIds]       = useState<Set<string>>(new Set());
+  const [dayLocked, setDayLocked]         = useState(false);
   const [lastMarked, setLastMarked]       = useState<string | null>(null);
   const [employees, setEmployees]         = useState<Employee[]>([]);
   const [loadingEmps, setLoadingEmps]     = useState(true);
   const [loadingAttend, setLoadingAttend] = useState(true);
+  const [loadingLock, setLoadingLock]     = useState(true);
   const [search, setSearch]               = useState('');
   const { validateCode }                  = useAccessCode(false);
   const autoValidated                     = useRef(false);
@@ -41,10 +40,10 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const month = today.getMonth();
   const year  = today.getFullYear();
 
-  // Carrega funcionários ativos do turno
+  // 1. Carrega funcionários ativos do turno
   useEffect(() => {
     const q = query(collection(db, 'employees'), where('shift', '==', shift));
-    const unsub = onSnapshot(q, snap => {
+    return onSnapshot(q, snap => {
       const emps: Employee[] = [];
       snap.forEach(d => {
         const data = d.data();
@@ -53,12 +52,9 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       setEmployees(emps.sort((a, b) => a.name.localeCompare(b.name)));
       setLoadingEmps(false);
     });
-    return () => unsub();
   }, [shift]);
 
-  // Escuta TODOS os documentos de attendance hoje para este turno.
-  // - savedIds: quem JÁ tem qualquer documento (lançado manualmente ou via kiosk)
-  // - presentIds: quem está com status 'P' explicitamente salvo
+  // 2. Escuta documentos de attendance salvos hoje para este turno
   useEffect(() => {
     const q = query(
       collection(db, 'attendance'),
@@ -67,22 +63,31 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       where('month', '==', month),
       where('year',  '==', year)
     );
-    const unsub = onSnapshot(q, snap => {
-      const saved   = new Set<string>();
-      const present = new Set<string>();
-      snap.forEach(d => {
-        const data = d.data();
-        saved.add(data.empId);
-        if (data.status === 'P') present.add(data.empId);
-      });
+    return onSnapshot(q, snap => {
+      const saved = new Set<string>();
+      snap.forEach(d => saved.add(d.data().empId));
       setSavedIds(saved);
-      setPresentIds(present);
       setLoadingAttend(false);
     });
-    return () => unsub();
   }, [shift, day, month, year]);
 
-  // Auto-valida código da URL após TOTP inicializar
+  // 3. Verifica se o supervisor já fechou o dia (completion existe)
+  //    Se sim, todos sem documento são P implícito — não precisam confirmar
+  useEffect(() => {
+    const q = query(
+      collection(db, 'completions'),
+      where('shift', '==', shift),
+      where('day',   '==', day),
+      where('month', '==', month),
+      where('year',  '==', year)
+    );
+    return onSnapshot(q, snap => {
+      setDayLocked(!snap.empty);
+      setLoadingLock(false);
+    });
+  }, [shift, day, month, year]);
+
+  // Auto-valida código da URL
   useEffect(() => {
     if (autoValidated.current) return;
     if (!prefilledCode || prefilledCode.length !== 6) return;
@@ -103,7 +108,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   };
 
   const handleMarkPresent = async (employee: Employee) => {
-    if (savedIds.has(employee.id)) return;
+    if (isAlreadyHandled(employee.id)) return;
     const docId = `${employee.shift}_${employee.id}_${year}_${month}_${day}`;
     await setDoc(
       doc(db, 'attendance', docId),
@@ -123,19 +128,22 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     setTimeout(() => setLastMarked(null), 2500);
   };
 
-  const isLoading = loadingEmps || loadingAttend;
+  const isLoading = loadingEmps || loadingAttend || loadingLock;
 
-  // Pendentes = funcionários SEM documento salvo hoje
-  // (quem foi lançado manualmente no Lançar já tem doc = some da lista)
-  const remaining = employees.filter(e => !savedIds.has(e.id));
+  // Um funcionário está "tratado" se:
+  // a) Tem documento salvo hoje (qualquer status), OU
+  // b) O dia foi fechado pelo supervisor (dayLocked=true) → P implícito
+  const isAlreadyHandled = (empId: string) => savedIds.has(empId) || dayLocked;
+
+  // Pendentes = sem documento E dia não fechado pelo supervisor
+  const remaining = employees.filter(e => !savedIds.has(e.id) && !dayLocked);
   const filtered  = remaining.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  // Contador de presentes: salvos com P explícito + os sem doc (padrão P do Lançar)
-  // Para o contador mostramos: total - pendentes = confirmados de alguma forma
-  const confirmedCount = employees.length - remaining.length;
-  const allDone = !isLoading && employees.length > 0 && remaining.length === 0;
+  // Confirmados = quem tem doc salvo + quem é P implícito (se dayLocked)
+  const confirmedCount = dayLocked ? employees.length : employees.filter(e => savedIds.has(e.id)).length;
+  const allDone = !isLoading && (dayLocked || (employees.length > 0 && remaining.length === 0));
 
   return (
     <div className="kiosk-container">
@@ -179,7 +187,14 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
 
           <div className="kiosk-attendance-header">
             <h2 className="kiosk-title">Marcar Presença</h2>
-            <span className="kiosk-shift-badge">Turno {shift}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="kiosk-shift-badge">Turno {shift}</span>
+              {dayLocked && (
+                <span className="kiosk-shift-badge" style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981' }}>
+                  ✓ Fechado pelo supervisor
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Contadores */}
@@ -211,7 +226,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
           {isLoading && (
             <div className="kiosk-loading">
               <div className="kiosk-spinner" />
-              <p>Carregando funcionários…</p>
+              <p>Carregando…</p>
             </div>
           )}
 
@@ -220,11 +235,16 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             <div className="kiosk-all-done">
               <div className="kiosk-done-emoji">🎉</div>
               <h3>Todos confirmados!</h3>
-              <p>Todas as presenças do Turno {shift} já foram registradas hoje.</p>
+              <p>
+                {dayLocked
+                  ? `O supervisor já fechou o dia. Todas as presenças do Turno ${shift} estão registradas.`
+                  : `Todas as presenças do Turno ${shift} foram registradas via kiosk.`
+                }
+              </p>
             </div>
           )}
 
-          {/* Buscador + lista de pendentes */}
+          {/* Lista de pendentes */}
           {!isLoading && !allDone && (
             <>
               <div className="kiosk-search-wrapper">
