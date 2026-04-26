@@ -36,7 +36,6 @@ const normalizeDate = (dateVal: any): string => {
   return '';
 };
 
-// Retorna true se o colaborador estava ativo em uma data específica.
 export function wasActiveOnDay(
   emp: { dismissed?: boolean; dismissalDate?: string; admissionDate?: string },
   day: number,
@@ -44,13 +43,11 @@ export function wasActiveOnDay(
   year: number
 ): boolean {
   const target = new Date(year, month, day);
-
   if (emp.admissionDate) {
     const [ay, am, ad] = emp.admissionDate.split('-').map(Number);
     const admission = new Date(ay, am - 1, ad);
     if (target < admission) return false;
   }
-
   if (!emp.dismissed) return true;
   if (!emp.dismissalDate) return false;
   const [dy, dm, dd] = emp.dismissalDate.split('-').map(Number);
@@ -58,7 +55,6 @@ export function wasActiveOnDay(
   return target < dismissal;
 }
 
-/** Check if an employee has an active vacation on a given date string (YYYY-MM-DD) */
 function isEmployeeOnVacation(empId: string, dateStr: string, vacations: Vacation[]): boolean {
   return vacations.some(
     v =>
@@ -120,6 +116,7 @@ export function useFirestoreData({
     return rawEmployees.filter(emp => wasActiveOnDay(emp, refDay, currentMonth, currentYear));
   }, [rawEmployees, selectedDay, currentMonth, currentYear, allModeRefDay]);
 
+  // ─── Supervision listener ───────────────────────────────────────────────────
   useEffect(() => {
     if (!isSupervision) return;
     const unsubEmployees = onSnapshot(collection(db, 'employees'), (snapshot) => {
@@ -163,13 +160,19 @@ export function useFirestoreData({
       snapshot.forEach(d => {
         const data = d.data();
         vacs.push({
-          id: d.id, employeeId: data.employeeId || d.id,
+          id: d.id,
+          employeeId: data.employeeId || d.id,
           startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
           endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
           returnDate: normalizeDate(data.returnDate || ''),
-          status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') ? 'scheduled' : 'taken',
-          diasDireito: data.diasDireito ?? 30, vendeuFerias: data.vendeuFerias ?? false,
-          diasVendidos: data.diasVendidos ?? 0, isHistorical: data.isHistorical ?? false,
+          returnConfirmed: data.returnConfirmed === true,  // ← lê do Firestore
+          status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled')
+            ? 'scheduled'
+            : 'taken',
+          diasDireito: data.diasDireito ?? 30,
+          vendeuFerias: data.vendeuFerias ?? false,
+          diasVendidos: data.diasVendidos ?? 0,
+          isHistorical: data.isHistorical ?? false,
         } as Vacation);
       });
       setVacations(vacs);
@@ -178,6 +181,7 @@ export function useFirestoreData({
     return () => { unsubEmployees(); unsubAttendance(); unsubCompletions(); unsubVacations(); };
   }, [isSupervision, currentMonth, currentYear]);
 
+  // ─── Shift listener ─────────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;
     let unsubEmployees: (() => void) | null = null;
@@ -218,17 +222,23 @@ export function useFirestoreData({
               });
 
               const vacStart = data.vacationStart || data.dataInicioFerias;
-              const vacEnd = data.vacationEnd || data.dataFimFerias || '';
+              const vacEnd   = data.vacationEnd   || data.dataFimFerias || '';
               if (vacStart) {
                 let status: 'scheduled' | 'taken' = 'taken';
                 if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') status = 'scheduled';
                 else if (vacEnd && vacEnd >= new Date().toISOString().split('T')[0]) status = 'scheduled';
                 embeddedVacs.push({
-                  id: `vac_${d.id}`, employeeId: d.id,
-                  startDate: normalizeDate(vacStart), endDate: normalizeDate(vacEnd),
+                  id: `vac_${d.id}`,
+                  employeeId: d.id,
+                  startDate: normalizeDate(vacStart),
+                  endDate: normalizeDate(vacEnd),
                   returnDate: normalizeDate(data.returnDate || ''),
-                  status, diasDireito: data.diasDireito ?? 30, vendeuFerias: data.vendeuFerias ?? false,
-                  diasVendidos: data.diasVendidos ?? 0, isHistorical: data.isHistorical ?? false,
+                  returnConfirmed: data.returnConfirmed === true,  // ← lê do documento do funcionário
+                  status,
+                  diasDireito: data.diasDireito ?? 30,
+                  vendeuFerias: data.vendeuFerias ?? false,
+                  diasVendidos: data.diasVendidos ?? 0,
+                  isHistorical: data.isHistorical ?? false,
                 });
               }
             });
@@ -246,16 +256,22 @@ export function useFirestoreData({
           snapshot.forEach(d => {
             const data = d.data();
             const vacStart = data.vacationStart || data.dataInicioFerias || data.startDate || '';
-            const vacEnd = data.vacationEnd || data.endDate || '';
+            const vacEnd   = data.vacationEnd   || data.endDate || '';
             let status: 'scheduled' | 'taken' = 'taken';
             if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') status = 'scheduled';
             else if (vacEnd && vacEnd >= new Date().toISOString().split('T')[0]) status = 'scheduled';
             collVacs.push({
-              id: d.id, employeeId: data.employeeId || d.id,
-              startDate: normalizeDate(vacStart), endDate: normalizeDate(vacEnd),
-              returnDate: normalizeDate(data.returnDate || ''), status,
-              diasDireito: data.diasDireito ?? 30, vendeuFerias: data.vendeuFerias ?? false,
-              diasVendidos: data.diasVendidos ?? 0, isHistorical: data.isHistorical ?? false,
+              id: d.id,
+              employeeId: data.employeeId || d.id,
+              startDate: normalizeDate(vacStart),
+              endDate: normalizeDate(vacEnd),
+              returnDate: normalizeDate(data.returnDate || ''),
+              returnConfirmed: data.returnConfirmed === true,  // ← lê da coleção vacations
+              status,
+              diasDireito: data.diasDireito ?? 30,
+              vendeuFerias: data.vendeuFerias ?? false,
+              diasVendidos: data.diasVendidos ?? 0,
+              isHistorical: data.isHistorical ?? false,
             } as Vacation);
           });
           setVacations(prev => [...prev.filter(v => v.id.startsWith('vac_')), ...collVacs]);
@@ -306,8 +322,10 @@ export function useFirestoreData({
     return () => {
       active = false;
       window.removeEventListener('online', handleOnline);
-      if (unsubEmployees) unsubEmployees(); if (unsubAttendance) unsubAttendance();
-      if (unsubCompletions) unsubCompletions(); if (unsubVacations) unsubVacations();
+      if (unsubEmployees)   unsubEmployees();
+      if (unsubAttendance)  unsubAttendance();
+      if (unsubCompletions) unsubCompletions();
+      if (unsubVacations)   unsubVacations();
     };
   }, [user, currentShift, isSupervision, supervisionShiftFilter, isAdminUser, currentMonth, currentYear, retryCount]);
 
@@ -372,19 +390,37 @@ export function useFirestoreData({
     } catch (error) { handleFirestoreError(error, OperationType.UPDATE, 'employees'); }
   };
 
+  // ─── handleUpdateVacation ────────────────────────────────────────────────────
+  // Garante que returnConfirmed é persistido em AMBOS os casos:
+  //   • vac_<empId>  → documento do funcionário em /employees
+  //   • <uuid>       → documento da coleção /vacations
   const handleUpdateVacation = async (id: string, vacation: Partial<Vacation>) => {
     try {
       if (id.startsWith('vac_')) {
         const empId = id.replace('vac_', '');
-        await updateDoc(doc(db, 'employees', empId), {
-          vacationStart: vacation.startDate, dataInicioFerias: vacation.startDate,
-          vacationEnd: vacation.endDate, dataFimFerias: vacation.endDate,
-          returnDate: vacation.returnDate, diasDireito: vacation.diasDireito,
-          vendeuFerias: vacation.vendeuFerias, diasVendidos: vacation.diasVendidos,
-          status: vacation.status, vacationStatus: vacation.status === 'taken' ? 'Concluída' : 'Agendada',
-        });
+        const payload: Record<string, any> = {
+          vacationStart:     vacation.startDate,
+          dataInicioFerias:  vacation.startDate,
+          vacationEnd:       vacation.endDate,
+          dataFimFerias:     vacation.endDate,
+          returnDate:        vacation.returnDate,
+          diasDireito:       vacation.diasDireito,
+          vendeuFerias:      vacation.vendeuFerias,
+          diasVendidos:      vacation.diasVendidos,
+          status:            vacation.status,
+          vacationStatus:    vacation.status === 'taken' ? 'Concluída' : 'Agendada',
+        };
+        // Persiste returnConfirmed quando enviado
+        if (vacation.returnConfirmed !== undefined) {
+          payload.returnConfirmed = vacation.returnConfirmed;
+        }
+        await updateDoc(doc(db, 'employees', empId), payload);
       } else {
-        await updateDoc(doc(db, 'vacations', id), { ...vacation, updatedAt: serverTimestamp() });
+        // Coleção /vacations — passa tudo incluindo returnConfirmed
+        await updateDoc(doc(db, 'vacations', id), {
+          ...vacation,
+          updatedAt: serverTimestamp(),
+        });
       }
       toast.success('Férias atualizadas com sucesso!');
     } catch (error) { handleFirestoreError(error, OperationType.UPDATE, 'vacations'); }
@@ -421,7 +457,6 @@ export function useFirestoreData({
     const day = selectedDay === 'all' ? new Date().getDate() : (selectedDay as number);
     if (lockedDays[day]) return;
 
-    // Build date string for vacation check
     const mm = String(currentMonth + 1).padStart(2, '0');
     const dd = String(day).padStart(2, '0');
     const dateStr = `${currentYear}-${mm}-${dd}`;
@@ -434,15 +469,9 @@ export function useFirestoreData({
         const [y, m, d] = emp.admissionDate.split('-').map(Number);
         if (targetDate < new Date(y, m - 1, d)) return;
       }
-
       const currentS = pendingAttendance[emp.id]?.[day] ?? attendance[emp.id]?.[day] ?? 'P';
-
-      // Do NOT overwrite Fe or A — those are managed separately
       if (currentS === 'Fe' || currentS === 'A') return;
-
-      // Also check if employee is on an active vacation in the vacations list
       if (isEmployeeOnVacation(emp.id, dateStr, vacations)) return;
-
       if (currentS !== 'P') batch[emp.id] = 'P';
     });
 
