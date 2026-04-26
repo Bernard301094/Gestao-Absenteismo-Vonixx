@@ -12,7 +12,7 @@ export interface Employee {
   cargo?: string;
   shift?: string;
   dismissed?: boolean;
-  dismissalDate?: string; // <-- NOVO CAMPO
+  dismissalDate?: string;
 }
 
 export type HistoricalVacationReason = 'taken' | 'correction' | 'import';
@@ -23,6 +23,8 @@ export interface Vacation {
   startDate: string; 
   endDate: string;   
   returnDate?: string;
+  /** true once the supervisor confirms the employee physically returned */
+  returnConfirmed?: boolean;
   status: 'scheduled' | 'taken';
   diasDireito?: number;
   vendeuFerias?: boolean;
