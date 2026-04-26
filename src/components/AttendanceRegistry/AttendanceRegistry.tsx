@@ -96,13 +96,15 @@ function getActiveVacation(
   empId: string,
   dateStr: string,
   vacations: Vacation[],
+  localConfirmedIds: Set<string>,
 ): Vacation | null {
   return (
     vacations.find(
       v =>
         v.employeeId === empId &&
         v.status === 'taken' &&
-        !(v as any).returnConfirmed &&
+        !v.returnConfirmed &&
+        !localConfirmedIds.has(v.id) &&
         v.startDate &&
         v.endDate &&
         isDateInRange(dateStr, v.startDate, v.endDate),
@@ -110,26 +112,20 @@ function getActiveVacation(
   );
 }
 
-/**
- * A vacation is "overdue" when ALL of these are true:
- *  1. returnDate exists and is <= today (the employee should already be back)
- *  2. endDate is in the past (the vacation period has ended)
- *  3. returnConfirmed is NOT true (not already handled)
- */
 function getOverdueVacation(
   empId: string,
   todayStr: string,
   vacations: Vacation[],
+  localConfirmedIds: Set<string>,
 ): Vacation | null {
   return (
     vacations.find(v => {
       if (v.employeeId !== empId) return false;
-      if ((v as any).returnConfirmed) return false;        // already confirmed ✓
+      if (v.returnConfirmed) return false;
+      if (localConfirmedIds.has(v.id)) return false;  // ← immediate local filter
       if (!v.returnDate) return false;
       if (!v.endDate) return false;
-      // endDate must be in the past (vacation period over)
       if (v.endDate >= todayStr) return false;
-      // returnDate must be today or passed
       return v.returnDate <= todayStr;
     }) ?? null
   );
@@ -159,27 +155,36 @@ function VacationReturnModal({
 }) {
   const [newEndDate, setNewEndDate] = React.useState(state.vacation.endDate || '');
   const [mode, setMode] = React.useState<'choose' | 'extend'>('choose');
+  const [loading, setLoading] = React.useState(false);
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    await onConfirmReturn(state.vacation);
+    setLoading(false);
+  };
+
+  const handleExtend = async () => {
+    setLoading(true);
+    await onExtend(state.vacation, newEndDate);
+    setLoading(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        {/* Header */}
         <div className="bg-amber-50 border-b border-amber-100 px-6 py-4 flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
             <AlertTriangle className="w-5 h-5 text-amber-600" />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="font-black text-gray-900 text-sm">Retorno de Férias</h3>
-            <p className="text-amber-700 text-xs font-medium mt-0.5 truncate">
-              {state.employee.name}
-            </p>
+            <p className="text-amber-700 text-xs font-medium mt-0.5 truncate">{state.employee.name}</p>
           </div>
           <button onClick={onClose} className="p-1 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="p-6 space-y-5">
           <div className="bg-amber-50 rounded-xl px-4 py-3 text-sm text-amber-800 font-medium">
             A data de retorno prevista era{' '}
@@ -195,17 +200,13 @@ function VacationReturnModal({
             <div className="bg-gray-50 rounded-xl px-3 py-2.5">
               <span className="font-bold uppercase tracking-widest block mb-0.5">Início Férias</span>
               <span className="text-gray-800 font-black tabular-nums">
-                {state.vacation.startDate
-                  ? new Date(state.vacation.startDate + 'T12:00:00').toLocaleDateString('pt-BR')
-                  : '—'}
+                {state.vacation.startDate ? new Date(state.vacation.startDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
               </span>
             </div>
             <div className="bg-gray-50 rounded-xl px-3 py-2.5">
               <span className="font-bold uppercase tracking-widest block mb-0.5">Fim Férias</span>
               <span className="text-gray-800 font-black tabular-nums">
-                {state.vacation.endDate
-                  ? new Date(state.vacation.endDate + 'T12:00:00').toLocaleDateString('pt-BR')
-                  : '—'}
+                {state.vacation.endDate ? new Date(state.vacation.endDate + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
               </span>
             </div>
           </div>
@@ -213,10 +214,13 @@ function VacationReturnModal({
           {mode === 'choose' && (
             <div className="space-y-3">
               <button
-                onClick={() => onConfirmReturn(state.vacation)}
-                className="w-full flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white px-4 py-3 rounded-xl transition-colors"
+                onClick={handleConfirm}
+                disabled={loading}
+                className="w-full flex items-center gap-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-3 rounded-xl transition-colors"
               >
-                <CheckCircle2 className="w-5 h-5 shrink-0" />
+                {loading
+                  ? <Activity className="w-5 h-5 animate-spin shrink-0" />
+                  : <CheckCircle2 className="w-5 h-5 shrink-0" />}
                 <div className="text-left">
                   <div className="text-sm font-black">Confirmar Retorno</div>
                   <div className="text-xs font-medium opacity-80">Marcar férias como concluídas</div>
@@ -225,7 +229,8 @@ function VacationReturnModal({
               </button>
               <button
                 onClick={() => setMode('extend')}
-                className="w-full flex items-center gap-3 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 text-blue-700 px-4 py-3 rounded-xl transition-colors border border-blue-100"
+                disabled={loading}
+                className="w-full flex items-center gap-3 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 disabled:opacity-50 text-blue-700 px-4 py-3 rounded-xl transition-colors border border-blue-100"
               >
                 <Calendar className="w-5 h-5 shrink-0" />
                 <div className="text-left">
@@ -254,15 +259,17 @@ function VacationReturnModal({
               <div className="flex gap-2">
                 <button
                   onClick={() => setMode('choose')}
-                  className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
+                  disabled={loading}
+                  className="flex-1 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
                 >
                   Voltar
                 </button>
                 <button
-                  onClick={() => onExtend(state.vacation, newEndDate)}
-                  disabled={!newEndDate || newEndDate <= (state.vacation.endDate || '')}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-black transition-colors"
+                  onClick={handleExtend}
+                  disabled={loading || !newEndDate || newEndDate <= (state.vacation.endDate || '')}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2.5 rounded-xl text-sm font-black transition-colors flex items-center justify-center gap-2"
                 >
+                  {loading && <Activity className="w-4 h-4 animate-spin" />}
                   Salvar extensão
                 </button>
               </div>
@@ -277,85 +284,67 @@ function VacationReturnModal({
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function AttendanceRegistry({
-  selectedDay,
-  currentDayOfMonth,
-  currentMonth,
-  currentYear,
-  isWorkDay,
-  employees,
-  getStatusForDay,
-  setShowAddEmployeeModal,
-  handleMarkAllPresent,
-  registroSearchTerm,
-  setRegistroSearchTerm,
-  filteredRegistroEmployees,
-  pendingAttendance,
-  attendance,
-  pendingNotes,
-  notes,
-  setEditingEmployee,
-  setShowEditEmployeeModal,
-  handleDeleteEmployee,
-  setStatus,
-  lockedDays,
-  setNote,
-  handleSave,
-  isSaving,
-  currentShift,
-  vacations = [],
-  handleUpdateVacation,
+  selectedDay, currentDayOfMonth, currentMonth, currentYear,
+  isWorkDay, employees, getStatusForDay, setShowAddEmployeeModal,
+  handleMarkAllPresent, registroSearchTerm, setRegistroSearchTerm,
+  filteredRegistroEmployees, pendingAttendance, attendance,
+  pendingNotes, notes, setEditingEmployee, setShowEditEmployeeModal,
+  handleDeleteEmployee, setStatus, lockedDays, setNote,
+  handleSave, isSaving, currentShift,
+  vacations = [], handleUpdateVacation,
 }: AttendanceRegistryProps) {
-  const dayNum    = selectedDay === 'all' ? currentDayOfMonth : (selectedDay as number);
-  const isLocked  = !!lockedDays[dayNum];
+  const dayNum   = selectedDay === 'all' ? currentDayOfMonth : (selectedDay as number);
+  const isLocked = !!lockedDays[dayNum];
   const isHoliday = selectedDay !== 'all' && !isWorkDay(selectedDay as number, currentMonth, currentYear);
 
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
   const [returnModal, setReturnModal] = React.useState<ReturnModalState | null>(null);
 
-  // Today's date string (always real today, not the selected day)
+  // ── Local set of vacation IDs processed this session ───────────────────────────
+  // Guarantees instant UI update without waiting for Firestore
+  const [localConfirmedIds, setLocalConfirmedIds] = React.useState<Set<string>>(new Set());
+
+  const addLocalConfirmed = (id: string) =>
+    setLocalConfirmedIds(prev => new Set([...prev, id]));
+
+  // Today’s real date (not selected day) for overdue check
   const todayStr = React.useMemo(() => {
     const t = new Date();
     return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
   }, []);
 
-  // Current selected-day date string (for active-vacation detection)
   const currentDateStr = toDateStr(currentYear, currentMonth, dayNum);
 
-  // ── Auto-apply Fe status for employees on active vacation ──────────────────
+  // ── Auto-apply Fe for employees with active vacation on selected day ────────
   const autoAppliedRef = React.useRef<Set<string>>(new Set());
 
   React.useEffect(() => {
     if (selectedDay === 'all' || isHoliday || vacations.length === 0) return;
-
     employees.forEach(emp => {
       const key = `${emp.id}_${currentDateStr}`;
       if (autoAppliedRef.current.has(key)) return;
-
-      const activeVac = getActiveVacation(emp.id, currentDateStr, vacations);
+      const activeVac = getActiveVacation(emp.id, currentDateStr, vacations, localConfirmedIds);
       if (!activeVac) return;
-
       const existingStatus = pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum];
       if (existingStatus === undefined || existingStatus === 'P') {
         setStatus(emp.id, dayNum, 'Fe');
         autoAppliedRef.current.add(key);
       }
     });
-  }, [employees, vacations, currentDateStr, dayNum, selectedDay, isHoliday]);
+  }, [employees, vacations, currentDateStr, dayNum, selectedDay, isHoliday, localConfirmedIds]);
 
-  React.useEffect(() => {
-    autoAppliedRef.current = new Set();
-  }, [dayNum]);
+  React.useEffect(() => { autoAppliedRef.current = new Set(); }, [dayNum]);
 
-  // ── Overdue vacations use todayStr (not selected day) ─────────────────────
+  // ── Overdue list (filters out locally confirmed ones immediately) ──────────
   const overdueVacationEmployees = React.useMemo(() => {
     return employees
       .map(emp => {
-        const overdue = getOverdueVacation(emp.id, todayStr, vacations);
+        const overdue = getOverdueVacation(emp.id, todayStr, vacations, localConfirmedIds);
         if (!overdue) return null;
         return { employee: emp, vacation: overdue };
       })
       .filter(Boolean) as { employee: Employee; vacation: Vacation }[];
-  }, [employees, vacations, todayStr]);
+  }, [employees, vacations, todayStr, localConfirmedIds]);
 
   const activeEmployees = employees.filter(emp => {
     if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
@@ -370,10 +359,9 @@ export default function AttendanceRegistry({
 
   const kpiCounts = STATUS_ORDER.map(key => ({
     key,
-    count:
-      key === 'P'
-        ? activeEmployees.length - activeEmployees.filter(e => getStatusForDay(e.id, dayNum) !== 'P').length
-        : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
+    count: key === 'P'
+      ? activeEmployees.length - activeEmployees.filter(e => getStatusForDay(e.id, dayNum) !== 'P').length
+      : activeEmployees.filter(e => getStatusForDay(e.id, dayNum) === key).length,
   }));
 
   const mergedAttendance: AttendanceRecord = {};
@@ -389,16 +377,8 @@ export default function AttendanceRegistry({
   });
 
   const handleGeneratePDF = () => {
-    exportToPDF(
-      `Turno ${currentShift || 'A'}`,
-      activeEmployees,
-      mergedAttendance,
-      selectedDay,
-      currentMonth,
-      currentYear,
-      undefined,
-      mergedNotes,
-    );
+    exportToPDF(`Turno ${currentShift || 'A'}`, activeEmployees, mergedAttendance,
+      selectedDay, currentMonth, currentYear, undefined, mergedNotes);
   };
 
   const getInitials = (name: string) => {
@@ -409,22 +389,24 @@ export default function AttendanceRegistry({
 
   const finalEmployees = filteredRegistroEmployees.filter(emp => {
     if (localStatusFilter === 'all') return true;
-    const currentStatus = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
-    return currentStatus === localStatusFilter;
+    const s = (pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum] ?? 'P') as Status;
+    return s === localStatusFilter;
   });
 
   // ── Return-modal handlers ──────────────────────────────────────────────────
 
   const handleConfirmReturn = async (vacation: Vacation) => {
-    if (!handleUpdateVacation) return;
-    // Mark as confirmed so the banner disappears immediately.
-    // Also set endDate to today so it's no longer "in progress".
-    await handleUpdateVacation(vacation.id, {
-      status: 'taken',
-      returnConfirmed: true,
-      endDate: vacation.endDate,   // keep original end
-    } as any);
+    // 1. Mark locally FIRST → banner disappears immediately
+    addLocalConfirmed(vacation.id);
     setReturnModal(null);
+    // 2. Persist to Firestore in background
+    if (handleUpdateVacation) {
+      await handleUpdateVacation(vacation.id, {
+        status: 'taken',
+        returnConfirmed: true,
+        endDate: vacation.endDate,
+      } as any);
+    }
   };
 
   const handleExtendVacation = async (vacation: Vacation, newEndDate: string) => {
@@ -432,18 +414,21 @@ export default function AttendanceRegistry({
     const end = new Date(newEndDate + 'T12:00:00');
     end.setDate(end.getDate() + 1);
     const newReturnDate = end.toISOString().split('T')[0];
+    // 1. Mark locally FIRST so the old overdue entry disappears
+    addLocalConfirmed(vacation.id);
+    setReturnModal(null);
+    // 2. Persist extension to Firestore in background
     await handleUpdateVacation(vacation.id, {
       endDate: newEndDate,
       returnDate: newReturnDate,
       returnConfirmed: false,
     } as any);
-    setReturnModal(null);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
 
-      {/* ── Overdue vacation banner ── shows always when there are overdue returns */}
+      {/* ── Overdue vacation banner ────────────────────────────────────────── */}
       {overdueVacationEmployees.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-start gap-3 mb-3">
@@ -481,9 +466,7 @@ export default function AttendanceRegistry({
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col items-center justify-center shrink-0">
               {selectedDay !== 'all' ? (
                 <>
-                  <span className="text-2xl sm:text-3xl font-black text-gray-900 leading-none tabular-nums tracking-tight">
-                    {selectedDay}
-                  </span>
+                  <span className="text-2xl sm:text-3xl font-black text-gray-900 leading-none tabular-nums tracking-tight">{selectedDay}</span>
                   <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{MONTH_NAMES[currentMonth].substring(0, 3)}</span>
                 </>
               ) : (
@@ -492,13 +475,9 @@ export default function AttendanceRegistry({
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
-                  Registro Diário
-                </h2>
+                <h2 className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">Registro Diário</h2>
                 {isHoliday && (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-600 border border-sky-100 uppercase tracking-wider">
-                    Folga 12×36
-                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-600 border border-sky-100 uppercase tracking-wider">Folga 12×36</span>
                 )}
                 {isLocked && !isHoliday && (
                   <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-gray-50 text-gray-500 border border-gray-200 uppercase tracking-wider flex items-center gap-1">
@@ -506,9 +485,7 @@ export default function AttendanceRegistry({
                   </span>
                 )}
               </div>
-              <p className="text-gray-500 text-sm font-medium">
-                Turno {currentShift || 'A'} · {activeEmployees.length} colaboradores
-              </p>
+              <p className="text-gray-500 text-sm font-medium">Turno {currentShift || 'A'} · {activeEmployees.length} colaboradores</p>
             </div>
           </div>
 
@@ -561,11 +538,23 @@ export default function AttendanceRegistry({
             />
           </div>
           <div className="flex flex-wrap items-center bg-white border border-gray-200 rounded-xl p-1 shadow-sm shrink-0">
-            <button onClick={() => setLocalStatusFilter('all')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'all' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}>Todos</button>
-            <button onClick={() => setLocalStatusFilter('P')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'P' ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:bg-gray-100'}`}>Presentes</button>
-            <button onClick={() => setLocalStatusFilter('F')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'F' ? 'bg-rose-100 text-rose-700' : 'text-gray-500 hover:bg-gray-100'}`}>Faltas</button>
-            <button onClick={() => setLocalStatusFilter('Fe')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'Fe' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}>Férias</button>
-            <button onClick={() => setLocalStatusFilter('A')} className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${localStatusFilter === 'A' ? 'bg-amber-100 text-amber-700' : 'text-gray-500 hover:bg-gray-100'}`}>Afastados</button>
+            {(['all', 'P', 'F', 'Fe', 'A'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setLocalStatusFilter(f)}
+                className={`px-3 py-1.5 text-[11px] font-black uppercase tracking-wider rounded-lg transition-colors ${
+                  localStatusFilter === f
+                    ? f === 'all' ? 'bg-gray-900 text-white'
+                      : f === 'P' ? 'bg-emerald-100 text-emerald-700'
+                      : f === 'F' ? 'bg-rose-100 text-rose-700'
+                      : f === 'Fe' ? 'bg-blue-100 text-blue-700'
+                      : 'bg-amber-100 text-amber-700'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                {f === 'all' ? 'Todos' : STATUS_CONFIG[f].kpiLabel}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -602,24 +591,23 @@ export default function AttendanceRegistry({
               }
 
               const cfg = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
-
-              const activeVac  = getActiveVacation(emp.id, currentDateStr, vacations);
-              const overdueVac = getOverdueVacation(emp.id, todayStr, vacations);
+              const activeVac  = getActiveVacation(emp.id, currentDateStr, vacations, localConfirmedIds);
+              const overdueVac = getOverdueVacation(emp.id, todayStr, vacations, localConfirmedIds);
               const isOnVacation = !!activeVac;
 
               return (
-                <div key={emp.id} className={`group relative transition-colors ${isModified ? 'bg-blue-50/30' : isOnVacation ? 'bg-blue-50/20' : 'hover:bg-gray-50/50'}`}>
-                  {isModified && (
-                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />
-                  )}
-                  {!isModified && isOnVacation && (
-                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-300 rounded-r-full" />
-                  )}
+                <div key={emp.id} className={`group relative transition-colors ${
+                  isModified ? 'bg-blue-50/30' : isOnVacation ? 'bg-blue-50/20' : 'hover:bg-gray-50/50'
+                }`}>
+                  {isModified && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500 rounded-r-full" />}
+                  {!isModified && isOnVacation && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-300 rounded-r-full" />}
 
-                  {/* ── Desktop row ──────────────────────────────────────────────── */}
+                  {/* Desktop */}
                   <div className="hidden lg:grid grid-cols-[1fr_240px_1.5fr_80px] gap-4 px-6 py-3.5 items-center">
                     <div className="flex items-center gap-3 min-w-0 pl-1">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 border ${isOnVacation ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-black shrink-0 border ${
+                        isOnVacation ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                      }`}>
                         {getInitials(emp.name)}
                       </div>
                       <div className="min-w-0">
@@ -629,7 +617,7 @@ export default function AttendanceRegistry({
                           {isOnVacation && (
                             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 uppercase">
                               <Palmtree className="w-2.5 h-2.5" />
-                              Férias até {activeVac && new Date(activeVac.endDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                              Férias até {new Date(activeVac.endDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
                             </span>
                           )}
                           {overdueVac && (
@@ -637,8 +625,7 @@ export default function AttendanceRegistry({
                               onClick={() => setReturnModal({ employee: emp, vacation: overdueVac })}
                               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700 uppercase hover:bg-amber-200 transition-colors"
                             >
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              Retorno pendente
+                              <AlertTriangle className="w-2.5 h-2.5" /> Retorno pendente
                             </button>
                           )}
                           {isModified && <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Modificado</span>}
@@ -693,11 +680,13 @@ export default function AttendanceRegistry({
                     </div>
                   </div>
 
-                  {/* ── Mobile card ───────────────────────────────────────────────── */}
+                  {/* Mobile */}
                   <div className="lg:hidden p-4 space-y-4">
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 border ${isOnVacation ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black shrink-0 border ${
+                          isOnVacation ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}>
                           {getInitials(emp.name)}
                         </div>
                         <div className="min-w-0">
@@ -720,11 +709,9 @@ export default function AttendanceRegistry({
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }} className="p-2 text-gray-400 hover:text-gray-900">
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button onClick={() => { setEditingEmployee(emp); setShowEditEmployeeModal(true); }} className="p-2 text-gray-400 hover:text-gray-900">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <div className={`grid grid-cols-4 bg-gray-100/80 p-1 rounded-xl border border-gray-200/60 ${isNotYetHired ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -772,25 +759,28 @@ export default function AttendanceRegistry({
       )}
 
       {!isHoliday && selectedDay !== 'all' && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform ${pendingCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 transform ${
+          pendingCount > 0 ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'
+        }`}>
           <div className="bg-gray-900 text-white px-4 py-3 rounded-2xl shadow-2xl shadow-gray-900/20 flex items-center gap-4">
             <div className="flex items-center gap-2 pl-2 border-r border-gray-700 pr-4">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
               </span>
               <span className="text-xs font-bold tracking-wide">
                 {pendingCount} alteraç{pendingCount === 1 ? 'ão' : 'ões'}
               </span>
             </div>
             <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all active:scale-95">
-              {isSaving ? <><Activity className="w-4 h-4 animate-spin" /> Salvando...</> : <><CheckCircle2 className="w-4 h-4" /> Salvar Alterações</>}
+              {isSaving
+                ? <><Activity className="w-4 h-4 animate-spin" /> Salvando...</>
+                : <><CheckCircle2 className="w-4 h-4" /> Salvar Alterações</>}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── Return modal ────────────────────────────────────────────────────── */}
       {returnModal && (
         <VacationReturnModal
           state={returnModal}
