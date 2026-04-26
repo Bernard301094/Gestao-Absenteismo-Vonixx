@@ -87,13 +87,11 @@ const STATUS_ORDER: Status[] = ['P', 'F', 'Fe', 'A'];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns true if `dateStr` (YYYY-MM-DD) is within [startDate, endDate] inclusive */
 function isDateInRange(dateStr: string, startDate: string, endDate: string): boolean {
   if (!startDate || !endDate) return false;
   return dateStr >= startDate && dateStr <= endDate;
 }
 
-/** Returns the active vacation for an employee on a given date, or null */
 function getActiveVacation(
   empId: string,
   dateStr: string,
@@ -104,6 +102,7 @@ function getActiveVacation(
       v =>
         v.employeeId === empId &&
         v.status === 'taken' &&
+        !(v as any).returnConfirmed &&
         v.startDate &&
         v.endDate &&
         isDateInRange(dateStr, v.startDate, v.endDate),
@@ -111,19 +110,27 @@ function getActiveVacation(
   );
 }
 
-/** Returns the vacation whose returnDate is today or has passed, meaning employee should have returned */
+/**
+ * A vacation is "overdue" when ALL of these are true:
+ *  1. returnDate exists and is <= today (the employee should already be back)
+ *  2. endDate is in the past (the vacation period has ended)
+ *  3. returnConfirmed is NOT true (not already handled)
+ */
 function getOverdueVacation(
   empId: string,
-  dateStr: string,
+  todayStr: string,
   vacations: Vacation[],
 ): Vacation | null {
   return (
     vacations.find(v => {
       if (v.employeeId !== empId) return false;
-      if (v.status !== 'taken') return false;
+      if ((v as any).returnConfirmed) return false;        // already confirmed ✓
       if (!v.returnDate) return false;
-      // returnDate has passed OR is today → overdue
-      return v.returnDate <= dateStr;
+      if (!v.endDate) return false;
+      // endDate must be in the past (vacation period over)
+      if (v.endDate >= todayStr) return false;
+      // returnDate must be today or passed
+      return v.returnDate <= todayStr;
     }) ?? null
   );
 }
@@ -305,7 +312,13 @@ export default function AttendanceRegistry({
   const [localStatusFilter, setLocalStatusFilter] = React.useState<'all' | Status>('all');
   const [returnModal, setReturnModal] = React.useState<ReturnModalState | null>(null);
 
-  // Current date string for vacation detection
+  // Today's date string (always real today, not the selected day)
+  const todayStr = React.useMemo(() => {
+    const t = new Date();
+    return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  // Current selected-day date string (for active-vacation detection)
   const currentDateStr = toDateStr(currentYear, currentMonth, dayNum);
 
   // ── Auto-apply Fe status for employees on active vacation ──────────────────
@@ -321,7 +334,6 @@ export default function AttendanceRegistry({
       const activeVac = getActiveVacation(emp.id, currentDateStr, vacations);
       if (!activeVac) return;
 
-      // Only auto-apply if no manual override already exists
       const existingStatus = pendingAttendance[emp.id]?.[dayNum] ?? attendance[emp.id]?.[dayNum];
       if (existingStatus === undefined || existingStatus === 'P') {
         setStatus(emp.id, dayNum, 'Fe');
@@ -330,22 +342,20 @@ export default function AttendanceRegistry({
     });
   }, [employees, vacations, currentDateStr, dayNum, selectedDay, isHoliday]);
 
-  // Reset autoApplied cache when day changes
   React.useEffect(() => {
     autoAppliedRef.current = new Set();
   }, [dayNum]);
 
-  // ── Collect overdue-vacation employees for banner ──────────────────────────
+  // ── Overdue vacations use todayStr (not selected day) ─────────────────────
   const overdueVacationEmployees = React.useMemo(() => {
-    if (selectedDay === 'all' || isHoliday) return [];
     return employees
       .map(emp => {
-        const overdue = getOverdueVacation(emp.id, currentDateStr, vacations);
+        const overdue = getOverdueVacation(emp.id, todayStr, vacations);
         if (!overdue) return null;
         return { employee: emp, vacation: overdue };
       })
       .filter(Boolean) as { employee: Employee; vacation: Vacation }[];
-  }, [employees, vacations, currentDateStr, selectedDay, isHoliday]);
+  }, [employees, vacations, todayStr]);
 
   const activeEmployees = employees.filter(emp => {
     if (!wasActiveOnDay(emp, dayNum, currentMonth, currentYear)) return false;
@@ -406,30 +416,35 @@ export default function AttendanceRegistry({
   // ── Return-modal handlers ──────────────────────────────────────────────────
 
   const handleConfirmReturn = async (vacation: Vacation) => {
-    if (handleUpdateVacation) {
-      await handleUpdateVacation(vacation.id, { status: 'taken' });
-    }
+    if (!handleUpdateVacation) return;
+    // Mark as confirmed so the banner disappears immediately.
+    // Also set endDate to today so it's no longer "in progress".
+    await handleUpdateVacation(vacation.id, {
+      status: 'taken',
+      returnConfirmed: true,
+      endDate: vacation.endDate,   // keep original end
+    } as any);
     setReturnModal(null);
   };
 
   const handleExtendVacation = async (vacation: Vacation, newEndDate: string) => {
     if (!handleUpdateVacation) return;
-    // Recalculate returnDate: endDate + 1 day
     const end = new Date(newEndDate + 'T12:00:00');
     end.setDate(end.getDate() + 1);
     const newReturnDate = end.toISOString().split('T')[0];
     await handleUpdateVacation(vacation.id, {
       endDate: newEndDate,
       returnDate: newReturnDate,
-    });
+      returnConfirmed: false,
+    } as any);
     setReturnModal(null);
   };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-24">
 
-      {/* ── Overdue vacation banner ──────────────────────────────────────────── */}
-      {overdueVacationEmployees.length > 0 && !isHoliday && selectedDay !== 'all' && (
+      {/* ── Overdue vacation banner ── shows always when there are overdue returns */}
+      {overdueVacationEmployees.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-start gap-3 mb-3">
             <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
@@ -588,9 +603,8 @@ export default function AttendanceRegistry({
 
               const cfg = STATUS_CONFIG[currentStatus] ?? STATUS_CONFIG.P;
 
-              // Vacation badge info
-              const activeVac = getActiveVacation(emp.id, currentDateStr, vacations);
-              const overdueVac = getOverdueVacation(emp.id, currentDateStr, vacations);
+              const activeVac  = getActiveVacation(emp.id, currentDateStr, vacations);
+              const overdueVac = getOverdueVacation(emp.id, todayStr, vacations);
               const isOnVacation = !!activeVac;
 
               return (
