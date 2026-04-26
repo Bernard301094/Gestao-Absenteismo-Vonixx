@@ -36,6 +36,13 @@ const normalizeDate = (dateVal: any): string => {
   return '';
 };
 
+/** Remove chaves cujo valor seja undefined ou string vazia (opcional) */
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as Partial<T>;
+}
+
 export function wasActiveOnDay(
   emp: { dismissed?: boolean; dismissalDate?: string; admissionDate?: string },
   day: number,
@@ -165,7 +172,7 @@ export function useFirestoreData({
           startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
           endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
           returnDate: normalizeDate(data.returnDate || ''),
-          returnConfirmed: data.returnConfirmed === true,  // ← lê do Firestore
+          returnConfirmed: data.returnConfirmed === true,
           status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled')
             ? 'scheduled'
             : 'taken',
@@ -233,7 +240,7 @@ export function useFirestoreData({
                   startDate: normalizeDate(vacStart),
                   endDate: normalizeDate(vacEnd),
                   returnDate: normalizeDate(data.returnDate || ''),
-                  returnConfirmed: data.returnConfirmed === true,  // ← lê do documento do funcionário
+                  returnConfirmed: data.returnConfirmed === true,
                   status,
                   diasDireito: data.diasDireito ?? 30,
                   vendeuFerias: data.vendeuFerias ?? false,
@@ -266,7 +273,7 @@ export function useFirestoreData({
               startDate: normalizeDate(vacStart),
               endDate: normalizeDate(vacEnd),
               returnDate: normalizeDate(data.returnDate || ''),
-              returnConfirmed: data.returnConfirmed === true,  // ← lê da coleção vacations
+              returnConfirmed: data.returnConfirmed === true,
               status,
               diasDireito: data.diasDireito ?? 30,
               vendeuFerias: data.vendeuFerias ?? false,
@@ -391,36 +398,40 @@ export function useFirestoreData({
   };
 
   // ─── handleUpdateVacation ────────────────────────────────────────────────────
-  // Garante que returnConfirmed é persistido em AMBOS os casos:
-  //   • vac_<empId>  → documento do funcionário em /employees
-  //   • <uuid>       → documento da coleção /vacations
+  // Usa stripUndefined() para garantir que nenhum campo undefined chegue ao Firestore,
+  // o que causaria "Unsupported field value: undefined".
   const handleUpdateVacation = async (id: string, vacation: Partial<Vacation>) => {
     try {
       if (id.startsWith('vac_')) {
         const empId = id.replace('vac_', '');
-        const payload: Record<string, any> = {
-          vacationStart:     vacation.startDate,
-          dataInicioFerias:  vacation.startDate,
-          vacationEnd:       vacation.endDate,
-          dataFimFerias:     vacation.endDate,
-          returnDate:        vacation.returnDate,
-          diasDireito:       vacation.diasDireito,
-          vendeuFerias:      vacation.vendeuFerias,
-          diasVendidos:      vacation.diasVendidos,
-          status:            vacation.status,
-          vacationStatus:    vacation.status === 'taken' ? 'Concluída' : 'Agendada',
+
+        // Monta payload apenas com campos definidos para evitar erro de undefined
+        const rawPayload: Record<string, any> = {
+          vacationStart:    vacation.startDate,
+          dataInicioFerias: vacation.startDate,
+          vacationEnd:      vacation.endDate,
+          dataFimFerias:    vacation.endDate,
+          returnDate:       vacation.returnDate,
+          diasDireito:      vacation.diasDireito,
+          vendeuFerias:     vacation.vendeuFerias,
+          diasVendidos:     vacation.diasVendidos,
+          status:           vacation.status,
+          vacationStatus:   vacation.status === 'taken' ? 'Concluída' : 'Agendada',
         };
-        // Persiste returnConfirmed quando enviado
+
         if (vacation.returnConfirmed !== undefined) {
-          payload.returnConfirmed = vacation.returnConfirmed;
+          rawPayload.returnConfirmed = vacation.returnConfirmed;
         }
+
+        // Remove qualquer chave cujo valor seja undefined antes de enviar
+        const payload = stripUndefined(rawPayload);
+
         await updateDoc(doc(db, 'employees', empId), payload);
       } else {
-        // Coleção /vacations — passa tudo incluindo returnConfirmed
-        await updateDoc(doc(db, 'vacations', id), {
-          ...vacation,
-          updatedAt: serverTimestamp(),
-        });
+        // Coleção /vacations — remove undefined do Partial<Vacation> também
+        const { id: _id, ...rest } = vacation as any;
+        const safePayload = stripUndefined({ ...rest, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, 'vacations', id), safePayload);
       }
       toast.success('Férias atualizadas com sucesso!');
     } catch (error) { handleFirestoreError(error, OperationType.UPDATE, 'vacations'); }
