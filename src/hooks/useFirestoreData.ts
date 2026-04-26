@@ -10,31 +10,77 @@ import type {
   Status, ShiftType, Employee, GlobalEmployee,
   AttendanceRecord, NotesRecord, LockedDaysRecord, Vacation
 } from '../types';
+import { isWorkDay } from '../utils/dateUtils';
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Normaliza qualquer valor de data para o formato ISO YYYY-MM-DD.
+ *
+ * Regras:
+ *  - Timestamp Firestore  → toDate().toISOString()
+ *  - String ISO YYYY-MM-DD → retorna como está (só os primeiros 10 chars)
+ *  - String com "/" (formato BR DD/MM/YYYY ou legado) →
+ *      SEMPRE interpreta como DD/MM/YYYY (p0 = dia, p1 = mês).
+ *      Isso elimina a heurística ambígua anterior que causava inversão de
+ *      mês/dia quando ambos os segmentos eram ≤ 12.
+ */
 const normalizeDate = (dateVal: any): string => {
   if (!dateVal) return '';
+
+  // Timestamp Firestore
   if (typeof dateVal === 'object' && 'toDate' in dateVal) {
     return dateVal.toDate().toISOString().split('T')[0];
   }
+
   if (typeof dateVal === 'string') {
+    // Já está em formato ISO — retorna os 10 primeiros chars
     if (/^\d{4}-\d{2}-\d{2}/.test(dateVal)) return dateVal.split('T')[0];
+
+    // Formato com barra — SEMPRE DD/MM/YYYY (padrão BR)
     if (dateVal.includes('/')) {
       const parts = dateVal.split('/');
       if (parts.length === 3) {
-        const p0 = parts[0].padStart(2, '0');
-        const p1 = parts[1].padStart(2, '0');
+        const day  = parts[0].padStart(2, '0');   // p0 = dia
+        const mon  = parts[1].padStart(2, '0');   // p1 = mês
         const year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
-        const n0 = parseInt(p0);
-        const n1 = parseInt(p1);
-        if (n0 > 12) return `${year}-${p1}-${p0}`;
-        if (n1 > 12) return `${year}-${p0}-${p1}`;
-        return `${year}-${p1}-${p0}`;
+        return `${year}-${mon}-${day}`;
       }
     }
+
     return dateVal;
   }
+
   return '';
 };
+
+/**
+ * Recalcula a data de retorno a partir do fim das férias,
+ * ignorando o valor armazenado no Firestore (pode estar com mês/dia trocados).
+ *
+ * Regra CLT / escala 12×36:
+ *   returnDate = endDate + 1 dia
+ *   Se esse dia cair em folga (isWorkDay = false), avança mais 1 dia.
+ */
+function deriveReturnDate(endDateISO: string): string {
+  if (!endDateISO || endDateISO.length < 10) return '';
+
+  const [y, m, d] = endDateISO.split('-').map(Number);
+  if (!y || !m || !d) return '';
+
+  // Adiciona 1 dia ao fim das férias
+  let ret = new Date(y, m - 1, d + 1);
+
+  // Avança se cair em folga da escala 12×36
+  if (!isWorkDay(ret.getDate(), ret.getMonth(), ret.getFullYear())) {
+    ret = new Date(ret.getFullYear(), ret.getMonth(), ret.getDate() + 1);
+  }
+
+  const ry = ret.getFullYear();
+  const rm = String(ret.getMonth() + 1).padStart(2, '0');
+  const rd = String(ret.getDate()).padStart(2, '0');
+  return `${ry}-${rm}-${rd}`;
+}
 
 /** Remove chaves cujo valor seja undefined ou string vazia (opcional) */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -166,12 +212,15 @@ export function useFirestoreData({
       const vacs: Vacation[] = [];
       snapshot.forEach(d => {
         const data = d.data();
+        const endDate = normalizeDate(data.vacationEnd || data.endDate || '');
         vacs.push({
           id: d.id,
           employeeId: data.employeeId || d.id,
           startDate: normalizeDate(data.vacationStart || data.dataInicioFerias || data.startDate || ''),
-          endDate: normalizeDate(data.vacationEnd || data.endDate || ''),
-          returnDate: normalizeDate(data.returnDate || ''),
+          endDate,
+          // Sempre recalcula returnDate a partir do endDate normalizado,
+          // evitando usar o valor potencialmente corrompido do Firestore.
+          returnDate: deriveReturnDate(endDate),
           returnConfirmed: data.returnConfirmed === true,
           status: (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled')
             ? 'scheduled'
@@ -234,12 +283,14 @@ export function useFirestoreData({
                 let status: 'scheduled' | 'taken' = 'taken';
                 if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') status = 'scheduled';
                 else if (vacEnd && vacEnd >= new Date().toISOString().split('T')[0]) status = 'scheduled';
+                const normEnd = normalizeDate(vacEnd);
                 embeddedVacs.push({
                   id: `vac_${d.id}`,
                   employeeId: d.id,
                   startDate: normalizeDate(vacStart),
-                  endDate: normalizeDate(vacEnd),
-                  returnDate: normalizeDate(data.returnDate || ''),
+                  endDate: normEnd,
+                  // Recalcula returnDate a partir do endDate — não usa o campo armazenado
+                  returnDate: deriveReturnDate(normEnd),
                   returnConfirmed: data.returnConfirmed === true,
                   status,
                   diasDireito: data.diasDireito ?? 30,
@@ -267,12 +318,14 @@ export function useFirestoreData({
             let status: 'scheduled' | 'taken' = 'taken';
             if (data.vacationStatus?.toLowerCase().includes('agendada') || data.status === 'scheduled') status = 'scheduled';
             else if (vacEnd && vacEnd >= new Date().toISOString().split('T')[0]) status = 'scheduled';
+            const normEnd = normalizeDate(vacEnd);
             collVacs.push({
               id: d.id,
               employeeId: data.employeeId || d.id,
               startDate: normalizeDate(vacStart),
-              endDate: normalizeDate(vacEnd),
-              returnDate: normalizeDate(data.returnDate || ''),
+              endDate: normEnd,
+              // Recalcula returnDate a partir do endDate — não usa o campo armazenado
+              returnDate: deriveReturnDate(normEnd),
               returnConfirmed: data.returnConfirmed === true,
               status,
               diasDireito: data.diasDireito ?? 30,
@@ -400,18 +453,23 @@ export function useFirestoreData({
   // ─── handleUpdateVacation ────────────────────────────────────────────────────
   // Usa stripUndefined() para garantir que nenhum campo undefined chegue ao Firestore,
   // o que causaria "Unsupported field value: undefined".
+  // Sempre recalcula returnDate a partir do endDate antes de salvar.
   const handleUpdateVacation = async (id: string, vacation: Partial<Vacation>) => {
     try {
+      // Recalcula returnDate a partir do endDate para garantir valor correto
+      const safeReturnDate = vacation.endDate
+        ? deriveReturnDate(vacation.endDate)
+        : vacation.returnDate;
+
       if (id.startsWith('vac_')) {
         const empId = id.replace('vac_', '');
 
-        // Monta payload apenas com campos definidos para evitar erro de undefined
         const rawPayload: Record<string, any> = {
           vacationStart:    vacation.startDate,
           dataInicioFerias: vacation.startDate,
           vacationEnd:      vacation.endDate,
           dataFimFerias:    vacation.endDate,
-          returnDate:       vacation.returnDate,
+          returnDate:       safeReturnDate,
           diasDireito:      vacation.diasDireito,
           vendeuFerias:     vacation.vendeuFerias,
           diasVendidos:     vacation.diasVendidos,
@@ -423,14 +481,15 @@ export function useFirestoreData({
           rawPayload.returnConfirmed = vacation.returnConfirmed;
         }
 
-        // Remove qualquer chave cujo valor seja undefined antes de enviar
         const payload = stripUndefined(rawPayload);
-
         await updateDoc(doc(db, 'employees', empId), payload);
       } else {
-        // Coleção /vacations — remove undefined do Partial<Vacation> também
         const { id: _id, ...rest } = vacation as any;
-        const safePayload = stripUndefined({ ...rest, updatedAt: serverTimestamp() });
+        const safePayload = stripUndefined({
+          ...rest,
+          returnDate: safeReturnDate,
+          updatedAt: serverTimestamp(),
+        });
         await updateDoc(doc(db, 'vacations', id), safePayload);
       }
       toast.success('Férias atualizadas com sucesso!');
@@ -569,7 +628,15 @@ export function useFirestoreData({
   };
 
   const handleAddVacation = async (vacation: Omit<Vacation, 'id'>) => {
-    try { await setDoc(doc(collection(db, 'vacations')), { ...vacation, createdAt: serverTimestamp() }); toast.success('Férias agendadas com sucesso!'); }
+    // Garante que o returnDate salvo seja sempre derivado do endDate
+    const safeVacation = {
+      ...vacation,
+      returnDate: vacation.endDate ? deriveReturnDate(vacation.endDate) : vacation.returnDate,
+    };
+    try {
+      await setDoc(doc(collection(db, 'vacations')), { ...safeVacation, createdAt: serverTimestamp() });
+      toast.success('Férias agendadas com sucesso!');
+    }
     catch (error) { handleFirestoreError(error, OperationType.WRITE, 'vacations'); }
   };
 
