@@ -18,13 +18,15 @@ interface Props {
   shift?: string;
 }
 
-type Step = 'enter_code' | 'search_self' | 'confirm_self' | 'success';
+type Step = 'enter_code' | 'list' | 'confirm_self' | 'success';
 
 export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = 'A' }) => {
   const [step, setStep]               = useState<Step>('enter_code');
   const [inputCode, setInputCode]     = useState(prefilledCode);
   const [error, setError]             = useState('');
   const [savedIds, setSavedIds]       = useState<Set<string>>(new Set());
+  // IDs marcados nesta sessão (para animação de saída antes do Firestore confirmar)
+  const [localMarked, setLocalMarked] = useState<Set<string>>(new Set());
   const [dayLocked, setDayLocked]     = useState(false);
   const [employees, setEmployees]     = useState<Employee[]>([]);
   const [loadingEmps, setLoadingEmps] = useState(true);
@@ -33,6 +35,8 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const [search, setSearch]           = useState('');
   const [selected, setSelected]       = useState<Employee | null>(null);
   const [marking, setMarking]         = useState(false);
+  // IDs em animação de saída (fade-out antes de sumir)
+  const [exitingIds, setExitingIds]   = useState<Set<string>>(new Set());
   const { validateCode }              = useAccessCode(false);
   const autoValidated                 = useRef(false);
   const searchRef                     = useRef<HTMLInputElement>(null);
@@ -98,10 +102,10 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Foca input de busca ao entrar na tela search_self
+  // Foca busca ao entrar na lista
   useEffect(() => {
-    if (step === 'search_self') {
-      setTimeout(() => searchRef.current?.focus(), 100);
+    if (step === 'list') {
+      setTimeout(() => searchRef.current?.focus(), 150);
     }
   }, [step]);
 
@@ -112,7 +116,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       setError('Código inválido ou expirado. Solicite um novo código ao responsável do turno.');
       return;
     }
-    setStep('search_self');
+    setStep('list');
   };
 
   const handleSelectEmployee = (emp: Employee) => {
@@ -123,6 +127,11 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
   const handleConfirmPresence = async () => {
     if (!selected || marking) return;
     setMarking(true);
+
+    // 1. Marca localmente com animação de saída IMEDIATA
+    setExitingIds(prev => new Set([...prev, selected.id]));
+
+    // 2. Salva no Firestore
     const docId = `${selected.shift}_${selected.id}_${year}_${month}_${day}`;
     await setDoc(
       doc(db, 'attendance', docId),
@@ -136,33 +145,50 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
       },
       { merge: true }
     );
+
+    // 3. Após animação (400ms), move para marcados locais e vai para tela de sucesso
+    setTimeout(() => {
+      setLocalMarked(prev => new Set([...prev, selected.id]));
+      setExitingIds(prev => { const n = new Set(prev); n.delete(selected.id); return n; });
+    }, 380);
+
     setMarking(false);
     setStep('success');
-    // Volta para busca após 3 segundos
+
+    // Volta para lista após 2.5 segundos
     setTimeout(() => {
       setSearch('');
       setSelected(null);
-      setStep('search_self');
-    }, 3000);
+      setStep('list');
+    }, 2500);
   };
 
   const handleBack = () => {
     setSelected(null);
-    setStep('search_self');
+    setStep('list');
   };
 
   const isLoading = loadingEmps || loadingAttend || loadingLock;
 
-  // Filtra: só pendentes que batem com a busca
-  const suggestions = search.length >= 2
-    ? employees.filter(e =>
-        !savedIds.has(e.id) &&
+  // Pendentes = não estão em savedIds nem em localMarked
+  const pendingEmployees = employees.filter(
+    e => !savedIds.has(e.id) && !localMarked.has(e.id)
+  );
+
+  // Filtro por busca (quando search >= 1 char)
+  const visibleEmployees = search.length >= 1
+    ? pendingEmployees.filter(e =>
         e.name.toLowerCase().includes(search.toLowerCase())
-      ).slice(0, 5)
-    : [];
+      )
+    : pendingEmployees;
+
+  const doneCount    = savedIds.size + localMarked.size;
+  const pendingCount = pendingEmployees.length;
+  const totalCount   = employees.length;
+  const allDone      = !isLoading && pendingCount === 0 && totalCount > 0;
 
   const getInitials = (name: string) =>
-    name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase();
+    name.split(' ').filter(Boolean).slice(0, 2).map(n => n[0]).join('').toUpperCase();
 
   return (
     <div className="kiosk-container">
@@ -200,12 +226,15 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
         </div>
       )}
 
-      {/* ═══ TELA 2: Buscar próprio nome ═══ */}
-      {step === 'search_self' && (
-        <div className="kiosk-card">
-          <div className="kiosk-logo">👤</div>
-          <h2 className="kiosk-title">Qual é o seu nome?</h2>
-          <p className="kiosk-subtitle">Digite as primeiras letras do seu nome para encontrá-lo</p>
+      {/* ═══ TELA 2: Lista de pendentes ═══ */}
+      {step === 'list' && (
+        <div className="kiosk-card kiosk-card-wide">
+
+          {/* Header com contadores */}
+          <div className="kiosk-attendance-header">
+            <h2 className="kiosk-title">Marcar Presença</h2>
+            <div className="kiosk-shift-badge">Turno {shift}</div>
+          </div>
 
           {isLoading ? (
             <div className="kiosk-loading">
@@ -216,53 +245,81 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             <div className="kiosk-all-done">
               <div className="kiosk-done-emoji">✅</div>
               <h3>Lançamento fechado</h3>
-              <p>O Turno {shift} já registrou o lançamento de hoje. Todas as presenças estão confirmadas.</p>
+              <p>O Turno {shift} já registrou o lançamento de hoje.</p>
+            </div>
+          ) : allDone ? (
+            <div className="kiosk-all-done">
+              <div className="kiosk-done-emoji kiosk-bounce">🎉</div>
+              <h3>Todos presentes!</h3>
+              <p>Todos os {totalCount} colaboradores do Turno {shift} já registraram presença hoje.</p>
             </div>
           ) : (
-            <div className="kiosk-search-wrapper" style={{ position: 'relative', width: '100%' }}>
-              <span className="kiosk-search-icon">🔍</span>
-              <input
-                ref={searchRef}
-                className="kiosk-search-input"
-                type="text"
-                placeholder="Ex: João Silva..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                autoComplete="off"
-              />
-              {search && (
-                <button className="kiosk-search-clear" onClick={() => setSearch('')}>×</button>
-              )}
+            <>
+              {/* Contadores */}
+              <div className="kiosk-counters">
+                <div className="kiosk-counter kiosk-counter-done">
+                  <span className="kiosk-counter-num">{doneCount}</span>
+                  <span className="kiosk-counter-lbl">Presentes</span>
+                </div>
+                <div className="kiosk-counter kiosk-counter-pending">
+                  <span className="kiosk-counter-num">{pendingCount}</span>
+                  <span className="kiosk-counter-lbl">Pendentes</span>
+                </div>
+                <div className="kiosk-counter kiosk-counter-total">
+                  <span className="kiosk-counter-num">{totalCount}</span>
+                  <span className="kiosk-counter-lbl">Total</span>
+                </div>
+              </div>
 
-              {/* Sugestões */}
-              {suggestions.length > 0 && (
-                <ul className="kiosk-suggestions">
-                  {suggestions.map(emp => (
-                    <li
-                      key={emp.id}
-                      className="kiosk-suggestion-item"
-                      onClick={() => handleSelectEmployee(emp)}
-                    >
-                      <div className="kiosk-avatar kiosk-avatar-sm">{getInitials(emp.name)}</div>
-                      <span>{emp.name}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {/* Barra de progresso */}
+              <div className="kiosk-progress-bar">
+                <div
+                  className="kiosk-progress-fill"
+                  style={{ width: `${totalCount > 0 ? (doneCount / totalCount) * 100 : 0}%` }}
+                />
+              </div>
 
-              {search.length >= 2 && suggestions.length === 0 && (
-                <p className="kiosk-no-results">
-                  Nenhum funcionário pendente encontrado.
-                </p>
-              )}
+              {/* Busca */}
+              <div className="kiosk-search-wrapper" style={{ position: 'relative', width: '100%' }}>
+                <span className="kiosk-search-icon">🔍</span>
+                <input
+                  ref={searchRef}
+                  className="kiosk-search-input"
+                  type="text"
+                  placeholder="Filtrar por nome…"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  autoComplete="off"
+                />
+                {search && (
+                  <button className="kiosk-search-clear" onClick={() => setSearch('')}>×</button>
+                )}
+              </div>
 
-              {search.length > 0 && search.length < 2 && (
-                <p className="kiosk-hint">Continue digitando…</p>
-              )}
-            </div>
+              {/* Lista de pendentes */}
+              <ul className="kiosk-employee-list">
+                {visibleEmployees.map(emp => (
+                  <li
+                    key={emp.id}
+                    className={`kiosk-employee-item kiosk-clickable ${
+                      exitingIds.has(emp.id) ? 'kiosk-item-exit' : 'kiosk-item-enter'
+                    }`}
+                    onClick={() => !exitingIds.has(emp.id) && handleSelectEmployee(emp)}
+                  >
+                    <div className="kiosk-avatar kiosk-avatar-sm">{getInitials(emp.name)}</div>
+                    <span className="kiosk-emp-name">{emp.name}</span>
+                    <span className="kiosk-tap-hint">Toque para marcar →</span>
+                  </li>
+                ))}
+
+                {visibleEmployees.length === 0 && search.length >= 1 && (
+                  <li className="kiosk-empty-search">
+                    Nenhum funcionário pendente encontrado para "<strong>{search}</strong>"
+                  </li>
+                )}
+              </ul>
+            </>
           )}
-
-          <div className="kiosk-shift-badge" style={{ marginTop: '16px' }}>Turno {shift}</div>
         </div>
       )}
 
@@ -272,7 +329,6 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
           <h2 className="kiosk-title">Confirmar Presença</h2>
           <p className="kiosk-subtitle">Esse é você? Confirme para registrar sua presença.</p>
 
-          {/* Card do funcionário */}
           <div className="kiosk-confirm-card">
             <div className="kiosk-avatar kiosk-avatar-lg">{getInitials(selected.name)}</div>
             <div className="kiosk-confirm-info">
@@ -281,7 +337,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
             </div>
           </div>
 
-          {savedIds.has(selected.id) ? (
+          {savedIds.has(selected.id) || localMarked.has(selected.id) ? (
             <div className="kiosk-already-marked">
               ✅ Presença já registrada hoje!
             </div>
@@ -305,14 +361,14 @@ export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = '
 
       {/* ═══ TELA 4: Sucesso ═══ */}
       {step === 'success' && selected && (
-        <div className="kiosk-card">
-          <div className="kiosk-done-emoji" style={{ fontSize: '64px' }}>🎉</div>
+        <div className="kiosk-card kiosk-success-card">
+          <div className="kiosk-done-emoji kiosk-bounce" style={{ fontSize: '64px' }}>🎉</div>
           <h2 className="kiosk-title" style={{ color: '#10b981' }}>Presença Registrada!</h2>
           <p className="kiosk-subtitle">
             <strong>{selected.name}</strong>, sua presença foi confirmada com sucesso.
           </p>
           <p className="kiosk-hint" style={{ marginTop: '16px' }}>
-            Voltando em 3 segundos…
+            Voltando em instantes…
           </p>
           <div className="kiosk-shift-badge" style={{ marginTop: '8px' }}>Turno {shift}</div>
         </div>
