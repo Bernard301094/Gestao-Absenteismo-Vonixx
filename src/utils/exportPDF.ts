@@ -95,9 +95,9 @@ export const exportToPDF = async (
 
     // Box 3: Justificadas
     const x3 = x2 + boxW + gap;
-    doc.setFillColor(255, 247, 237); doc.setDrawColor(254, 215, 170); // orange-50 / orange-200
+    doc.setFillColor(255, 247, 237); doc.setDrawColor(254, 215, 170);
     doc.roundedRect(x3, startY, boxW, 20, 2, 2, 'FD');
-    doc.setTextColor(234, 88, 12); doc.setFontSize(7); doc.setFont('helvetica', 'bold'); // orange-600
+    doc.setTextColor(234, 88, 12); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
     doc.text('F. JUSTIFICADAS', x3 + 4, startY + 7);
     doc.setFontSize(18);
     doc.text(totalJustificadas.toString(), x3 + 4, startY + 16);
@@ -179,14 +179,10 @@ export const exportToPDF = async (
     };
   });
 
-  // Filtrar para dejar solo Faltas (F), Justificadas (FJ) y Afastamentos (A) si es diario
+  // Mostrar a TODOS excepto a los 'Presentes' en el reporte diario
   let filteredTableData = rawTableData;
   if (selectedDay !== 'all') {
-    filteredTableData = rawTableData.filter(item => 
-      item.statusRaw === 'F' || 
-      item.statusRaw === 'FJ' || 
-      item.statusRaw === 'A'
-    );
+    filteredTableData = rawTableData.filter(item => item.statusRaw !== 'P');
   }
 
   const tableData = filteredTableData.map(item => item.row);
@@ -194,7 +190,7 @@ export const exportToPDF = async (
   if (tableData.length === 0 && selectedDay !== 'all') {
     tableData.push([
       '-',
-      'Nenhuma falta, atestado ou afastamento registrado.',
+      'Nenhuma ocorrência (falta, atestado, férias ou afastamento) registrada.',
       '-',
       { content: '-', rawStatus: 'P' },
       '-'
