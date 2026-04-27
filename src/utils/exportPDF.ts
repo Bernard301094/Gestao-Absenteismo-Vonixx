@@ -141,7 +141,7 @@ export const exportToPDF = async (
   startY += 28;
 
   // ── TABLE ──
-  const tableData = validEmployees.map(emp => {
+  const rawTableData = validEmployees.map(emp => {
     let statusRaw = 'P';
     let statusVal = '';
 
@@ -167,14 +167,39 @@ export const exportToPDF = async (
       ? (hasAtestado(emp.id, selectedDay) ? 'Sim' : '-')
       : '';
 
-    return [
-      `#${emp.id.padStart(3, '0')}`,
-      emp.name,
-      emp.role || 'Equipe',
-      { content: statusVal, rawStatus: statusRaw },
-      ...(selectedDay !== 'all' ? [{ content: atestadoCol, hasAtestado: hasAtestado(emp.id, selectedDay) }] : [])
-    ];
+    return {
+      statusRaw,
+      row: [
+        `#${emp.id.padStart(3, '0')}`,
+        emp.name,
+        emp.role || 'Equipe',
+        { content: statusVal, rawStatus: statusRaw },
+        ...(selectedDay !== 'all' ? [{ content: atestadoCol, hasAtestado: hasAtestado(emp.id, selectedDay) }] : [])
+      ]
+    };
   });
+
+  // Filtrar para dejar solo Faltas (F), Justificadas (FJ) y Afastamentos (A) si es diario
+  let filteredTableData = rawTableData;
+  if (selectedDay !== 'all') {
+    filteredTableData = rawTableData.filter(item => 
+      item.statusRaw === 'F' || 
+      item.statusRaw === 'FJ' || 
+      item.statusRaw === 'A'
+    );
+  }
+
+  const tableData = filteredTableData.map(item => item.row);
+
+  if (tableData.length === 0 && selectedDay !== 'all') {
+    tableData.push([
+      '-',
+      'Nenhuma falta, atestado ou afastamento registrado.',
+      '-',
+      { content: '-', rawStatus: 'P' },
+      '-'
+    ]);
+  }
 
   const headColumns = selectedDay !== 'all'
     ? ['ID', 'Nome do Colaborador', 'Cargo', 'Status', 'Atestado']
@@ -208,7 +233,7 @@ export const exportToPDF = async (
     didParseCell: function (data) {
       if (data.section === 'body') {
         // Colorir coluna Status
-        if (data.column.index === 3 && data.cell.raw) {
+        if (data.column.index === 3 && data.cell.raw && typeof data.cell.raw === 'object') {
           const rawStatus = (data.cell.raw as any).rawStatus;
           if (rawStatus === 'P')  data.cell.styles.textColor = [16, 185, 129];  // verde
           else if (rawStatus === 'F')  data.cell.styles.textColor = [239, 68, 68];   // vermelho
@@ -216,7 +241,7 @@ export const exportToPDF = async (
           else if (rawStatus === 'Fe' || rawStatus === 'A') data.cell.styles.textColor = [59, 130, 246]; // azul
         }
         // Colorir coluna Atestado
-        if (selectedDay !== 'all' && data.column.index === 4 && data.cell.raw) {
+        if (selectedDay !== 'all' && data.column.index === 4 && data.cell.raw && typeof data.cell.raw === 'object') {
           const ha = (data.cell.raw as any).hasAtestado;
           if (ha) data.cell.styles.textColor = [234, 88, 12]; // laranja
           else    data.cell.styles.textColor = [148, 163, 184]; // cinza
