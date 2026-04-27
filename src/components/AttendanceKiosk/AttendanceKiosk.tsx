@@ -7,15 +7,7 @@ import {
 } from 'firebase/firestore';
 import './AttendanceKiosk.css';
 
-// ─── ZXing para leitura do QR com câmera ─────────────────────────────────────
-// Importado dinamicamente para não aumentar o bundle inicial
-let _zxingReader: any = null;
-async function getZXingReader() {
-  if (_zxingReader) return _zxingReader;
-  const { BrowserQRCodeReader } = await import('@zxing/browser');
-  _zxingReader = new BrowserQRCodeReader();
-  return _zxingReader;
-}
+const BC_CHANNEL = 'vonixx_kiosk_code';
 
 interface Employee {
   id: string;
@@ -24,18 +16,65 @@ interface Employee {
 }
 
 interface Props {
+  prefilledCode?: string;
   shift?: string;
 }
 
-type Step = 'scanning' | 'manual' | 'search' | 'confirm_self' | 'success' | 'locked';
+type Step = 'enter_code' | 'search' | 'confirm_self' | 'success' | 'locked';
 
 const SESSION_KEY = 'vonixx_kiosk_used_code';
 
-export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
-  const [step, setStep]               = useState<Step>('scanning');
-  const [inputCode, setInputCode]     = useState('');
+// ─── Detecta se é aba relay (aberta pelo QR do celular) ─────────────────────
+const _params       = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+const IS_RELAY      = _params.get('relay') === '1';
+const RELAY_CODE    = _params.get('code') || '';
+const RELAY_SHIFT   = (_params.get('shift') || 'A').toUpperCase();
+
+// ─── Aba Relay (componente separado, leve) ───────────────────────────────────
+function RelayPage() {
+  useEffect(() => {
+    if (!RELAY_CODE) { window.close(); return; }
+    const send = () => {
+      try {
+        const bc = new BroadcastChannel(BC_CHANNEL);
+        bc.postMessage({ type: 'CODE', code: RELAY_CODE, shift: RELAY_SHIFT });
+        bc.close();
+      } catch {
+        localStorage.setItem('vonixx_bc_fallback',
+          JSON.stringify({ code: RELAY_CODE, shift: RELAY_SHIFT, ts: Date.now() }));
+      }
+      setTimeout(() => window.close(), 400);
+    };
+    // Pequeno delay garante que o kiosk já está escutando
+    setTimeout(send, 100);
+  }, []);
+
+  return (
+    <div style={{
+      minHeight: '100dvh',
+      background: 'linear-gradient(160deg,#0f3638 0%,#01696f 100%)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: '1rem', color: 'white',
+    }}>
+      <div className="kiosk-spinner"
+        style={{ borderTopColor: 'white', borderColor: 'rgba(255,255,255,0.2)' }} />
+      <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>Enviando código ao painel…</p>
+    </div>
+  );
+}
+
+// ─── Kiosk Principal ─────────────────────────────────────────────────────────
+export const AttendanceKiosk: React.FC<Props> = ({ prefilledCode = '', shift = 'A' }) => {
+  // Renderiza aba relay imediatamente, sem nenhum outro hook
+  if (IS_RELAY) return <RelayPage />;
+
+  return <KioskMain prefilledCode={prefilledCode} shift={shift} />;
+};
+
+function KioskMain({ prefilledCode, shift }: { prefilledCode: string; shift: string }) {
+  const [step, setStep]               = useState<Step>('enter_code');
+  const [inputCode, setInputCode]     = useState(prefilledCode);
   const [error, setError]             = useState('');
-  const [cameraError, setCameraError] = useState('');
   const [savedIds, setSavedIds]       = useState<Set<string>>(new Set());
   const [localMarked, setLocalMarked] = useState<Set<string>>(new Set());
   const [dayLocked, setDayLocked]     = useState(false);
@@ -47,96 +86,70 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
   const [selected, setSelected]       = useState<Employee | null>(null);
   const [marking, setMarking]         = useState(false);
   const [sessionCode, setSessionCode] = useState('');
-  const [scanning, setScanning]       = useState(false);
 
   const { validateCode } = useAccessCode(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  // Ref estável para validateCode (evita re-registro do BroadcastChannel)
   const validateRef = useRef(validateCode);
   useEffect(() => { validateRef.current = validateCode; }, [validateCode]);
-
-  const searchRef   = useRef<HTMLInputElement>(null);
-  const videoRef    = useRef<HTMLVideoElement>(null);
-  const scannerRef  = useRef<{ stop: () => void } | null>(null);
 
   const today = new Date();
   const day   = today.getDate();
   const month = today.getMonth();
   const year  = today.getFullYear();
 
-  // ─── Valida o código e avança ─────────────────────────────────────────────
-  const handleIncomingCode = useCallback(async (raw: string) => {
-    // Extrai só o código: se for uma URL completa pega o param ?code=
-    // ou os últimos 6 dígitos, ou o texto direto
-    let code = raw.trim();
-    try {
-      const u = new URL(code);
-      code = u.searchParams.get('code') || code;
-    } catch { /* não é URL, usa como está */ }
-    // Garante apenas dígitos e exatamente 6
-    code = code.replace(/\D/g, '').slice(-6);
-    if (code.length !== 6) return; // QR inválido, ignora silenciosamente
-
-    // Já usado nesta sessão?
+  // ─── Processa código recebido (manual ou via scan) ───────────────────────
+  const handleIncomingCode = useCallback(async (code: string) => {
     const usedCode = sessionStorage.getItem(SESSION_KEY);
     if (usedCode && usedCode === code) { setStep('locked'); return; }
-
+    setError('');
     const valid = await validateRef.current(code);
     if (!valid) {
-      setError('Código inválido ou expirado. Aguarde o próximo código no painel.');
+      setError('Código inválido ou expirado. Solicite um novo código ao responsável do turno.');
+      setStep('enter_code');
       return;
     }
-    stopScanner();
     setSessionCode(code);
     setSearch('');
     setSelected(null);
-    setError('');
     setStep('search');
-  }, []);
+  }, []); // deps vazias — usa validateRef estável
 
-  // ─── ZXing: inicia leitura da câmera ──────────────────────────────────────
-  const startScanner = useCallback(async () => {
-    if (!videoRef.current) return;
-    setScanning(true);
-    setCameraError('');
-    try {
-      const reader = await getZXingReader();
-      const controls = await reader.decodeFromVideoDevice(
-        undefined, // usa câmera traseira padrão
-        videoRef.current,
-        (result: any, err: any) => {
-          if (result) {
-            handleIncomingCode(result.getText());
-          }
+  // ─── BroadcastChannel: escuta QR scans do celular ────────────────────────
+  useEffect(() => {
+    if (typeof BroadcastChannel !== 'undefined') {
+      const bc = new BroadcastChannel(BC_CHANNEL);
+      bc.onmessage = (ev) => {
+        if (ev.data?.type === 'CODE' && ev.data.code) {
+          handleIncomingCode(ev.data.code);
         }
-      );
-      scannerRef.current = controls;
-    } catch (e: any) {
-      setScanning(false);
-      if (e?.name === 'NotAllowedError') {
-        setCameraError('Permissão de câmera negada. Use o código manual.');
-      } else {
-        setCameraError('Câmera não disponível. Use o código manual.');
-      }
-      setStep('manual');
+      };
+      return () => bc.close();
     }
+    // Fallback localStorage para Safari iOS < 15.4
+    const iv = setInterval(() => {
+      const raw = localStorage.getItem('vonixx_bc_fallback');
+      if (!raw) return;
+      try {
+        const { code, ts } = JSON.parse(raw);
+        if (Date.now() - ts < 5000) {
+          localStorage.removeItem('vonixx_bc_fallback');
+          handleIncomingCode(code);
+        }
+      } catch { /* noop */ }
+    }, 300);
+    return () => clearInterval(iv);
   }, [handleIncomingCode]);
 
-  const stopScanner = useCallback(() => {
-    try { scannerRef.current?.stop(); } catch { /* noop */ }
-    scannerRef.current = null;
-    setScanning(false);
-  }, []);
-
-  // ─── Inicia câmera ao montar / volta para scanning ────────────────────────
+  // ─── Auto-valida código da URL (sem relay) ───────────────────────────────
+  const autoValidated = useRef(false);
   useEffect(() => {
-    if (step === 'scanning') {
-      startScanner();
-    } else {
-      stopScanner();
-    }
-    return () => { if (step === 'scanning') stopScanner(); };
-  }, [step]); // eslint-disable-line
+    if (autoValidated.current || !prefilledCode || prefilledCode.length !== 6) return;
+    autoValidated.current = true;
+    setTimeout(() => handleIncomingCode(prefilledCode), 600);
+  }, [prefilledCode, handleIncomingCode]);
 
-  // ─── Foca campo de busca ao entrar em search ─────────────────────────────
+  // ─── Foca busca ao entrar na tela search ─────────────────────────────────
   useEffect(() => {
     if (step === 'search') setTimeout(() => searchRef.current?.focus(), 150);
   }, [step]);
@@ -155,7 +168,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
     });
   }, [shift]);
 
-  // ─── Firestore: presenças de hoje ────────────────────────────────────────
+  // ─── Firestore: presenças de hoje ─────────────────────────────────────────
   useEffect(() => {
     const q = query(
       collection(db, 'attendance'),
@@ -172,7 +185,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
     });
   }, [shift, day, month, year]);
 
-  // ─── Firestore: dia fechado ───────────────────────────────────────────────
+  // ─── Firestore: dia fechado ────────────────────────────────────────────────
   useEffect(() => {
     const q = query(
       collection(db, 'completions'),
@@ -187,7 +200,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
     });
   }, [shift, day, month, year]);
 
-  // ─── Handlers ────────────────────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────────────────────
   const handleSelectEmployee = (emp: Employee) => {
     setSelected(emp);
     setStep('confirm_self');
@@ -213,7 +226,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
     setTimeout(() => setStep('locked'), 3000);
   };
 
-  // ─── Busca filtrada ───────────────────────────────────────────────────────
+  // ─── Busca filtrada ────────────────────────────────────────────────────────
   const isLoading   = loadingEmps || loadingAttend || loadingLock;
   const suggestions = search.length >= 1
     ? employees.filter(e =>
@@ -230,81 +243,14 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
   return (
     <div className="kiosk-container">
 
-      {/* ══ TELA 1: Câmera ══════════════════════════════════════════════════ */}
-      {step === 'scanning' && (
-        <div className="kiosk-card kiosk-card-wide">
-          <div className="kiosk-logo">📷</div>
-          <h2 className="kiosk-title">Aponte o QR Code para a câmera</h2>
-          <p className="kiosk-subtitle">O registro será feito automaticamente ao detectar o código</p>
-
-          {/* Viewfinder */}
-          <div style={{
-            position: 'relative',
-            width: '100%',
-            maxWidth: 360,
-            aspectRatio: '1',
-            margin: '0 auto',
-            borderRadius: 16,
-            overflow: 'hidden',
-            background: '#0f172a',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
-          }}>
-            <video
-              ref={videoRef}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              muted
-              playsInline
-              autoPlay
-            />
-            {/* Cantos do viewfinder */}
-            {['top-left','top-right','bottom-left','bottom-right'].map(pos => (
-              <div key={pos} style={{
-                position: 'absolute',
-                width: 28, height: 28,
-                borderColor: '#01696f',
-                borderStyle: 'solid',
-                borderWidth: 0,
-                ...(pos.includes('top')    ? { top: 12 }    : { bottom: 12 }),
-                ...(pos.includes('left')   ? { left: 12, borderLeftWidth: 4, borderTopWidth: pos.includes('top') ? 4 : 0, borderBottomWidth: pos.includes('bottom') ? 4 : 0 }
-                                           : { right: 12, borderRightWidth: 4, borderTopWidth: pos.includes('top') ? 4 : 0, borderBottomWidth: pos.includes('bottom') ? 4 : 0 }),
-                borderRadius: 4,
-              }} />
-            ))}
-            {/* Linha de scan animada */}
-            {scanning && (
-              <div style={{
-                position: 'absolute',
-                left: 0, right: 0,
-                height: 2,
-                background: 'linear-gradient(90deg, transparent, #01696f, transparent)',
-                animation: 'kiosk-scan-line 2s ease-in-out infinite',
-              }} />
-            )}
-          </div>
-
-          {error && <p className="kiosk-error-msg">{error}</p>}
-
-          <button
-            className="kiosk-btn-ghost"
-            style={{ marginTop: 4 }}
-            onClick={() => { stopScanner(); setStep('manual'); }}
-          >
-            ✏️ Digitar código manualmente
-          </button>
-
-          <div className="kiosk-shift-badge">Turno {shift}</div>
-        </div>
-      )}
-
-      {/* ══ TELA 1b: Código manual ══════════════════════════════════════════ */}
-      {step === 'manual' && (
+      {/* ══ TELA 1: Inserir código manualmente ══════════════════════════════ */}
+      {step === 'enter_code' && (
         <div className="kiosk-card">
           <div className="kiosk-logo">🏭</div>
           <h2 className="kiosk-title">Registro de Presença</h2>
-          <p className="kiosk-subtitle">Digite o código exibido no painel do responsável</p>
-
-          {cameraError && <p className="kiosk-error-msg">{cameraError}</p>}
-
+          <p className="kiosk-subtitle">
+            Escaneie o QR Code com seu celular ou digite o código manualmente
+          </p>
           <div className="kiosk-input-group">
             <input
               className="kiosk-code-input"
@@ -325,21 +271,13 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
               Entrar →
             </button>
           </div>
-
           {error && <p className="kiosk-error-msg">{error}</p>}
-
-          <button
-            className="kiosk-btn-ghost"
-            onClick={() => { setError(''); setInputCode(''); setStep('scanning'); }}
-          >
-            📷 Voltar para a câmera
-          </button>
-
+          <p className="kiosk-hint">💡 O QR Code abre automaticamente esta tela no painel</p>
           <div className="kiosk-shift-badge">Turno {shift}</div>
         </div>
       )}
 
-      {/* ══ TELA 2: Buscar funcionário ══════════════════════════════════════ */}
+      {/* ══ TELA 2: Buscar funcionário ═══════════════════════════════════════ */}
       {step === 'search' && (
         <div className="kiosk-card">
           <h2 className="kiosk-title">Marcar Presença</h2>
@@ -367,7 +305,9 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
                   placeholder="Digite seu nome…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  autoComplete="off" autoCorrect="off" spellCheck={false}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                 />
                 {search && (
                   <button className="kiosk-search-clear" onClick={() => setSearch('')}>×</button>
@@ -400,7 +340,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
         </div>
       )}
 
-      {/* ══ TELA 3: Confirmar presença ══════════════════════════════════════ */}
+      {/* ══ TELA 3: Confirmar presença ═══════════════════════════════════════ */}
       {step === 'confirm_self' && selected && (
         <div className="kiosk-card">
           <h2 className="kiosk-title">Confirmar Presença</h2>
@@ -423,7 +363,7 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
               {marking ? '⏳ Registrando…' : '✓ Confirmar minha presença'}
             </button>
           )}
-          <p className="kiosk-hint" style={{ marginTop: 4 }}>
+          <p className="kiosk-hint" style={{ marginTop: '4px' }}>
             ⚠️ Para registrar outro funcionário, escaneie um novo QR Code
           </p>
           <div className="kiosk-shift-badge">Turno {shift}</div>
@@ -433,12 +373,12 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
       {/* ══ TELA 4: Sucesso ══════════════════════════════════════════════════ */}
       {step === 'success' && selected && (
         <div className="kiosk-card" style={{ textAlign: 'center', gap: '1.25rem' }}>
-          <div style={{ fontSize: 64 }}>🎉</div>
+          <div style={{ fontSize: '64px' }}>🎉</div>
           <h2 className="kiosk-title" style={{ color: '#10b981' }}>Presença Registrada!</h2>
           <p className="kiosk-subtitle">
             <strong>{selected.name}</strong>, sua presença foi confirmada com sucesso.
           </p>
-          <p className="kiosk-hint" style={{ marginTop: 16 }}>
+          <p className="kiosk-hint" style={{ marginTop: '16px' }}>
             Para marcar outro funcionário, escaneie um novo QR Code.
           </p>
           <div className="kiosk-shift-badge">Turno {shift}</div>
@@ -453,24 +393,18 @@ export const AttendanceKiosk: React.FC<Props> = ({ shift = 'A' }) => {
           <p className="kiosk-subtitle">Este código QR já foi utilizado nesta sessão.</p>
           <div style={{
             background: '#f0fdfa', border: '2px solid #99f6e4',
-            borderRadius: 14, padding: '1rem',
+            borderRadius: '14px', padding: '1rem',
             color: '#01696f', fontWeight: 700, fontSize: '0.95rem',
           }}>
             📱 Escaneie um novo QR Code para registrar outra presença
           </div>
           <p className="kiosk-hint">O código renova automaticamente a cada 30 segundos</p>
-          <button
-            className="kiosk-btn-ghost"
-            onClick={() => { setStep('scanning'); setError(''); }}
-          >
-            📷 Escanear próximo QR
-          </button>
           <div className="kiosk-shift-badge">Turno {shift}</div>
         </div>
       )}
 
     </div>
   );
-};
+}
 
 export default AttendanceKiosk;
