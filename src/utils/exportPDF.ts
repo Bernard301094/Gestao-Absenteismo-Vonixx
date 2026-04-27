@@ -42,31 +42,28 @@ export const exportToPDF = async (
     }
   });
 
-  // ── HEADER DISEÑO MEJORADO ──
-  // Fondo del encabezado
-  doc.setFillColor(15, 23, 42); // Navy Blue muy oscuro
+  // ── HEADER DISEÑO PREMIUM ──
+  doc.setFillColor(15, 23, 42); // Navy Blue oscuro
   doc.rect(0, 0, 210, 40, 'F');
   
-  // Línea de acento
-  doc.setFillColor(59, 130, 246); // Azul brillante
+  doc.setFillColor(59, 130, 246); // Línea de acento azul
   doc.rect(0, 38, 210, 2, 'F');
 
-  // Título Principal (Corregido según solicitud)
+  // Título Corregido
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
   const mainTitle = `Lista de Faltas - Produção ${title}`;
   doc.text(mainTitle.toUpperCase(), 14, 18);
 
-  // Subtítulo / Empresa
+  // Subtítulo (Actualizado: sin Departamento Logístico)
   doc.setTextColor(148, 163, 184);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text('VONIXX ESTÉTICA AUTOMOTIVA · DEPARTAMENTO LOGÍSTICO', 14, 25);
+  doc.text('VONIXX ESTÉTICA AUTOMOTIVA', 14, 25);
 
-  // Fecha del reporte
+  // Fecha y Período
   const today = new Date();
-  const dateFormatted = today.toLocaleDateString('pt-BR');
   const periodText = selectedDay === 'all' 
     ? `RELATÓRIO MENSAL: ${MONTH_NAMES[currentMonth].toUpperCase()} / ${currentYear}`
     : `DATA: ${String(selectedDay).padStart(2, '0')}/${String(currentMonth + 1).padStart(2, '0')}/${currentYear}`;
@@ -75,7 +72,7 @@ export const exportToPDF = async (
   doc.setFontSize(10);
   doc.text(periodText, 210 - 14 - doc.getTextWidth(periodText), 22);
 
-  // ── SECCIÓN DE KPIs ESTILIZADOS ──
+  // ── SECCIÓN DE KPIs ──
   let startY = 50;
 
   if (selectedDay !== 'all') {
@@ -99,19 +96,15 @@ export const exportToPDF = async (
       doc.text(value, x + 4, startY + 17);
     };
 
-    // KPI 1: Colaboradores
     drawKPI(startX, 'Colaboradores', totalEmployees.toString(), [100, 116, 139], [248, 250, 252], [226, 232, 240]);
-    // KPI 2: Faltas
     drawKPI(startX + boxW + gap, 'Faltas Brutas', totalFaltas.toString(), [220, 38, 38], [254, 242, 242], [254, 202, 202]);
-    // KPI 3: Justificadas
     drawKPI(startX + (boxW + gap) * 2, 'Atestados', totalJustificadas.toString(), [234, 88, 12], [255, 247, 237], [254, 215, 170]);
-    // KPI 4: Presentes
     drawKPI(startX + (boxW + gap) * 3, 'Presentes', totalPresentes.toString(), [5, 150, 105], [236, 253, 245], [167, 243, 208]);
 
     startY += 32;
   }
 
-  // ── TABLA FILTRADA (Sólo lo que no es Presente) ──
+  // ── TABLA FILTRADA ──
   const rawTableData = validEmployees.map(emp => {
     let statusRaw = 'P';
     let statusVal = '';
@@ -142,16 +135,14 @@ export const exportToPDF = async (
     };
   });
 
-  // Aplicar filtro solicitado: Ocultar los "Presentes"
   const filteredTableData = selectedDay !== 'all' 
     ? rawTableData.filter(item => item.statusRaw !== 'P')
     : rawTableData;
 
   const tableRows = filteredTableData.map(item => item.row);
 
-  // Mensaje si no hay incidencias
   if (tableRows.length === 0 && selectedDay !== 'all') {
-    tableRows.push(['-', 'Nenhuma ocorrência (falta, férias ou afastamento) hoje.', '-', '-', '-']);
+    tableRows.push(['-', 'Nenhuma ocorrência registrada hoje.', '-', '-', '-']);
   }
 
   autoTable(doc, {
@@ -183,7 +174,7 @@ export const exportToPDF = async (
     }
   });
 
-  // ── ÁREA DE FIRMA ──
+  // ── FIRMA Y FOOTER ──
   let finalY = (doc as any).lastAutoTable.finalY + 25;
   if (finalY > 260) { doc.addPage(); finalY = 40; }
 
@@ -194,7 +185,6 @@ export const exportToPDF = async (
   doc.text('ASSINATURA DO SUPERVISOR', 14, finalY + 5);
   if (signatureData) doc.addImage(signatureData, 'PNG', 14, finalY - 15, 45, 12);
 
-  // ── FOOTER ──
   const pageCount = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
@@ -204,7 +194,7 @@ export const exportToPDF = async (
     doc.text(`Página ${i} de ${pageCount}`, 180, 290);
   }
 
-  // ── NOMBRE DE ARCHIVO (Corregido según solicitud) ──
+  // ── NOMBRE DE ARCHIVO DINÁMICO ──
   const fileDate = today.toLocaleDateString('pt-BR').replace(/\//g, '-');
   const fileName = `Lista_de_Faltas_Producao_${title.replace(/\s+/g, '_')}_${fileDate}.pdf`;
   
