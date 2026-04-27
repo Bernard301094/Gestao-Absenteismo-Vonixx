@@ -242,7 +242,7 @@
   border-radius: 14px;
 }
 
-/* Botão ghost — "Não sou eu, voltar" */
+/* Botão ghost */
 .kiosk-btn-ghost {
   width: 100%;
   min-height: 44px;
@@ -480,7 +480,7 @@
   margin: 0;
 }
 
-/* Lista de funcionários (mantida para uso futuro) */
+/* Lista de funcionários */
 .kiosk-employee-list {
   list-style: none;
   padding: 0;
@@ -574,116 +574,12 @@
   text-align: center;
 }
 .kiosk-done-emoji { font-size: 3rem; }
-.kiosk-all-done h3 { font-size: 1.3rem; font-weight: 800; color: #16a34a; margin: 0; }
-.kiosk-all-done p  { font-size: 0.9rem; color: #64748b; margin: 0; }
+.kiosk-all-done h3 { font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0; }
+.kiosk-all-done p  { font-size: 0.875rem; color: #64748b; margin: 0; }
 
-/* =====================================================
-   Responsivo
-   ===================================================== */
-@media (min-width: 480px) {
-  .kiosk-container {
-    align-items: center;
-    padding: 2rem 1.5rem;
-  }
-  .kiosk-card {
-    padding: 2rem;
-    margin-top: 0;
-  }
-}
-
-@media (min-width: 768px) {
-  .kiosk-card      { padding: 2.5rem; gap: 1.25rem; }
-  .kiosk-card-wide { max-width: 620px; }
-  .kiosk-employee-list { max-height: 55vh; }
-}
-
-/* =====================================================
-   Novos estilos — Lista visual com animação de saída
-   ===================================================== */
-
-/* Barra de progresso */
-.kiosk-progress-bar {
-  width: 100%;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 999px;
-  overflow: hidden;
-}
-.kiosk-progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #01696f, #0d9488);
-  border-radius: 999px;
-  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-/* Item clicável na lista */
-.kiosk-clickable {
-  cursor: pointer;
-}
-.kiosk-clickable:active {
-  background: #f0fdfa !important;
-  transform: scale(0.99);
-}
-
-/* Dica visual de toque */
-.kiosk-tap-hint {
-  font-size: 0.72rem;
-  color: #01696f;
-  font-weight: 600;
-  white-space: nowrap;
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-.kiosk-employee-item:hover .kiosk-tap-hint,
-.kiosk-employee-item:focus .kiosk-tap-hint {
-  opacity: 1;
-}
-
-/* Animação de ENTRADA (novo item aparecendo) */
-@keyframes kiosk-item-enter {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-.kiosk-item-enter {
-  animation: kiosk-item-enter 0.22s ease both;
-}
-
-/* Animação de SAÍDA (nome sumindo ao marcar presença) */
-@keyframes kiosk-item-exit {
-  0%   { opacity: 1;   transform: translateX(0)      scale(1);    max-height: 72px; }
-  40%  { opacity: 0.3; transform: translateX(24px)   scale(0.97); }
-  70%  { opacity: 0;   transform: translateX(32px)   scale(0.95); max-height: 72px; }
-  100% { opacity: 0;   transform: translateX(32px);               max-height: 0;    padding-top: 0; padding-bottom: 0; margin: 0; }
-}
-.kiosk-item-exit {
-  animation: kiosk-item-exit 0.38s ease forwards;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* Item vazio de busca */
-.kiosk-empty-search {
-  text-align: center;
-  color: #94a3b8;
-  font-size: 0.875rem;
-  padding: 1.5rem;
-  list-style: none;
-}
-
-/* Animação de bounce para emojis de celebração */
-@keyframes kiosk-bounce {
-  0%, 100% { transform: translateY(0);     }
-  30%       { transform: translateY(-14px); }
-  60%       { transform: translateY(-6px);  }
-}
-.kiosk-bounce {
-  display: inline-block;
-  animation: kiosk-bounce 0.7s ease 0.1s both;
-}
-
-/* Card de sucesso com fundo levemente colorido */
-.kiosk-success-card {
-  border: 2px solid #bbf7d0;
-  background: linear-gradient(160deg, #f0fdf4 0%, #ffffff 60%);
+/* Linha de scan animada no viewfinder */
+@keyframes kiosk-scan-line {
+  0%   { top: 15%; }
+  50%  { top: 80%; }
+  100% { top: 15%; }
 }
