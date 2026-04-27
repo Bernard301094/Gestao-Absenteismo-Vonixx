@@ -46,6 +46,8 @@ const kioskParams = typeof window !== 'undefined'
   : new URLSearchParams();
 const kioskPrefilledCode = kioskParams.get('code') || '';
 const kioskShift = (kioskParams.get('shift') || 'A').toUpperCase();
+// relay=1 indica aba temporária aberta pelo celular via QR scan
+const isRelayTab = kioskParams.get('relay') === '1';
 
 export default function App() {
   // ─── Kiosk route: render before any auth logic ──────────────────────────────────────────────────
@@ -57,7 +59,12 @@ export default function App() {
             <div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin" />
           </div>
         }>
-          <AttendanceKiosk prefilledCode={kioskPrefilledCode} shift={kioskShift} />
+          {/* relay=1: aba temporária que só envia o código e fecha */}
+          {/* relay=0: kiosk principal fixo no tablet/dispositivo */}
+          <AttendanceKiosk
+            prefilledCode={isRelayTab ? '' : kioskPrefilledCode}
+            shift={kioskShift}
+          />
         </Suspense>
       </ErrorBoundary>
     );
