@@ -4,14 +4,14 @@ import { MONTH_NAMES } from './constants';
 import { downloadOrSharePDF } from './downloadPDF';
 
 export const exportToPDF = async (
-  title: string,
+  title: string, // Ejemplo: "Turno A"
   employees: any[],
   attendance: any,
   selectedDay: number | 'all',
   currentMonth: number,
   currentYear: number,
   signatureData?: string,
-  notes?: any // NotesRecord
+  notes?: any 
 ) => {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -39,108 +39,79 @@ export const exportToPDF = async (
       if (status === 'F' && !justified) totalFaltas++;
       if (justified) totalJustificadas++;
       if (status === 'P') totalPresentes++;
-    } else {
-      const monthAttendance = attendance[emp.id] || {};
-      totalFaltas += Object.values(monthAttendance).filter((s: any) => s === 'F').length;
     }
   });
 
-  // ── HEADER ──
-  doc.setFillColor(15, 30, 54);
-  doc.rect(0, 0, 210, 35, 'F');
+  // ── HEADER DISEÑO MEJORADO ──
+  // Fondo del encabezado
+  doc.setFillColor(15, 23, 42); // Navy Blue muy oscuro
+  doc.rect(0, 0, 210, 40, 'F');
+  
+  // Línea de acento
+  doc.setFillColor(59, 130, 246); // Azul brillante
+  doc.rect(0, 38, 210, 2, 'F');
 
+  // Título Principal (Corregido según solicitud)
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(22);
+  doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('Relatório Logístico & HR', 14, 18);
+  const mainTitle = `Lista de Faltas - Produção ${title}`;
+  doc.text(mainTitle.toUpperCase(), 14, 18);
 
+  // Subtítulo / Empresa
   doc.setTextColor(148, 163, 184);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text(title, 14, 25);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('VONIXX ESTÉTICA AUTOMOTIVA · DEPARTAMENTO LOGÍSTICO', 14, 25);
 
-  const dateText = `Período: ${selectedDay === 'all' ? 'Mensal' : `${String(selectedDay).padStart(2, '0')}`} de ${MONTH_NAMES[currentMonth]} de ${currentYear}`;
+  // Fecha del reporte
+  const today = new Date();
+  const dateFormatted = today.toLocaleDateString('pt-BR');
+  const periodText = selectedDay === 'all' 
+    ? `RELATÓRIO MENSAL: ${MONTH_NAMES[currentMonth].toUpperCase()} / ${currentYear}`
+    : `DATA: ${String(selectedDay).padStart(2, '0')}/${String(currentMonth + 1).padStart(2, '0')}/${currentYear}`;
+  
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text(dateText, 210 - 14 - doc.getTextWidth(dateText), 22);
+  doc.text(periodText, 210 - 14 - doc.getTextWidth(periodText), 22);
 
-  // ── KPI SECTION ──
-  let startY = 45;
+  // ── SECCIÓN DE KPIs ESTILIZADOS ──
+  let startY = 50;
 
-  if (selectedDay !== 'all' && totalJustificadas > 0) {
-    // 4 KPIs: Colaboradores | Faltas | F. Justificadas | Presentes
-    const boxW = 43;
+  if (selectedDay !== 'all') {
+    const boxW = 44;
     const gap = 4;
     const startX = 14;
 
-    // Box 1: Total
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(startX, startY, boxW, 20, 2, 2, 'FD');
-    doc.setTextColor(100, 116, 139); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('COLABORADORES', startX + 4, startY + 7);
-    doc.setTextColor(15, 23, 42); doc.setFontSize(18);
-    doc.text(totalEmployees.toString(), startX + 4, startY + 16);
+    const drawKPI = (x: number, label: string, value: string, color: [number, number, number], bgColor: [number, number, number], borderColor: [number, number, number]) => {
+      doc.setFillColor(...bgColor);
+      doc.setDrawColor(...borderColor);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(x, startY, boxW, 22, 3, 3, 'FD');
+      
+      doc.setTextColor(...color);
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.text(label.toUpperCase(), x + 4, startY + 7);
+      
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(16);
+      doc.text(value, x + 4, startY + 17);
+    };
 
-    // Box 2: Faltas
-    const x2 = startX + boxW + gap;
-    doc.setFillColor(254, 242, 242); doc.setDrawColor(254, 202, 202);
-    doc.roundedRect(x2, startY, boxW, 20, 2, 2, 'FD');
-    doc.setTextColor(220, 38, 38); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('FALTAS', x2 + 4, startY + 7);
-    doc.setFontSize(18);
-    doc.text(totalFaltas.toString(), x2 + 4, startY + 16);
+    // KPI 1: Colaboradores
+    drawKPI(startX, 'Colaboradores', totalEmployees.toString(), [100, 116, 139], [248, 250, 252], [226, 232, 240]);
+    // KPI 2: Faltas
+    drawKPI(startX + boxW + gap, 'Faltas Brutas', totalFaltas.toString(), [220, 38, 38], [254, 242, 242], [254, 202, 202]);
+    // KPI 3: Justificadas
+    drawKPI(startX + (boxW + gap) * 2, 'Atestados', totalJustificadas.toString(), [234, 88, 12], [255, 247, 237], [254, 215, 170]);
+    // KPI 4: Presentes
+    drawKPI(startX + (boxW + gap) * 3, 'Presentes', totalPresentes.toString(), [5, 150, 105], [236, 253, 245], [167, 243, 208]);
 
-    // Box 3: Justificadas
-    const x3 = x2 + boxW + gap;
-    doc.setFillColor(255, 247, 237); doc.setDrawColor(254, 215, 170);
-    doc.roundedRect(x3, startY, boxW, 20, 2, 2, 'FD');
-    doc.setTextColor(234, 88, 12); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('F. JUSTIFICADAS', x3 + 4, startY + 7);
-    doc.setFontSize(18);
-    doc.text(totalJustificadas.toString(), x3 + 4, startY + 16);
-
-    // Box 4: Presentes
-    const x4 = x3 + boxW + gap;
-    doc.setFillColor(236, 253, 245); doc.setDrawColor(167, 243, 208);
-    doc.roundedRect(x4, startY, boxW, 20, 2, 2, 'FD');
-    doc.setTextColor(5, 150, 105); doc.setFontSize(7); doc.setFont('helvetica', 'bold');
-    doc.text('PRESENTES', x4 + 4, startY + 7);
-    doc.setFontSize(18);
-    doc.text(totalPresentes.toString(), x4 + 4, startY + 16);
-
-  } else {
-    // Layout original: 3 KPIs
-    doc.setFillColor(248, 250, 252); doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.3);
-    doc.roundedRect(14, startY, 55, 20, 2, 2, 'FD');
-    doc.setTextColor(100, 116, 139); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-    doc.text('TOTAL DE COLABORADORES', 18, startY + 7);
-    doc.setTextColor(15, 23, 42); doc.setFontSize(18);
-    doc.text(totalEmployees.toString(), 18, startY + 16);
-
-    doc.setFillColor(254, 242, 242); doc.setDrawColor(254, 202, 202);
-    doc.roundedRect(73, startY, 55, 20, 2, 2, 'FD');
-    doc.setTextColor(220, 38, 38); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-    doc.text(selectedDay === 'all' ? 'FALTAS (MÊS)' : 'FALTAS (DIA)', 77, startY + 7);
-    doc.setFontSize(18);
-    doc.text(totalFaltas.toString(), 77, startY + 16);
-
-    if (selectedDay !== 'all') {
-      doc.setFillColor(236, 253, 245); doc.setDrawColor(167, 243, 208);
-      doc.roundedRect(132, startY, 55, 20, 2, 2, 'FD');
-      doc.setTextColor(5, 150, 105); doc.setFontSize(8); doc.setFont('helvetica', 'bold');
-      doc.text('PRESENTES (DIA)', 136, startY + 7);
-      doc.setFontSize(18);
-      doc.text(totalPresentes.toString(), 136, startY + 16);
-    }
+    startY += 32;
   }
 
-  startY += 28;
-
-  // ── TABLE ──
+  // ── TABLA FILTRADA (Sólo lo que no es Presente) ──
   const rawTableData = validEmployees.map(emp => {
     let statusRaw = 'P';
     let statusVal = '';
@@ -149,23 +120,15 @@ export const exportToPDF = async (
       statusRaw = attendance[emp.id]?.[selectedDay] || 'P';
       const justified = statusRaw === 'F' && hasAtestado(emp.id, selectedDay);
       if (justified) {
-        statusRaw = 'FJ'; // código interno para falta justificada
+        statusRaw = 'FJ';
         statusVal = 'Falta Justificada';
       } else {
         const map: any = { P: 'Presente', F: 'Falta', Fe: 'Férias', A: 'Afastamento' };
         statusVal = map[statusRaw] || statusRaw;
       }
-    } else {
-      const monthAttendance = attendance[emp.id] || {};
-      const faltas = Object.values(monthAttendance).filter((s: any) => s === 'F').length;
-      statusVal = faltas > 0 ? `${faltas} Falta(s)` : 'Sem faltas';
-      statusRaw = faltas > 0 ? 'F' : 'P';
     }
 
-    // Coluna de atestado: só relevante para visualização por dia
-    const atestadoCol = selectedDay !== 'all'
-      ? (hasAtestado(emp.id, selectedDay) ? 'Sim' : '-')
-      : '';
+    const atestadoCol = selectedDay !== 'all' ? (hasAtestado(emp.id, selectedDay) ? 'Sim' : '-') : '';
 
     return {
       statusRaw,
@@ -174,145 +137,76 @@ export const exportToPDF = async (
         emp.name,
         emp.role || 'Equipe',
         { content: statusVal, rawStatus: statusRaw },
-        ...(selectedDay !== 'all' ? [{ content: atestadoCol, hasAtestado: hasAtestado(emp.id, selectedDay) }] : [])
+        atestadoCol
       ]
     };
   });
 
-  // Mostrar a TODOS excepto a los 'Presentes' en el reporte diario
-  let filteredTableData = rawTableData;
-  if (selectedDay !== 'all') {
-    filteredTableData = rawTableData.filter(item => item.statusRaw !== 'P');
-  }
+  // Aplicar filtro solicitado: Ocultar los "Presentes"
+  const filteredTableData = selectedDay !== 'all' 
+    ? rawTableData.filter(item => item.statusRaw !== 'P')
+    : rawTableData;
 
-  const tableData = filteredTableData.map(item => item.row);
+  const tableRows = filteredTableData.map(item => item.row);
 
-  if (tableData.length === 0 && selectedDay !== 'all') {
-    tableData.push([
-      '-',
-      'Nenhuma ocorrência (falta, atestado, férias ou afastamento) registrada.',
-      '-',
-      { content: '-', rawStatus: 'P' },
-      '-'
-    ]);
-  }
-
-  const headColumns = selectedDay !== 'all'
-    ? ['ID', 'Nome do Colaborador', 'Cargo', 'Status', 'Atestado']
-    : ['ID', 'Nome do Colaborador', 'Cargo', 'Status'];
-
-  const colStyles: any = {
-    0: { fontStyle: 'bold', textColor: [148, 163, 184] },
-    1: { fontStyle: 'bold', textColor: [15, 23, 42] },
-  };
-  if (selectedDay !== 'all') {
-    colStyles[3] = { cellWidth: 38 };
-    colStyles[4] = { cellWidth: 22, halign: 'center' };
+  // Mensaje si no hay incidencias
+  if (tableRows.length === 0 && selectedDay !== 'all') {
+    tableRows.push(['-', 'Nenhuma ocorrência (falta, férias ou afastamento) hoje.', '-', '-', '-']);
   }
 
   autoTable(doc, {
     startY,
-    head: [headColumns],
-    body: tableData as any,
-    theme: 'plain',
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 4 },
+    head: [['ID', 'COLABORADOR', 'CARGO', 'STATUS ATUAL', 'ATESTADO']],
+    body: tableRows as any,
+    theme: 'striped',
     headStyles: {
-      fillColor: [248, 250, 252],
-      textColor: [100, 116, 139],
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontSize: 8,
       fontStyle: 'bold',
-      lineColor: [226, 232, 240],
-      lineWidth: { bottom: 0.5 },
-      halign: 'left'
+      cellPadding: 4
     },
-    bodyStyles: { textColor: [51, 65, 85] },
-    columnStyles: colStyles,
-    didParseCell: function (data) {
-      if (data.section === 'body') {
-        // Colorir coluna Status
-        if (data.column.index === 3 && data.cell.raw && typeof data.cell.raw === 'object') {
-          const rawStatus = (data.cell.raw as any).rawStatus;
-          if (rawStatus === 'P')  data.cell.styles.textColor = [16, 185, 129];  // verde
-          else if (rawStatus === 'F')  data.cell.styles.textColor = [239, 68, 68];   // vermelho
-          else if (rawStatus === 'FJ') data.cell.styles.textColor = [234, 88, 12];   // laranja
-          else if (rawStatus === 'Fe' || rawStatus === 'A') data.cell.styles.textColor = [59, 130, 246]; // azul
-        }
-        // Colorir coluna Atestado
-        if (selectedDay !== 'all' && data.column.index === 4 && data.cell.raw && typeof data.cell.raw === 'object') {
-          const ha = (data.cell.raw as any).hasAtestado;
-          if (ha) data.cell.styles.textColor = [234, 88, 12]; // laranja
-          else    data.cell.styles.textColor = [148, 163, 184]; // cinza
-        }
-      }
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 3.5, verticalAlign: 'middle' },
+    columnStyles: {
+      0: { cellWidth: 15, fontStyle: 'bold', textColor: [100, 116, 139] },
+      1: { fontStyle: 'bold' },
+      3: { cellWidth: 40 },
+      4: { cellWidth: 20, halign: 'center' }
     },
-    willDrawCell: function (data) {
-      if (data.section === 'body') {
-        doc.setDrawColor(241, 245, 249);
-        doc.setLineWidth(0.2);
-        doc.line(data.cell.x, data.cell.y + data.cell.height, data.cell.x + data.cell.width, data.cell.y + data.cell.height);
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 3 && data.cell.raw) {
+        const rs = (data.cell.raw as any).rawStatus;
+        if (rs === 'F') data.cell.styles.textColor = [220, 38, 38];
+        if (rs === 'FJ') data.cell.styles.textColor = [234, 88, 12];
+        if (rs === 'Fe' || rs === 'A') data.cell.styles.textColor = [59, 130, 246];
       }
     }
   });
 
-  // ── LEGENDA (só no modo dia) ──
-  if (selectedDay !== 'all') {
-    const legendY = (doc as any).lastAutoTable.finalY + 8;
-    if (legendY < 270) {
-      doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(100, 116, 139);
-      doc.text('Legenda:', 14, legendY);
-      doc.setFont('helvetica', 'normal');
-
-      const items = [
-        { color: [16, 185, 129] as [number,number,number], label: 'Presente' },
-        { color: [239, 68, 68]  as [number,number,number], label: 'Falta' },
-        { color: [234, 88, 12]  as [number,number,number], label: 'Falta Justificada (atestado médico)' },
-        { color: [59, 130, 246] as [number,number,number], label: 'Férias / Afastamento' },
-      ];
-
-      let lx = 32;
-      items.forEach(item => {
-        doc.setFillColor(...item.color);
-        doc.circle(lx, legendY - 1, 1.2, 'F');
-        doc.setTextColor(...item.color);
-        doc.text(item.label, lx + 3, legendY);
-        lx += doc.getTextWidth(item.label) + 10;
-      });
-    }
-  }
-
-  // ── ÁREA DE ASSINATURA ──
-  let finalY = (doc as any).lastAutoTable.finalY + 30;
-  if (finalY > 250) { doc.addPage(); finalY = 40; }
+  // ── ÁREA DE FIRMA ──
+  let finalY = (doc as any).lastAutoTable.finalY + 25;
+  if (finalY > 260) { doc.addPage(); finalY = 40; }
 
   doc.setDrawColor(203, 213, 225);
-  doc.setLineWidth(0.5);
   doc.line(14, finalY, 80, finalY);
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Assinatura do Supervisor', 14, finalY + 5);
+  doc.text('ASSINATURA DO SUPERVISOR', 14, finalY + 5);
+  if (signatureData) doc.addImage(signatureData, 'PNG', 14, finalY - 15, 45, 12);
 
-  if (signatureData) doc.addImage(signatureData, 'PNG', 14, finalY - 18, 50, 15);
-
-  // ── FOOTER & PAGINAÇÃO ──
+  // ── FOOTER ──
   const pageCount = (doc as any).internal.getNumberOfPages();
-  const timestamp = new Date().toLocaleString('pt-BR');
-
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.5);
-    doc.line(14, 282, 196, 282);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
-    doc.text(`Relatório Vonixx · Gerado em ${timestamp}`, 14, 288);
-    const pageText = `Página ${i} de ${pageCount}`;
-    doc.text(pageText, 210 - 14 - doc.getTextWidth(pageText), 288);
+    doc.text(`Relatório Gerado em ${today.toLocaleString('pt-BR')} · Sistema de Gestão Vonixx`, 14, 290);
+    doc.text(`Página ${i} de ${pageCount}`, 180, 290);
   }
 
-  const prefix = selectedDay === 'all' ? 'Mensal' : 'Diario';
-  const fileName = `Relatorio_${prefix}_${title.replace(/\s+/g, '_')}_${currentYear}.pdf`;
+  // ── NOMBRE DE ARCHIVO (Corregido según solicitud) ──
+  const fileDate = today.toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const fileName = `Lista_de_Faltas_Producao_${title.replace(/\s+/g, '_')}_${fileDate}.pdf`;
+  
   await downloadOrSharePDF(doc, fileName);
 };
